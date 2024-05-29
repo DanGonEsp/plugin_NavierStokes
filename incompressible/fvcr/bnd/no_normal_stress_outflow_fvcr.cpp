@@ -47,6 +47,9 @@ NavierStokesNoNormalStressOutflowFVCR<TDomain>::
 NavierStokesNoNormalStressOutflowFVCR(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaster)
 : NavierStokesNoNormalStressOutflowBase<TDomain>(spMaster)
 {
+    
+    m_imKinViscosity.set_comp_lin_defect(false);
+    m_imDensity.set_comp_lin_defect(false);
 //	register imports
 	this->register_import(m_imKinViscosity);
 	this->register_import(m_imDensity);

@@ -77,7 +77,8 @@ class NavierStokesFVCR
 		void set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > user);
 
 	///	returns kinematic viscosity
-		SmartPtr<CplUserData<number, dim> > kinematic_viscosity() {return m_imKinViscosity.user_data (); }
+		SmartPtr<CplUserData<number, dim> > kinematic_viscosity() {
+            return m_imKinViscosity.user_data (); }
 
 	///	sets the density
 		void set_density(SmartPtr<CplUserData<number, dim> > user);
@@ -87,7 +88,9 @@ class NavierStokesFVCR
 
 	///	sets the source function
 		void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
-
+        void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
+        void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
+        void set_source_surface(SmartPtr<CplUserData<number, dim> > user);
 		void set_defect_upwind(bool defectUpwind) { m_bDefectUpwind = defectUpwind;}
 		bool get_defect_upwind() {return m_bDefectUpwind; }
 
@@ -124,6 +127,13 @@ class NavierStokesFVCR
 
 	///	Data import for source
 		DataImport<MathVector<dim>, dim> m_imSource;
+    
+    ///    Data import for Relative velocity
+        DataImport<MathVector<dim>, dim> m_imRelativeVelocity;
+    
+    ///    Data import for mass term
+        DataImport<number, dim> m_imMass;
+        DataImport<number, dim> m_imSourceSurface;
 
 	///	Data import for kinematic viscosity
 		DataImport<number, dim> m_imKinViscosity;
@@ -149,6 +159,13 @@ class NavierStokesFVCR
 		using base_type::m_bStokes;
 		using base_type::m_bLaplace;
 		using base_type::m_gradDivFactor;
+    
+    protected:
+
+    using base_type::m_exVelocity;
+    using base_type::m_exVelocityGrad;
+    using base_type::m_exPressure;
+    using base_type::m_exPressureGrad;
 
 	public:
 		template <typename TElem, typename TFVGeom>
@@ -174,6 +191,74 @@ class NavierStokesFVCR
 
 		template <typename TElem, typename TFVGeom>
 		void add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoords[]);
+    
+    ///    computes the linearized defect w.r.t to the density SCV
+        template <typename TElem, typename TFVGeom>
+        void lin_def_densitySCV(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
+    ///    computes the linearized defect w.r.t to the density SCVF
+        template <typename TElem, typename TFVGeom>
+        void lin_def_densitySCVF(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
+    ///    computes the linearized defect w.r.t to the viscosity
+        template <typename TElem, typename TFVGeom>
+        void lin_def_viscosity(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
+    
+    ///    export value of the velocity
+        template <typename TElem, typename TFVGeom>
+        void ex_nodal_velocity(MathVector<dim> vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
+
+    ///    computes the value of the gradient of the velocity
+        template <typename TElem, typename TFVGeom>
+        void ex_velocity_grad(MathMatrix<dim,dim> vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<MathMatrix<dim,dim> > > vvvDeriv[]);
+    
+    ///    export value of the pressure
+        template <typename TElem, typename TFVGeom>
+        void ex_nodal_pressure(number vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<number > > vvvDeriv[]);
+    
+    ///    export value of the pressure gradient
+        template <typename TElem, typename TFVGeom>
+        void ex_pressure_grad(MathVector<dim> vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
 
 	private:
 		template <typename TElem, typename TFVGeom>

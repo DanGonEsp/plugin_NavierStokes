@@ -178,6 +178,8 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesFV1Stabilization<dim> >)>(&T::set_upwind))
 			.add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesUpwind<dim> >)>(&T::set_upwind))
 			.add_method("set_upwind",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind))
+            .add_method("set_mass_change", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_mass_change), "", "Mass")
+            .add_method("set_source_surface", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_source_surface), "", "SourceSurface")
 			.add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesFV1", tag);

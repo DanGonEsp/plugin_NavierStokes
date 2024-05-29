@@ -178,7 +178,8 @@ class NavierStokesFV1
 
 	///	sets the source function
 		void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
-		
+        void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
+        void set_source_surface(SmartPtr<CplUserData<number, dim> > user);
 	/// returns scvf source
 		DataImport<MathVector<dim>, dim> sourceSCVF(){ return m_imSourceSCVF;}
 
@@ -228,6 +229,8 @@ class NavierStokesFV1
 
 	using base_type::m_exVelocity;
 	using base_type::m_exVelocityGrad;
+    using base_type::m_exPressure;
+    using base_type::m_exPressureGrad;
 
 	public:
 	///	type of trial space for each function used
@@ -544,11 +547,40 @@ class NavierStokesFV1
 							  const size_t nip,
 							  bool bDeriv,
 							  std::vector<std::vector<MathMatrix<dim,dim> > > vvvDeriv[]);
+    
+    ///    export value of the pressure
+        template <typename TElem, typename TFVGeom>
+        void ex_nodal_pressure(number vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<number > > vvvDeriv[]);
+    
+    ///    export value of the pressure gradient
+        template <typename TElem, typename TFVGeom>
+        void ex_pressure_grad(MathVector<dim> vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
 		
 	protected:
 	///	Data import for source
 		DataImport<MathVector<dim>, dim> m_imSourceSCV;
 		DataImport<MathVector<dim>, dim> m_imSourceSCVF;
+    ///    Data import for mass term
+        DataImport<number, dim> m_imMass;
+        DataImport<number, dim> m_imSourceSurface;
 
 	///	Data import for kinematic viscosity
 		DataImport<number, dim> m_imKinViscosity;
@@ -577,6 +609,33 @@ class NavierStokesFV1
 
 		virtual void init();
 
+    ///    computes the linearized defect w.r.t to the density SCV
+        template <typename TElem, typename TFVGeom>
+        void lin_def_densitySCV(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
+    ///    computes the linearized defect w.r.t to the density SCVF
+        template <typename TElem, typename TFVGeom>
+        void lin_def_densitySCVF(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
+    ///    computes the linearized defect w.r.t to the viscosity
+        template <typename TElem, typename TFVGeom>
+        void lin_def_viscosity(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
+    ///    computes the linearized defect w.r.t to the velocity
+        template <typename TElem, typename TFVGeom>
+        void lin_def_sourceSCV(const LocalVector& u,
+                              std::vector<std::vector<MathVector<dim> > > vvvLinDef[],
+                              const size_t nip);
+    ///    computes the linearized defect w.r.t to the velocity
+        template <typename TElem, typename TFVGeom>
+        void lin_def_sourceSCVF(const LocalVector& u,
+                              std::vector<std::vector<MathVector<dim> > > vvvLinDef[],
+                              const size_t nip);
+    
+    
 	protected:
 	///	register utils
 	///	\{

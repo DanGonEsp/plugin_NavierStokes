@@ -179,7 +179,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 
 	// CFL number computation
 	{
-		reg.add_function("cflNumber",static_cast<void (*)(function_type&,number)>(&cflNumber),grp);
+		reg.add_function("cflNumber",static_cast<number (*)(function_type&,number)>(&cflNumber),grp);
 	}
 
 	// vorticity computation
@@ -257,7 +257,9 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_laplace", &T::set_laplace)
 			.add_method("set_stokes", &T::set_stokes)
 			.add_method("velocity", &T::velocity)
-			.add_method("velocity_grad", &T::velocity_grad);
+			.add_method("velocity_grad", &T::velocity_grad)
+            .add_method("pressure", &T::pressure)
+            .add_method("pressure_grad", &T::pressure_grad);
 		reg.add_class_to_group(name, "IncompressibleNavierStokesBase", tag);
 	}
 

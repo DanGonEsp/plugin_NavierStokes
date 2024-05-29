@@ -729,7 +729,7 @@ void DrivenCavityLinesEval(SmartPtr<TGridFunction> u, std::vector<std::string> v
 // Function computes maximum over all elements.
  */
 template<typename TGridFunction>
-void cflNumber(TGridFunction& u,number deltaT){
+number cflNumber(TGridFunction& u,number deltaT){
 	/// domain type
 	typedef typename TGridFunction::domain_type domain_type;
 
@@ -843,6 +843,7 @@ void cflNumber(TGridFunction& u,number deltaT){
 		}
 	}
 	UG_LOG("Max CFL number is " << maxCfl << "\n");
+    return maxCfl;
 }
 
 // Compute 1/|\Omega| \int_{\Omega} \hat{u_i} \hat{u_i} dx , where \Omega is the computational domain.

@@ -238,7 +238,13 @@ class IncompressibleNavierStokesBase
 
 	///	returns the export of the velocity gradient
 		SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > velocity_grad() {return m_exVelocityGrad;}
-
+    
+    ///    returns the export of the velocity
+        SmartPtr<CplUserData<number, dim> > pressure() {return m_exPressure;}
+    
+    ///    returns the export of the pressure gradient
+        SmartPtr<CplUserData<MathVector<dim>, dim> > pressure_grad() {return m_exPressureGrad;}
+    
 	protected:
 	///	flag if using Peclet Blending
 		bool m_bPecletBlend;
@@ -259,7 +265,14 @@ class IncompressibleNavierStokesBase
 		SmartPtr<DataExport<MathVector<dim>,dim> > m_exVelocity;
 
 	///	Export for the velocity gradient
-		SmartPtr<DataExport<MathMatrix<dim, dim>,dim> > m_exVelocityGrad;
+        SmartPtr<DataExport<MathMatrix<dim, dim>,dim> > m_exVelocityGrad;
+    
+    ///    Export for the pressure
+        SmartPtr<DataExport<number,dim> > m_exPressure;
+    
+    ///    Export for the pressure gradient
+        SmartPtr<DataExport<MathVector<dim>,dim> > m_exPressureGrad;
+
 };
 
 /// @}

@@ -60,6 +60,8 @@ IncompressibleNavierStokesBase<TDomain>::IncompressibleNavierStokesBase(const ch
 {
   m_exVelocity = make_sp(new DataExport<MathVector<dim>, dim>(functions));
   m_exVelocityGrad = make_sp(new DataExport<MathMatrix<dim, dim>, dim>(functions));
+  m_exPressure = make_sp(new DataExport<number, dim>(functions));
+  m_exPressureGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions));
 };
 
 template<typename TDomain>
@@ -77,6 +79,8 @@ IncompressibleNavierStokesBase<TDomain>::IncompressibleNavierStokesBase(const st
   }
   m_exVelocity = make_sp(new DataExport<MathVector<dim>, dim>(functions.c_str()));
   m_exVelocityGrad = make_sp(new DataExport<MathMatrix<dim, dim>, dim>(functions.c_str()));
+  m_exPressure = make_sp(new DataExport<number, dim>(functions.c_str()));
+  m_exPressureGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions.c_str()));
 };
 
 
