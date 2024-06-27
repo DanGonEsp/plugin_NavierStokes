@@ -48,8 +48,8 @@ NavierStokesNoNormalStressOutflowFVCR(SmartPtr< IncompressibleNavierStokesBase<T
 : NavierStokesNoNormalStressOutflowBase<TDomain>(spMaster)
 {
     
-    m_imKinViscosity.set_comp_lin_defect(false);
-    m_imDensity.set_comp_lin_defect(false);
+    //m_imKinViscosity.set_comp_lin_defect(false);
+    //m_imDensity.set_comp_lin_defect(false);
 //	register imports
 	this->register_import(m_imKinViscosity);
 	this->register_import(m_imDensity);
@@ -435,7 +435,170 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		}
 	}
 }
+/// Assembling of the diffusive flux (due to the viscosity) in the defect of the momentum eq.
+template<typename TDomain>
+template<typename BF>
+void NavierStokesNoNormalStressOutflowFVCR<TDomain>::
+diffusive_flux_lin_defect
+ (
+     const size_t ip, // index of the integration point (for the density)
+     const BF& bf, // boundary face to assemble
+  std::vector<std::vector<number> > vvvLinDef[], // local defect to update
+     const LocalVector& u // local solution
+ )
+{
+    MathMatrix<dim, dim> gradVel;
+    MathVector<dim> diffFlux;
 
+//     1. Get the gradient of the velocity at ip
+    for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
+        for(size_t d2 = 0; d2 < (size_t)dim; ++d2)
+        {
+        //    sum up contributions of each shape
+            gradVel(d1, d2) = 0.0;
+            for(size_t sh = 0; sh < bf.num_sh(); ++sh)
+                gradVel(d1, d2) += bf.global_grad(sh)[d2] * u(d1, sh);
+        }
+
+//    2. Compute the total flux
+
+//    - add (\nabla u) \cdot \vec{n}
+    MatVecMult(diffFlux, gradVel, bf.normal());
+
+//    - add (\nabla u)^T \cdot \vec{n}
+    if(!m_spMaster->laplace())
+        TransposedMatVecMultAdd(diffFlux, gradVel, bf.normal());
+
+//    3. Subtract the normal part:
+    VecScaleAppend (diffFlux, - VecDot (diffFlux, bf.normal()), bf.normal());
+
+//    A4. Scale by viscosity
+    //diffFlux *= - m_imKinViscosity[ip];
+
+//    5. Add flux to local defect
+    for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
+        vvvLinDef[ip][d1][bf.node_id()]+= diffFlux[d1];
+}
+/// Assembling of the convective flux (due to the quadratic inertial term) in the defect of the momentum eq.
+template<typename TDomain>
+template<typename BF>
+void NavierStokesNoNormalStressOutflowFVCR<TDomain>::
+convective_flux_lin_defect
+(
+    const size_t ip, // index of the integration point (for the density)
+    const BF& bf, // boundary face to assemble
+ std::vector<std::vector<number> > vvvLinDef[], // local defect to update
+    const LocalVector& u // local solution
+)
+{
+    MathVector<dim> StdVel;
+    number old_momentum_flux;
+    VecSet(StdVel, 0);
+
+// The convection velocity according to the current approximation:
+    for(size_t sh = 0; sh < bf.num_sh(); ++sh)
+        for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+            StdVel[d1] += u(d1, sh) * bf.shape(sh);
+    old_momentum_flux = VecDot (StdVel, bf.normal ()) ;
+
+// We assume that there should be no inflow through the outflow boundary:
+    if (old_momentum_flux < 0)
+        old_momentum_flux = 0;
+
+// Add the flux to the defect:
+    for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+        vvvLinDef[ip][d1][bf.node_id()]+= old_momentum_flux * StdVel[d1];
+}
+//    computes the linearized defect w.r.t to the Density
+template<typename TDomain>
+template<typename TElem, typename TFVGeom>
+void NavierStokesNoNormalStressOutflowFVCR<TDomain>::
+lin_def_density(const LocalVector& u, std::vector<std::vector<number> > vvvLinDef[], const size_t nip)
+{
+    
+    UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
+
+//     get finite volume geometry
+    static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+    typedef typename TFVGeom::BF BF;
+    
+    //    reset the values for the linearized defect
+    for(size_t ip = 0; ip < nip; ++ip)
+        for(size_t c = 0; c < vvvLinDef[ip].size(); ++c)
+            for(size_t sh = 0; sh < vvvLinDef[ip][c].size(); ++sh)
+                vvvLinDef[ip][c][sh] = 0.0;
+    //UG_LOG("Anfang add_def_A_elem");
+
+//     loop registered boundary segments
+    typename std::vector<int>::const_iterator subsetIter;
+    size_t ip = 0;
+    for(subsetIter = m_vBndSubSetIndex.begin();
+        subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
+    {
+    //    get subset index corresponding to boundary
+        const int bndSubset = *subsetIter;
+
+    //    get the list of the ip's:
+        if(geo.num_bf(bndSubset) == 0) continue;
+        const std::vector<BF>& vBF = geo.bf(bndSubset);
+
+    //     loop the boundary faces
+        typename std::vector<BF>::const_iterator bf;
+        for(bf = vBF.begin(); bf != vBF.end(); ++bf)
+        {
+            if (!m_spMaster->stokes ())
+                convective_flux_lin_defect<BF> (ip, *bf, vvvLinDef, u);
+                
+        // Next IP:
+            ip++;
+        }
+    }
+}
+//    computes the linearized defect w.r.t to the Density
+template<typename TDomain>
+template<typename TElem, typename TFVGeom>
+void NavierStokesNoNormalStressOutflowFVCR<TDomain>::
+lin_def_viscosity(const LocalVector& u, std::vector<std::vector<number> > vvvLinDef[], const size_t nip)
+{
+    
+    UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
+
+//     get finite volume geometry
+    static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+    typedef typename TFVGeom::BF BF;
+    
+    //    reset the values for the linearized defect
+    for(size_t ip = 0; ip < nip; ++ip)
+        for(size_t c = 0; c < vvvLinDef[ip].size(); ++c)
+            for(size_t sh = 0; sh < vvvLinDef[ip][c].size(); ++sh)
+                vvvLinDef[ip][c][sh] = 0.0;
+    //UG_LOG("Anfang add_def_A_elem");
+
+//     loop registered boundary segments
+    typename std::vector<int>::const_iterator subsetIter;
+    size_t ip = 0;
+    for(subsetIter = m_vBndSubSetIndex.begin();
+        subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
+    {
+    //    get subset index corresponding to boundary
+        const int bndSubset = *subsetIter;
+
+    //    get the list of the ip's:
+        if(geo.num_bf(bndSubset) == 0) continue;
+        const std::vector<BF>& vBF = geo.bf(bndSubset);
+
+    //     loop the boundary faces
+        typename std::vector<BF>::const_iterator bf;
+        for(bf = vBF.begin(); bf != vBF.end(); ++bf)
+        {
+            if (!m_spMaster->stokes ())
+                diffusive_flux_lin_defect<BF> (ip, *bf, vvvLinDef, u);
+                
+        // Next IP:
+            ip++;
+        }
+    }
+}
 ////////////////////////////////////////////////////////////////////////////////
 //	register assemble functions
 ////////////////////////////////////////////////////////////////////////////////
@@ -513,6 +676,9 @@ register_func()
 	this->set_add_def_A_elem_fct(	id, &T::template add_def_A_elem<TElem, TFVGeom>);
 	this->set_add_def_M_elem_fct(	id, &T::template add_def_M_elem<TElem, TFVGeom>);
 	this->set_add_rhs_elem_fct(	id, &T::template add_rhs_elem<TElem, TFVGeom>);
+    
+    m_imDensity.set_fct(id, this,   &T::template lin_def_density<TElem, TFVGeom>);
+    m_imKinViscosity.set_fct(id, this,   &T::template lin_def_viscosity<TElem, TFVGeom>);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

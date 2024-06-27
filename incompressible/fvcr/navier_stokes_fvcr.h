@@ -89,6 +89,7 @@ class NavierStokesFVCR
 	///	sets the source function
 		void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
+        void set_divergence_rel_vel(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
         void set_source_surface(SmartPtr<CplUserData<number, dim> > user);
 		void set_defect_upwind(bool defectUpwind) { m_bDefectUpwind = defectUpwind;}
@@ -129,7 +130,9 @@ class NavierStokesFVCR
 		DataImport<MathVector<dim>, dim> m_imSource;
     
     ///    Data import for Relative velocity
-        DataImport<MathVector<dim>, dim> m_imRelativeVelocity;
+        DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCVF;
+        DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
+        DataImport<MathVector<dim>, dim> m_imDivergenceFlux;
     
     ///    Data import for mass term
         DataImport<number, dim> m_imMass;
@@ -206,6 +209,24 @@ class NavierStokesFVCR
         template <typename TElem, typename TFVGeom>
         void lin_def_viscosity(const LocalVector& u,
                               std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
+    ///    computes the linearized defect w.r.t to the viscosity
+        template <typename TElem, typename TFVGeom>
+        void lin_def_sourceSCV(const LocalVector& u,
+                              std::vector<std::vector<MathVector<dim>> > vvvLinDef[],
+                              const size_t nip);
+        template<typename TElem, typename TFVGeom>
+        void lin_def_RelativeVelocitySCV(const LocalVector& u,
+                             std::vector<std::vector<MathVector<dim>> > vvvLinDef[],
+                                const size_t nip);
+    ///    computes the linearized defect w.r.t to the Relative Mass
+        template <typename TElem, typename TFVGeom>
+        void lin_def_relativeMass(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
+        template <typename TElem, typename TFVGeom>
+        void lin_def_divergence_flux(const LocalVector& u,
+                              std::vector<std::vector<MathVector<dim>> > vvvLinDef[],
                               const size_t nip);
     
     ///    export value of the velocity

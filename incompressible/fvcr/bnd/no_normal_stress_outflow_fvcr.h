@@ -129,6 +129,17 @@ class NavierStokesNoNormalStressOutflowFVCR
 		template <typename TElem, typename TFVGeom>
 		void add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoords[]){}
 	/// \}
+    
+    ///    computes the linearized defect w.r.t to the density SCV
+        template <typename TElem, typename TFVGeom>
+        void lin_def_density(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
+    ///    computes the linearized defect w.r.t to the density SCV
+        template <typename TElem, typename TFVGeom>
+        void lin_def_viscosity(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
+                              const size_t nip);
 
 	private:
 	/// adds the diffusive part of the local Jacobian of the momentum equation
@@ -167,6 +178,25 @@ class NavierStokesNoNormalStressOutflowFVCR
 			LocalVector& d,
 			const LocalVector& u
 		);
+    /// adds the convective part of the local defect of the momentum equation
+        template <typename BF>
+        inline void convective_flux_lin_defect
+        (
+            const size_t ip,
+            const BF& bf,
+         std::vector<std::vector<number> > vvvLinDef[],
+            const LocalVector& u
+        );
+    /// adds the convective part of the local defect of the momentum equation
+        template <typename BF>
+        inline void diffusive_flux_lin_defect
+        (
+            const size_t ip,
+            const BF& bf,
+         std::vector<std::vector<number> > vvvLinDef[],
+            const LocalVector& u
+        );
+    
 	
 	protected:
 	/// abbreviation for pressure
