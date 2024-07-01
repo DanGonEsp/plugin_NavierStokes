@@ -82,6 +82,7 @@ class NavierStokesFVCR
 
 	///	sets the density
 		void set_density(SmartPtr<CplUserData<number, dim> > user);
+        void set_density_upwind(SmartPtr<CplUserData<number, dim> > user);
 
 	///	returns density
 		SmartPtr<CplUserData<number, dim> > density() {return m_imDensitySCVF.user_data ();}
@@ -130,8 +131,7 @@ class NavierStokesFVCR
 		DataImport<MathVector<dim>, dim> m_imSource;
     
     ///    Data import for Relative velocity
-        DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCVF;
-        DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
+        DataImport<MathVector<dim>, dim> m_imRelativeVelocity;
         DataImport<MathVector<dim>, dim> m_imDivergenceFlux;
     
     ///    Data import for mass term

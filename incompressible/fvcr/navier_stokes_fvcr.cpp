@@ -77,15 +77,14 @@ void NavierStokesFVCR<TDomain>::init()
     
     
     
-    
+
     m_imKinViscosity.set_comp_lin_defect(false);
     m_imSourceSurface.set_comp_lin_defect(false);
 
     m_imDivergenceFlux.set_comp_lin_defect(false);
     
     m_imMass.set_comp_lin_defect(false);
-    m_imRelativeVelocitySCV.set_comp_lin_defect(false);
-    m_imRelativeVelocitySCVF.set_comp_lin_defect(false);
+    m_imRelativeVelocity.set_comp_lin_defect(false);
 
     
     
@@ -94,8 +93,7 @@ void NavierStokesFVCR<TDomain>::init()
     //	register imports
 	this->register_import(m_imSource);
     
-    this->register_import(m_imRelativeVelocitySCVF);
-    this->register_import(m_imRelativeVelocitySCV);
+    this->register_import(m_imRelativeVelocity);
     this->register_import(m_imMass);
     
     this->register_import(m_imSourceSurface);
@@ -106,13 +104,10 @@ void NavierStokesFVCR<TDomain>::init()
 	m_imSource.set_rhs_part();
 	m_imDensitySCV.set_mass_part();
     m_imSourceSurface.set_rhs_part();
-    m_imRelativeVelocitySCVF.set_rhs_part();
-    m_imRelativeVelocitySCV.set_rhs_part();
+    m_imRelativeVelocity.set_rhs_part();
     m_imDivergenceFlux.set_rhs_part();
     m_imMass.set_rhs_part();
     
-	//	default value for density
-	base_type::set_density(1.0);
 
 	m_bDefectUpwind = true;
 	
@@ -161,8 +156,13 @@ template<typename TDomain>
 void NavierStokesFVCR<TDomain>::
 set_density(SmartPtr<CplUserData<number, dim> > data)
 {
-	m_imDensitySCVF.set_data(data);
 	m_imDensitySCV.set_data(data);
+}
+template<typename TDomain>
+void NavierStokesFVCR<TDomain>::
+set_density_upwind(SmartPtr<CplUserData<number, dim> > data)
+{
+    m_imDensitySCVF.set_data(data);
 }
 
 template<typename TDomain>
@@ -176,8 +176,7 @@ template<typename TDomain>
 void NavierStokesFVCR<TDomain>::
 set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 {
-    m_imRelativeVelocitySCVF.set_data(data);
-    m_imRelativeVelocitySCV.set_data(data);
+    m_imRelativeVelocity.set_data(data);
 }
 template<typename TDomain>
 void NavierStokesFVCR<TDomain>::
@@ -239,7 +238,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 						" Density has not been set, but is required.");
     
 //    check, that Density has been set
-    if((m_imMass.data_given() && !m_imRelativeVelocitySCVF.data_given()) || (!m_imMass.data_given() && m_imRelativeVelocitySCVF.data_given()))
+    if((m_imMass.data_given() && !m_imRelativeVelocity.data_given()) || (!m_imMass.data_given() && m_imRelativeVelocity.data_given()))
         UG_THROW("NavierStokes::prep_elem_loop:"
                         " Relative velocity or Transport density has not been set, but is required.");
 
@@ -256,15 +255,16 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
         geo.update_local_data();
         
 		//static TFVGeom& geo = GeomProvider<TFVGeom>::get();
-		m_imKinViscosity.template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
-		m_imDensitySCVF.template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
-        m_imRelativeVelocitySCVF.template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
-        m_imRelativeVelocitySCV.template set_local_ips<refDim>(geo.scv_local_ips(), geo.num_scv_ips());
-        m_imDivergenceFlux.template set_local_ips<refDim>(geo.scv_local_ips(), geo.num_scv_ips());
-        m_imMass.template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
-		m_imDensitySCV.template set_local_ips<refDim>(geo.scv_local_ips(), geo.num_scv_ips());
-		m_imSource.template set_local_ips<refDim>(geo.scv_local_ips(), geo.num_scv_ips());
-        m_imSourceSurface.template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
+		m_imKinViscosity.           template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
+		m_imDensitySCVF.            template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
+        m_imDensitySCV.             template set_local_ips<refDim>(geo.scv_local_ips(), geo.num_scv_ips());
+        
+        m_imDivergenceFlux.         template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
+        m_imMass.                   template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
+        m_imSourceSurface.          template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
+        m_imRelativeVelocity.       template set_local_ips<refDim>(geo.scvf_local_ips(), geo.num_scvf_ips());
+        
+        m_imSource.                 template set_local_ips<refDim>(geo.scv_local_ips(), geo.num_scv_ips());
 	}
 }
 
@@ -308,9 +308,8 @@ prep_elem(const LocalVector& u, GridObject* elem, const ReferenceObjectID roid, 
 		                                          geo.num_scv_ips());
         
         m_imSourceSurface.template set_local_ips<refDim>(geo.scvf_local_ips(),geo.num_scvf_ips());
-        m_imRelativeVelocitySCVF.template set_local_ips<refDim>(geo.scvf_local_ips(),geo.num_scvf_ips());
-        m_imRelativeVelocitySCV.template set_local_ips<refDim>(geo.scv_local_ips(),geo.num_scv_ips());
-        m_imDivergenceFlux.template set_local_ips<refDim>(geo.scv_local_ips(), geo.num_scv_ips());
+        m_imRelativeVelocity.template set_local_ips<refDim>(geo.scvf_local_ips(),geo.num_scvf_ips());
+        m_imDivergenceFlux.template set_local_ips<refDim>(geo.scvf_local_ips(),geo.num_scvf_ips());
         m_imMass.template set_local_ips<refDim>(geo.scvf_local_ips(),geo.num_scvf_ips());
 	}
 
@@ -320,9 +319,8 @@ prep_elem(const LocalVector& u, GridObject* elem, const ReferenceObjectID roid, 
 	m_imDensitySCV.set_global_ips(geo.scv_global_ips(), geo.num_scv_ips());
 	m_imSource.set_global_ips(geo.scv_global_ips(), geo.num_scv_ips());
     m_imSourceSurface.set_global_ips(geo.scvf_global_ips(), geo.num_scvf_ips());
-    m_imRelativeVelocitySCVF.set_global_ips(geo.scvf_global_ips(), geo.num_scvf_ips());
-    m_imRelativeVelocitySCV.set_global_ips(geo.scv_global_ips(), geo.num_scv_ips());
-    m_imDivergenceFlux.set_global_ips(geo.scv_global_ips(), geo.num_scv_ips());
+    m_imRelativeVelocity.set_global_ips(geo.scvf_global_ips(), geo.num_scvf_ips());
+    m_imDivergenceFlux.set_global_ips(geo.scvf_global_ips(), geo.num_scvf_ips());
     m_imMass.set_global_ips(geo.scvf_global_ips(), geo.num_scvf_ips());
 }
 
@@ -422,7 +420,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				}
 								
 				if (m_gradDivFactor>0){
-					for (int d1=0;d1<dim;d1++) 
+					for (int d1=0;d1<dim;d1++)
 						for (int d2=0;d2<dim;d2++){
 							number stab_flux = m_gradDivFactor * scvf.global_grad(sh)[d2] * scvf.normal()[d1];
 							J(d1, scvf.from(), d2, sh) -= stab_flux;
@@ -567,9 +565,82 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 			const typename TFVGeom::SCV& scv = geo.scv(sh);
 			for(int d1 = 0; d1 < dim; ++d1)
 			{
-                J(_P_, 0 , d1, scv.node_id()) += scv.normal()[d1];//*m_imDensitySCV[sh];
+                J(_P_, 0 , d1, scv.node_id()) += scv.normal()[d1];;
 			}
 		}
+        if(m_imRelativeVelocity.data_given())
+        {
+            //    compute upwind shapes
+            m_spConvUpwind->update(&geo, m_imRelativeVelocity.values());
+            
+            //     loop Sub Control Volume Faces (SCVF)
+            for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+            {
+                //     get current SCVF
+                const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+                
+                //     loop shape functions
+                for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+                {
+                    
+                    
+                    //    compute upwind velocity
+                    MathVector<dim> UpwindVel;
+                    
+                    //    switch PAC
+                    UpwindVel = upwind.upwind_vel(ip, u, StdVel);
+                    
+                    //    peclet blend
+                    number w = 1.0;
+                    if(m_bPecletBlend)
+                        w = peclet_blend(UpwindVel, geo, ip, m_imRelativeVelocity[ip], m_imKinViscosity[ip]/m_imDensitySCVF[ip]);
+                    
+                    //    compute product of stabilized vel and normal todo which is better upwindVel or StdVel?
+                    const number prod = m_imMass[ip]*VecProd(m_imRelativeVelocity[ip], scvf.normal());
+                    
+                    ///////////////////////////////////
+                    //    Add fixpoint linearization
+                    ///////////////////////////////////
+                    
+                    number convFlux_vel = upwind.upwind_shape_sh(ip, sh);
+                    
+                    //    in some cases (e.g. PositiveUpwind, RegularUpwind) the upwind
+                    //    velocity in an ip depends also on the upwind velocity in
+                    //    other ips. This is reflected by the fact, that the ip
+                    //    shapes are non-zero. In that case, we can interpolate an
+                    //    approximate upwind only from the corner velocities by using
+                    //    u_up = \sum shape_co U_co + \sum shape_ip \tilde{u}_ip
+                    //         = \sum shape_co U_co + \sum \sum shape_ip norm_shape_co|_ip * U_co
+                    if(upwind.non_zero_shape_ip())
+                    {
+                        for(size_t ip2 = 0; ip2 < geo.num_scvf(); ++ip2)
+                        {
+                            const typename TFVGeom::SCVF& scvf2 = geo.scvf(ip2);
+                            convFlux_vel += scvf2.shape(sh) * upwind.upwind_shape_ip(ip, ip2);
+                        }
+                    }
+                    
+                    convFlux_vel *= prod * w;
+                    
+                    for(int d1 = 0; d1 < dim; ++d1)
+                    {
+                        J(d1, scvf.from(), d1, sh) += convFlux_vel;
+                        J(d1, scvf.to()  , d1, sh) -= convFlux_vel;
+                    }
+                    
+                    //    derivative due to peclet blending
+                    if(m_bPecletBlend)
+                    {
+                        const number convFluxPe = prod * (1.0-w) * scvf.shape(sh);
+                        for(int d1 = 0; d1 < dim; ++d1)
+                        {
+                            J(d1, scvf.from(), d1, sh) += convFluxPe;
+                            J(d1, scvf.to()  , d1, sh) -= convFluxPe;
+                        }
+                    }
+                }// end of loop shape functions
+            }// end of loop ips
+        }
 		// handle constrained dofs
 		if(TFVGeom::usesHangingNodes){
 			for (size_t i=0;i<geo.num_constrained_dofs();i++){
@@ -734,7 +805,50 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                 d(_P_, 0 ) += scv.normal()[d1] * u(d1,scv.node_id());//*m_imDensitySCV[sh];
 			}
 		}
-    
+        if (m_imRelativeVelocity.data_given())
+        {
+            m_spConvUpwind->update(&geo, m_imRelativeVelocity.values());
+            //     loop Sub Control Volume Faces (SCVF)
+            for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+            {
+                //     get current SCVF
+                const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+                
+                
+                ////////////////////////////////////////////////////
+                // Convective Term (Momentum Equation)
+                ////////////////////////////////////////////////////
+                
+                if (m_bDefectUpwind == true){
+                    //    find the upwind velocity at ip
+                    MathVector<dim> UpwindVel = upwind.upwind_vel(ip, u, StdVel);
+                    
+                    //    Peclet Blend
+                    if(m_bPecletBlend)
+                        peclet_blend(UpwindVel, geo, ip, m_imRelativeVelocity[ip], m_imKinViscosity[ip]/m_imDensitySCVF[ip]);
+                    
+                    //    compute product of standard velocity and normal
+                    const number prod = m_imMass[ip]*VecProd(m_imRelativeVelocity[ip], scvf.normal()) ;
+                    
+                    //    Add contributions to local velocity components
+                    for(int d1 = 0; d1 < dim; ++d1)
+                    {
+                        d(d1, scvf.from()) += UpwindVel[d1] * prod;
+                        d(d1, scvf.to()  ) -= UpwindVel[d1] * prod;
+                    }
+                } else {
+                    for(int d1 = 0; d1 < dim; ++d1)
+                    {
+                        //    compute product of standard velocity and normal
+                        const number prod = m_imMass[ip]*VecProd(m_imRelativeVelocity[ip], scvf.normal());
+                        d(d1, scvf.from()) += StdVel[ip][d1] * prod;
+                        d(d1, scvf.to()  ) -= StdVel[ip][d1] * prod;
+                    }
+                }
+                
+                
+            }
+        }
     
 		// handle constrained dofs, compute defect of interpolation equation
 		if(TFVGeom::usesHangingNodes){
@@ -866,59 +980,6 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
         }
     }
     
-    ////////////////////////////////////////////////////
-    // Momentum convection due to relative velocity (Momentum Equation)
-    ////////////////////////////////////////////////////
-    if (m_imRelativeVelocitySCVF.data_given() && m_imRelativeVelocitySCV.data_given() && m_imMass.data_given()) // no convective terms in the Stokes equation
-    {
-        const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
-
-        if ((! m_bStokes) && (m_bDefectUpwind == true))
-        {
-            //    compute upwind shapes
-            m_spConvUpwind->update(&geo, m_imRelativeVelocitySCVF.values());
-        }
-        if (! m_bStokes) // no convective terms in the Stokes equation
-        {
-            //     loop Sub Control Volume Faces (SCVF)
-            for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
-            {
-                //     get current SCVF
-                const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-                
-                if (m_bDefectUpwind == true){
-                    //    find the upwind velocity at ip
-                    
-                    
-                    MathVector<dim> UpwindVel = upwind.upwind_rel_vel(ip, m_imRelativeVelocitySCV.values(), m_imRelativeVelocitySCVF.values());
-                    
-                    
-                    //    compute product of standard velocity and normal
-                    const number prod = VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal())*m_imMass[ip];
-                    
-                    //    Add contributions to local velocity components
-                    for(int d1 = 0; d1 < dim; ++d1)
-                    {
-                        d(d1, scvf.from()) += UpwindVel[d1] * prod;
-                        d(d1, scvf.to()  ) -= UpwindVel[d1] * prod;
-                    }
-                    
-                    
-                    
-                } else {
-                    for(int d1 = 0; d1 < dim; ++d1)
-                    {
-                        //    compute product of standard velocity and normal
-                        const number prod = VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal())*m_imMass[ip];
-                        d(d1, scvf.from()) += m_imRelativeVelocitySCVF[ip][d1] * prod;
-                        d(d1, scvf.to()  ) -= m_imRelativeVelocitySCVF[ip][d1] * prod;
-                    }
-                }
-                
-            }
-        }
-        
-    }
 }
 //    computes the linearized defect w.r.t to the viscosity
 template<typename TDomain>
@@ -1031,7 +1092,7 @@ lin_def_RelativeVelocitySCV(const LocalVector& u,
     if ((! m_bStokes) && (m_bDefectUpwind == true))
     {
         //    compute upwind shapes
-        m_spConvUpwind->update(&geo, m_imRelativeVelocitySCVF.values());
+        m_spConvUpwind->update(&geo, m_imRelativeVelocity.values());
     }
     //     loop Sub Control Volume Faces (SCVF)
     
@@ -1047,7 +1108,7 @@ lin_def_RelativeVelocitySCV(const LocalVector& u,
                     //    find the upwind velocity at ip
                     
                     //    compute product of standard velocity and normal
-                    const number prod = VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal())*m_imMass[ip];
+                    const number prod = VecProd(m_imRelativeVelocity[ip], scvf.normal())*m_imMass[ip];
                     
                     number convFlux_vel = upwind.upwind_shape_sh(ip, sh);
                     
@@ -1087,7 +1148,7 @@ lin_def_relativeMass(const LocalVector& u,
                      const size_t nip)
 {
     
-    UG_ASSERT((!m_imRelativeVelocitySCVF.data_given() && !m_imRelativeVelocitySCV.data_given() && !m_imMass.data_given()), "Relative velocity or Relative density not given.");
+    UG_ASSERT((!m_imRelativeVelocity.data_given() && !m_imMass.data_given()), "Relative velocity or Relative density not given.");
 //    request geometry
 
     
@@ -1097,7 +1158,7 @@ lin_def_relativeMass(const LocalVector& u,
     if ((! m_bStokes) && (m_bDefectUpwind == true))
     {
         //    compute upwind shapes
-        m_spConvUpwind->update(&geo, m_imRelativeVelocitySCVF.values());
+        m_spConvUpwind->update(&geo, m_imRelativeVelocity.values());
     }
     
     
@@ -1129,11 +1190,11 @@ lin_def_relativeMass(const LocalVector& u,
             
             if (m_bDefectUpwind == true){
                 //    find the upwind velocity at ip
-                MathVector<dim> UpwindVel = upwind.upwind_rel_vel(ip, m_imRelativeVelocitySCV.values(), m_imRelativeVelocitySCVF.values());
+                MathVector<dim> UpwindVel = upwind.upwind_rel_vel(ip, m_imRelativeVelocity.values(), m_imRelativeVelocity.values());
 
 
                 //    compute product of standard velocity and normal
-                const number prod = VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
+                const number prod = VecProd(m_imRelativeVelocity[ip], scvf.normal());
 
                 //    Add contributions to local velocity components
                 for(int c = 0; c < dim; ++c)
@@ -1147,9 +1208,9 @@ lin_def_relativeMass(const LocalVector& u,
                 for(int c = 0; c < dim; ++c)
                 {
                     //    compute product of standard velocity and normal
-                    const number prod = VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
-                    vvvLinDef[ip][c][scvf.from()] += m_imRelativeVelocitySCVF[ip][c] * prod;
-                    vvvLinDef[ip][c][scvf.to()  ] -= m_imRelativeVelocitySCVF[ip][c] * prod;
+                    const number prod = VecProd(m_imRelativeVelocity[ip], scvf.normal());
+                    vvvLinDef[ip][c][scvf.from()] += m_imRelativeVelocity[ip][c] * prod;
+                    vvvLinDef[ip][c][scvf.to()  ] -= m_imRelativeVelocity[ip][c] * prod;
                 }
             }
         }
@@ -1678,7 +1739,6 @@ register_func()
     m_imDensitySCVF.set_fct(id, this,           &T::template lin_def_densitySCVF<TElem, TFVGeom>);
     m_imDensitySCV.set_fct(id, this,            &T::template lin_def_densitySCV<TElem, TFVGeom>);
     m_imSource.set_fct(id, this,                &T::template lin_def_sourceSCV<TElem, TFVGeom>);
-    m_imRelativeVelocitySCV.set_fct(id, this,  &T::template lin_def_RelativeVelocitySCV<TElem, TFVGeom>);
     m_imDivergenceFlux.set_fct(id, this,        &T::template lin_def_divergence_flux<TElem, TFVGeom>);
     m_imMass.set_fct(id, this,                  &T::template lin_def_relativeMass<TElem, TFVGeom>);
     
