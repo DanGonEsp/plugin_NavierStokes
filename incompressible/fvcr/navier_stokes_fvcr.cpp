@@ -72,7 +72,7 @@ void NavierStokesFVCR<TDomain>::init()
    
     m_imDensitySCVF.set_comp_lin_defect(false);
     m_imDensitySCV.set_comp_lin_defect(false);
-    m_imSource.set_comp_lin_defect(false);
+    //m_imSource.set_comp_lin_defect(false);
     m_imKinViscosity.set_comp_lin_defect(false);
     
     m_imSourceSurface.set_comp_lin_defect(false);
@@ -100,7 +100,6 @@ void NavierStokesFVCR<TDomain>::init()
 	m_imSource.set_rhs_part();
 	m_imDensitySCV.set_mass_part();
     m_imSourceSurface.set_rhs_part();
-    m_imRelativeVelocity.set_rhs_part();
     m_imDivergenceFlux.set_rhs_part();
     m_imMass.set_rhs_part();
     
@@ -561,13 +560,14 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 			const typename TFVGeom::SCV& scv = geo.scv(sh);
 			for(int d1 = 0; d1 < dim; ++d1)
 			{
-                J(_P_, 0 , d1, scv.node_id()) += scv.normal()[d1];;
+                J(_P_, 0 , d1, scv.node_id()) += 1000*scv.normal()[d1];;
 			}
 		}
         if(m_imRelativeVelocity.data_given())
         {
             //    compute upwind shapes
-            m_spConvUpwind->update(&geo, m_imRelativeVelocity.values());
+            if (m_bDefectUpwind == true)
+                m_spConvUpwind->update(&geo, m_imRelativeVelocity.values());
             
             //     loop Sub Control Volume Faces (SCVF)
             for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -575,50 +575,63 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 //     get current SCVF
                 const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
                 
-                //     loop shape functions
+                    //     loop shape functions
                 for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
                 {
-                    
-                    
-                    //    compute upwind velocity
-                    MathVector<dim> UpwindVel;
-                    
-                    //    switch PAC
-                    UpwindVel = upwind.upwind_vel(ip, u, StdVel);
-                    
-
-                    
-                    //    compute product of stabilized vel and normal todo which is better upwindVel or StdVel?
-                    const number prod = m_imMass[ip]*VecProd(m_imRelativeVelocity[ip], scvf.normal());
-                    
-                    ///////////////////////////////////
-                    //    Add fixpoint linearization
-                    ///////////////////////////////////
-                    
-                    number convFlux_vel = upwind.upwind_shape_sh(ip, sh);
-                    
-                    //    in some cases (e.g. PositiveUpwind, RegularUpwind) the upwind
-                    //    velocity in an ip depends also on the upwind velocity in
-                    //    other ips. This is reflected by the fact, that the ip
-                    //    shapes are non-zero. In that case, we can interpolate an
-                    //    approximate upwind only from the corner velocities by using
-                    //    u_up = \sum shape_co U_co + \sum shape_ip \tilde{u}_ip
-                    //         = \sum shape_co U_co + \sum \sum shape_ip norm_shape_co|_ip * U_co
-                    if(upwind.non_zero_shape_ip())
+                    //if (m_bDefectUpwind == true)
+                    if (true)
                     {
-                        for(size_t ip2 = 0; ip2 < geo.num_scvf(); ++ip2)
+                        
+                        //    compute upwind velocity
+                        MathVector<dim> UpwindVel;
+                        
+                        //    switch PAC
+                        UpwindVel = upwind.upwind_vel(ip, u, StdVel);
+                        
+                        
+                        
+                        //    compute product of stabilized vel and normal todo which is better upwindVel or StdVel?
+                        const number prod = m_imMass[ip]*VecProd(m_imRelativeVelocity[ip], scvf.normal());
+                        
+                        ///////////////////////////////////
+                        //    Add fixpoint linearization
+                        ///////////////////////////////////
+                        
+                        number convFlux_vel = upwind.upwind_shape_sh(ip, sh);
+                        
+                        //    in some cases (e.g. PositiveUpwind, RegularUpwind) the upwind
+                        //    velocity in an ip depends also on the upwind velocity in
+                        //    other ips. This is reflected by the fact, that the ip
+                        //    shapes are non-zero. In that case, we can interpolate an
+                        //    approximate upwind only from the corner velocities by using
+                        //    u_up = \sum shape_co U_co + \sum shape_ip \tilde{u}_ip
+                        //         = \sum shape_co U_co + \sum \sum shape_ip norm_shape_co|_ip * U_co
+                        if(upwind.non_zero_shape_ip())
                         {
-                            const typename TFVGeom::SCVF& scvf2 = geo.scvf(ip2);
-                            convFlux_vel += scvf2.shape(sh) * upwind.upwind_shape_ip(ip, ip2);
+                            for(size_t ip2 = 0; ip2 < geo.num_scvf(); ++ip2)
+                            {
+                                const typename TFVGeom::SCVF& scvf2 = geo.scvf(ip2);
+                                convFlux_vel += scvf2.shape(sh) * upwind.upwind_shape_ip(ip, ip2);
+                            }
+                        }
+                        
+                        convFlux_vel *= prod;
+                        
+                        for(int d1 = 0; d1 < dim; ++d1)
+                        {
+                            J(d1, scvf.from(), d1, sh) += convFlux_vel;
+                            J(d1, scvf.to()  , d1, sh) -= convFlux_vel;
                         }
                     }
-                    
-                    convFlux_vel *= prod;
-                    
-                    for(int d1 = 0; d1 < dim; ++d1)
-                    {
-                        J(d1, scvf.from(), d1, sh) += convFlux_vel;
-                        J(d1, scvf.to()  , d1, sh) -= convFlux_vel;
+                    else{
+                        const number prod = m_imMass[ip]*VecProd(m_imRelativeVelocity[ip], scvf.normal());
+                        number convFlux_vel = scvf.shape(sh)*prod;
+                        for(int d1 = 0; d1 < dim; ++d1)
+                        {
+                            J(d1, scvf.from(), d1, sh) += convFlux_vel;
+                            J(d1, scvf.to()  , d1, sh) -= convFlux_vel;
+                        }
+                        
                     }
                 }// end of loop shape functions
             }// end of loop ips
@@ -784,7 +797,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			const typename TFVGeom::SCV& scv = geo.scv(sh);
 			for(int d1 = 0; d1 < dim; ++d1)
 			{
-                d(_P_, 0 ) += scv.normal()[d1] * u(d1,scv.node_id());//*m_imDensitySCV[sh];
+                d(_P_, 0 ) += 1000*scv.normal()[d1] * u(d1,scv.node_id());//*m_imDensitySCV[sh];
 			}
 		}
         if (m_imRelativeVelocity.data_given())
