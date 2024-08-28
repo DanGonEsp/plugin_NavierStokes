@@ -70,9 +70,9 @@ void NavierStokesFV1<TDomain>::init()
     m_imSourceSCVF.set_comp_lin_defect(false);
     m_imMass.set_comp_lin_defect(false);
     m_imSourceSurface.set_comp_lin_defect(false);
-    m_imDensitySCVF.set_comp_lin_defect(false);
-    m_imDensitySCV.set_comp_lin_defect(false);
-    m_imKinViscosity.set_comp_lin_defect(false);
+    //m_imDensitySCVF.set_comp_lin_defect(false);
+    //m_imDensitySCV.set_comp_lin_defect(false);
+    //m_imKinViscosity.set_comp_lin_defect(false);
     
 //	register imports
 	this->register_import(m_imSourceSCV);
@@ -592,7 +592,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     number contFlux_vel = 0.0;
                     for(int d2 = 0; d2 < dim; ++d2)
                         contFlux_vel += stab.stab_shape_vel(ip, d2, d1, sh)
-                        * scvf.normal()[d2] * m_imDensitySCVF[ip];
+                        * scvf.normal()[d2]; //* m_imDensitySCVF[ip];
                     
                     J(_P_, scvf.from(), d1, sh) += contFlux_vel;
                     J(_P_, scvf.to()  , d1, sh) -= contFlux_vel;
@@ -603,7 +603,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 for(int d1 = 0; d1 < dim; ++d1)
                 {
                     const number contFlux_vel = stab.stab_shape_vel(ip, d1, d1, sh)
-                    * scvf.normal()[d1] * m_imDensitySCVF[ip];
+                    * scvf.normal()[d1]; //* m_imDensitySCVF[ip];
                     
                     J(_P_, scvf.from(), d1, sh) += contFlux_vel;
                     J(_P_, scvf.to()  , d1, sh) -= contFlux_vel;
@@ -614,7 +614,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             //	Add derivative of stabilized flux w.r.t pressure to local matrix
             number contFlux_p = 0.0;
             for(int d1 = 0; d1 < dim; ++d1)
-                contFlux_p += stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1] * m_imDensitySCVF[ip];
+                contFlux_p += stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1]; //* m_imDensitySCVF[ip];
             
             J(_P_, scvf.from(), _P_, sh) += contFlux_p;
             J(_P_, scvf.to()  , _P_, sh) -= contFlux_p;
@@ -839,7 +839,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		////////////////////////////////////////////////////
 
 	//	compute flux at ip
-		const number contFlux = VecProd(stab.stab_vel(ip), scvf.normal()) * m_imDensitySCVF[ip];
+        const number contFlux = VecProd(stab.stab_vel(ip), scvf.normal());// * m_imDensitySCVF[ip];
 
 	//	Add contributions to local defect
 		d(_P_, scvf.from()) += contFlux;
@@ -976,7 +976,7 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
             
             // 	Add to local rhs
             for(int d1 = 0; d1 < dim; ++d1){
-                d(d1, sh) += m_imSourceSCV[ip][d1] * scv.volume();
+                d(d1, sh) += m_imSourceSCV[ip][d1] * m_imDensitySCV[ip] * scv.volume();
             }
         }
     }
@@ -1053,13 +1053,13 @@ lin_def_densitySCV(const LocalVector& u,
         {
             vvvLinDef[ip][c][co] += u(c, co) * scv.volume();
         }
-        /*if(m_imSourceSCV.data_given())
+        if(m_imSourceSCV.data_given())
         {
             for(size_t c = 0; c < dim; ++c)
             {
                 vvvLinDef[ip][c][co] = m_imSourceSCV[ip][c] * scv.volume();
             }
-        }*/
+        }
     }
 }
 //    computes the linearized defect w.r.t to the density SCVF

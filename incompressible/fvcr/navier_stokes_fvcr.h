@@ -82,7 +82,6 @@ class NavierStokesFVCR
 
 	///	sets the density
 		void set_density(SmartPtr<CplUserData<number, dim> > user);
-        void set_density_upwind(SmartPtr<CplUserData<number, dim> > user);
 
 	///	returns density
 		SmartPtr<CplUserData<number, dim> > density() {return m_imDensitySCVF.user_data ();}
@@ -214,6 +213,11 @@ class NavierStokesFVCR
         template <typename TElem, typename TFVGeom>
         void lin_def_sourceSCV(const LocalVector& u,
                               std::vector<std::vector<MathVector<dim>> > vvvLinDef[],
+                              const size_t nip);
+    ///    computes the linearized defect w.r.t to the viscosity
+        template <typename TElem, typename TFVGeom>
+        void lin_def_sourceSCVF(const LocalVector& u,
+                              std::vector<std::vector<number> > vvvLinDef[],
                               const size_t nip);
         template<typename TElem, typename TFVGeom>
         void lin_def_RelativeVelocity(const LocalVector& u,

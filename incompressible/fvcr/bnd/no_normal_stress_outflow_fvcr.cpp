@@ -350,6 +350,40 @@ convective_flux_defect
 		d(d1, bf.node_id()) += old_momentum_flux * StdVel[d1];
 }
 
+
+/// Assembling of the pressure flux  in the defect of the momentum eq.
+template<typename TDomain>
+template<typename BF>
+void NavierStokesNoNormalStressOutflowFVCR<TDomain>::
+pressure_flux_defect
+(
+    const BF& bf, // boundary face to assemble
+    LocalVector& d, // local defect to update
+    const LocalVector& u // local solution
+)
+{
+// Add the flux to the defect:
+    for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+        d(d1, bf.node_id()) += -u(_P_, 0) * bf.normal ()[d1];
+}
+
+
+/// Assembling of the pressure flux  in the Jacobian of the momentum eq.
+template<typename TDomain>
+template<typename BF>
+void NavierStokesNoNormalStressOutflowFVCR<TDomain>::
+pressure_flux_Jac
+(
+    const BF& bf, // boundary face to assemble
+    LocalMatrix& J, // local Jacobian to update
+    const LocalVector& u // local solution
+)
+{
+    for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+        J(d1, bf.node_id(), _P_, 0) += -bf.normal()[d1];
+}
+
+
 template<typename TDomain>
 template<typename TElem, typename TFVGeom>
 void NavierStokesNoNormalStressOutflowFVCR<TDomain>::
@@ -383,6 +417,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 			diffusive_flux_Jac<BF> (ip, *bf, J, u);
 			if (!m_spMaster->stokes ())
 				convective_flux_Jac<BF> (ip, *bf, J, u);
+            pressure_flux_Jac<BF> (*bf, J, u);
 
 		//	B. The continuity equation
 		//	for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
@@ -429,7 +464,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			diffusive_flux_defect<BF> (ip, *bf, d, u);
 			if (!m_spMaster->stokes ())
 				convective_flux_defect<BF> (ip, *bf, d, u);
-
+            pressure_flux_defect<BF> (*bf, d, u);
 		// Next IP:
 			ip++;
 		}

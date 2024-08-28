@@ -178,6 +178,22 @@ class NavierStokesNoNormalStressOutflowFVCR
 			LocalVector& d,
 			const LocalVector& u
 		);
+    /// adds the convective part of the local Jacobian of the momentum equation
+        template <typename BF>
+        inline void pressure_flux_Jac
+        (
+            const BF& bf,
+            LocalMatrix& J,
+            const LocalVector& u
+        );
+    /// adds the convective part of the local defect of the momentum equation
+        template <typename BF>
+        inline void pressure_flux_defect
+        (
+            const BF& bf,
+            LocalVector& d,
+            const LocalVector& u
+        );
     /// adds the convective part of the local defect of the momentum equation
         template <typename BF>
         inline void convective_flux_lin_defect
