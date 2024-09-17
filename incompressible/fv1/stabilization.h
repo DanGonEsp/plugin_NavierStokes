@@ -193,11 +193,15 @@ class INavierStokesFV1Stabilization
 		            const MathVector<dim> vStdVel[],
 		            const bool bStokes,
 		            const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
 		            const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& densitySCV,
+                    const DataImport<number, dim>* pDensity_OLD_SCVF,
+                    const DataImport<number, dim>* pDensity_OLD_SCV,
 		            const DataImport<MathVector<dim>, dim>* pSource,
 		            const LocalVector* pvCornerValueOldTime, number dt)
 			{(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel,
-											bStokes, kinVisco, density, pSource,
+											bStokes, kinVisco, kinViscoSCV, density, densitySCV, pDensity_OLD_SCVF, pDensity_OLD_SCV, pSource,
 											pvCornerValueOldTime, dt);}
 
 	/////////////////////////////////////////
@@ -279,7 +283,11 @@ class INavierStokesFV1Stabilization
 												const MathVector<dim> vStdVel[],
 												const bool bStokes,
 												const DataImport<number, dim>& kinVisco,
+                                                const DataImport<number, dim>& kinViscoSCV,
 												const DataImport<number, dim>& density,
+                                                const DataImport<number, dim>& densitySCV,
+                                                const DataImport<number, dim>* pDensity_OLD_SCVF,
+                                                const DataImport<number, dim>* pDensity_OLD_SCV,
 												const DataImport<MathVector<dim>, dim>* pSource,
 												const LocalVector* pvCornerValueOldTime, number dt);
 
@@ -472,7 +480,11 @@ class NavierStokesFIELDSStabilization
 		            const MathVector<dim> vStdVel[],
 		            const bool bStokes,
 		            const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
 					const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& densitySCV,
+                    const DataImport<number, dim>* pDensity_OLD_SCVF,
+                    const DataImport<number, dim>* pDensity_OLD_SCV,
 		            const DataImport<MathVector<dim>, dim>* pSource,
 		            const LocalVector* pvCornerValueOldTime, number dt);
 
@@ -488,7 +500,11 @@ class NavierStokesFIELDSStabilization
 											 const MathVector<dim> vStdVel[],
 											 const bool bStokes,
 											 const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
  											 const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& densitySCV,
+                                             const DataImport<number, dim>* pDensity_OLD_SCVF,
+                                             const DataImport<number, dim>* pDensity_OLD_SCV,
 											 const DataImport<MathVector<dim>, dim>* pSource,
 											 const LocalVector* pvCornerValueOldTime, number dt);
 
@@ -554,7 +570,11 @@ class NavierStokesFLOWStabilization
 					const MathVector<dim> vStdVel[],
 					const bool bStokes,
 					const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
 					const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& densitySCV,
+                    const DataImport<number, dim>* pDensity_OLD_SCVF,
+                    const DataImport<number, dim>* pDensity_OLD_SCV,
 					const DataImport<MathVector<dim>, dim>* pSource,
 					const LocalVector* pvCornerValueOldTime, number dt);
 
@@ -570,13 +590,197 @@ class NavierStokesFLOWStabilization
 											 const MathVector<dim> vStdVel[],
 											 const bool bStokes,
 											 const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
 											 const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& densitySCV,
+                                             const DataImport<number, dim>* pDensity_OLD_SCVF,
+                                             const DataImport<number, dim>* pDensity_OLD_SCV,
 											 const DataImport<MathVector<dim>, dim>* pSource,
 											 const LocalVector* pvCornerValueOldTime, number dt);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}
 };
+
+/////////////////////////////////////////////////////////////////////////////
+// FIELDS
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Implementation of the FIELDS stabilization
+ */
+template <int TDim>
+class NavierStokesFIELDS_2_Stabilization
+    : public INavierStokesSRFV1Stabilization<TDim>
+{
+    public:
+    ///    Base class
+        typedef INavierStokesSRFV1Stabilization<TDim> base_type;
+
+    ///    This class
+        typedef NavierStokesFIELDS_2_Stabilization<TDim> this_type;
+
+    ///    Dimension
+        static const int dim = TDim;
+
+    protected:
+    //    explicitly forward some function
+        using base_type::register_update_func;
+        using base_type::diff_length_sq_inv;
+        using base_type::stab_shape_vel;
+        using base_type::stab_shape_p;
+        using base_type::stab_vel;
+        using base_type::set_vel_comp_connected;
+
+    //    functions from upwind
+        using base_type::upwind_conv_length;
+        using base_type::downwind_conv_length;
+        using base_type::upwind_shape_sh;
+        using base_type::downwind_shape_sh;
+        using base_type::non_zero_shape_ip;
+        using base_type::upwind_shape_ip;
+        using base_type::downwind_shape_ip;
+
+    public:
+    ///    constructor
+        NavierStokesFIELDS_2_Stabilization()
+        {
+        //    vel comp not coupled
+            set_vel_comp_connected(false);
+
+        //    register evaluation function
+            register_func();
+        }
+
+    ///    update of values for FV1Geometry
+        template <typename TElem>
+        void update(const FV1Geometry<TElem, dim>* geo,
+                    const LocalVector& vCornerValue,
+                    const MathVector<dim> vStdVel[],
+                    const bool bStokes,
+                    const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+                    const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& densitySCV,
+                    const DataImport<number, dim>* pDensity_OLD_SCVF,
+                    const DataImport<number, dim>* pDensity_OLD_SCV,
+                    const DataImport<MathVector<dim>, dim>* pSource,
+                    const LocalVector* pvCornerValueOldTime, number dt);
+
+    private:
+        void register_func();
+
+        template <typename TElem>
+        void register_func()
+        {
+            typedef FV1Geometry<TElem, dim> TGeom;
+            typedef void (this_type::*TFunc)(const TGeom* geo,
+                                             const LocalVector& vCornerValue,
+                                             const MathVector<dim> vStdVel[],
+                                             const bool bStokes,
+                                             const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
+                                              const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& densitySCV,
+                                             const DataImport<number, dim>* pDensity_OLD_SCVF,
+                                             const DataImport<number, dim>* pDensity_OLD_SCV,
+                                             const DataImport<MathVector<dim>, dim>* pSource,
+                                             const LocalVector* pvCornerValueOldTime, number dt);
+
+            this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
+        }
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// FLOW
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Implementation of the FLOW stabilization
+ */
+template <int TDim>
+class NavierStokesFLOW_2_Stabilization
+    : public INavierStokesSRFV1Stabilization<TDim>
+{
+    public:
+    ///    Base class
+        typedef INavierStokesSRFV1Stabilization<TDim> base_type;
+
+    ///    This class
+        typedef NavierStokesFLOW_2_Stabilization<TDim> this_type;
+
+    ///    Dimension
+        static const int dim = TDim;
+
+    protected:
+    //    explicitly forward some function
+        using base_type::register_update_func;
+        using base_type::set_vel_comp_connected;
+        using base_type::diff_length_sq_inv;
+        using base_type::stab_shape_vel;
+        using base_type::stab_shape_p;
+        using base_type::stab_vel;
+
+    //    functions from upwind
+        using base_type::upwind_conv_length;
+        using base_type::downwind_conv_length;
+        using base_type::upwind_shape_sh;
+        using base_type::downwind_shape_sh;
+        using base_type::non_zero_shape_ip;
+        using base_type::upwind_shape_ip;
+        using base_type::downwind_shape_ip;
+
+    public:
+    ///    constructor
+        NavierStokesFLOW_2_Stabilization()
+        {
+        //    vel comp coupled
+            set_vel_comp_connected(true);
+
+        //    register evaluation function
+            register_func();
+        }
+
+    ///    update of values for FV1Geometry
+        template <typename TElem>
+        void update(const FV1Geometry<TElem, dim>* geo,
+                    const LocalVector& vCornerValue,
+                    const MathVector<dim> vStdVel[],
+                    const bool bStokes,
+                    const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+                    const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& densitySCV,
+                    const DataImport<number, dim>* pDensity_OLD_SCVF,
+                    const DataImport<number, dim>* pDensity_OLD_SCV,
+                    const DataImport<MathVector<dim>, dim>* pSource,
+                    const LocalVector* pvCornerValueOldTime, number dt);
+
+    private:
+        void register_func();
+
+        template <typename TElem>
+        void register_func()
+        {
+            typedef FV1Geometry<TElem, dim> TGeom;
+            typedef void (this_type::*TFunc)(const TGeom* geo,
+                                             const LocalVector& vCornerValue,
+                                             const MathVector<dim> vStdVel[],
+                                             const bool bStokes,
+                                             const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
+                                             const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& densitySCV,
+                                             const DataImport<number, dim>* pDensity_OLD_SCVF,
+                                             const DataImport<number, dim>* pDensity_OLD_SCV,
+                                             const DataImport<MathVector<dim>, dim>* pSource,
+                                             const LocalVector* pvCornerValueOldTime, number dt);
+
+            this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
+        }
+};
+
 
 /////////////////////////////////////////////////////////////////////////////
 // NO STABILIZATION (Note: The discretization is then unstable!)
@@ -622,7 +826,11 @@ class NavierStokesFV1WithoutStabilization
 					const MathVector<dim> vStdVel[],
 					const bool bStokes,
 					const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
 					const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& densitySCV,
+                    const DataImport<number, dim>* pDensity_OLD_SCVF,
+                    const DataImport<number, dim>* pDensity_OLD_SCV,
 					const DataImport<MathVector<dim>, dim>* pSource,
 					const LocalVector* pvCornerValueOldTime, number dt);
 
@@ -638,7 +846,11 @@ class NavierStokesFV1WithoutStabilization
 											 const MathVector<dim> vStdVel[],
 											 const bool bStokes,
 											 const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
 											 const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& densitySCV,
+                                             const DataImport<number, dim>* pDensity_OLD_SCVF,
+                                             const DataImport<number, dim>* pDensity_OLD_SCV,
 											 const DataImport<MathVector<dim>, dim>* pSource,
 											 const LocalVector* pvCornerValueOldTime, number dt);
 

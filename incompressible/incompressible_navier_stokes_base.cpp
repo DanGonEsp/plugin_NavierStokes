@@ -59,6 +59,7 @@ IncompressibleNavierStokesBase<TDomain>::IncompressibleNavierStokesBase(const ch
   m_bLaplace(false)
 {
   m_exVelocity = make_sp(new DataExport<MathVector<dim>, dim>(functions));
+  m_exVelocity_div = make_sp(new DataExport<MathVector<dim>, dim>(functions));
   m_exVelocityGrad = make_sp(new DataExport<MathMatrix<dim, dim>, dim>(functions));
   m_exPressure = make_sp(new DataExport<number, dim>(functions));
   m_exPressureGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions));
@@ -78,6 +79,7 @@ IncompressibleNavierStokesBase<TDomain>::IncompressibleNavierStokesBase(const st
     functions.append(vFct[i]);
   }
   m_exVelocity = make_sp(new DataExport<MathVector<dim>, dim>(functions.c_str()));
+  m_exVelocity_div = make_sp(new DataExport<MathVector<dim>, dim>(functions.c_str()));
   m_exVelocityGrad = make_sp(new DataExport<MathMatrix<dim, dim>, dim>(functions.c_str()));
   m_exPressure = make_sp(new DataExport<number, dim>(functions.c_str()));
   m_exPressureGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions.c_str()));

@@ -224,13 +224,17 @@ class NavierStokesFV1
 				else UG_THROW("Stabilization must be specified previously.\n");
 			}
 		}
+    
 			
 	protected:
 
 	using base_type::m_exVelocity;
+    using base_type::m_exVelocity_div;
 	using base_type::m_exVelocityGrad;
     using base_type::m_exPressure;
     using base_type::m_exPressureGrad;
+    
+
 
 	public:
 	///	type of trial space for each function used
@@ -519,8 +523,8 @@ class NavierStokesFV1
 	 * \return			\f$\omega\f$ 	weighting factor
 	 */
 		template <typename TFVGeom>
-		inline number peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
-		                           const MathVector<dim>& StdVel, number kinVisco);
+		inline number peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip,
+		                           const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
 
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>
@@ -534,6 +538,18 @@ class NavierStokesFV1
 							  const size_t nip,
 							  bool bDeriv,
 							  std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
+    ///    export value of the velocity
+        template <typename TElem, typename TFVGeom>
+        void ex_div_velocity(MathVector<dim> vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
 
 	///	computes the value of the gradient of the velocity
 		template <typename TElem, typename TFVGeom>
@@ -573,6 +589,10 @@ class NavierStokesFV1
                               const size_t nip,
                               bool bDeriv,
                               std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
+    
+    
+    public:
+        void set_density_old(SmartPtr<CplUserData<number, dim> > data);
 		
 	protected:
 	///	Data import for source
@@ -584,11 +604,15 @@ class NavierStokesFV1
 
 	///	Data import for kinematic viscosity
 		DataImport<number, dim> m_imKinViscosity;
+        DataImport<number, dim> m_imKinViscositySCV;
 
 	///	Data import for density
 		DataImport<number, dim> m_imDensitySCVF;
+        DataImport<number, dim> m_imDensitySCVF_OLD;
 		DataImport<number, dim> m_imDensitySCV;
-
+        DataImport<number, dim> m_imDensitySCV_OLD;
+        
+    
 	///	Stabilization for velocity in continuity equation
 		SmartPtr<INavierStokesFV1Stabilization<dim> > m_spStab;
 
@@ -606,6 +630,7 @@ class NavierStokesFV1
 		using base_type::m_bFullNewtonFactor;
 		using base_type::m_bStokes;
 		using base_type::m_bLaplace;
+        using base_type::m_gradDivFactor;
 
 		virtual void init();
 

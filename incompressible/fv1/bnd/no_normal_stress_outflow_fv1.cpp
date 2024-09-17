@@ -232,7 +232,7 @@ diffusive_flux_Jac
 	//	4. Add flux to local Jacobian
 		for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
 			for(size_t d2 = 0; d2 < (size_t)dim; ++d2)
-				J(d1, bf.node_id(), d2, sh) += tang_diffFlux (d1, d2);
+				J(d1, bf.node_id(), d2, sh) += diffFlux (d1, d2);
 	}
 }
 
@@ -290,15 +290,11 @@ convective_flux_Jac
 	const size_t ip, // index of the integration point (for the density)
 	const BF& bf, // boundary face to assemble
 	LocalMatrix& J, // local Jacobian to update
-	const LocalVector& u // local solution
+	const LocalVector& u, // local solution
+    const MathVector<dim>& StdVel // velocity at ip
 )
 {
 // The convection velocity according to the current approximation:
-
-	MathVector<dim> StdVel(0.0);
-	for(size_t sh = 0; sh < bf.num_sh(); ++sh)
-		for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
-			StdVel[d1] += u(d1, sh) * bf.shape(sh);
 	number old_momentum_flux = VecDot (StdVel, bf.normal ()) * m_imDensity [ip];
 	
 // We assume that there should be no inflow through the outflow boundary:
@@ -338,6 +334,43 @@ convective_flux_defect
 	for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
 		d(d1, bf.node_id()) += old_momentum_flux * StdVel[d1];
 }
+/// Assembling of the convective flux (due to the quadratic inertial term) in the Jacobian of the momentum eq.
+template<typename TDomain>
+template<typename BF>
+void NavierStokesNoNormalStressOutflowFV1<TDomain>::
+pressure_flux_Jac
+(
+    const size_t ip, // index of the integration point (for the density)
+    const BF& bf, // boundary face to assemble
+    LocalMatrix& J, // local Jacobian to update
+    const LocalVector& u // local solution
+)
+{
+
+    for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+        for(size_t sh = 0; sh < bf.num_sh(); ++sh)
+            J(d1, bf.node_id(), _P_, sh) += bf.shape(sh)*bf.normal ()[d1];
+
+}
+/// Assembling of the convective flux (due to the quadratic inertial term) in the defect of the momentum eq.
+template<typename TDomain>
+template<typename BF>
+void NavierStokesNoNormalStressOutflowFV1<TDomain>::
+pressure_flux_defect
+(
+    const size_t ip, // index of the integration point (for the density)
+    const BF& bf, // boundary face to assemble
+    LocalVector& d, // local defect to update
+    const LocalVector& u, // local solution
+    const number& pressure, // pressure at ip
+    const MathVector<dim>& StdVel // velocity at ip
+)
+{
+    number static_pressure = pressure; //-0.5 * m_imDensity[ip] * VecProd(StdVel,StdVel);
+// Add the flux to the defect:
+    for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+        d(d1, bf.node_id()) += static_pressure * bf.normal()[d1];
+}
 
 template<typename TDomain>
 template<typename TElem, typename TFVGeom>
@@ -368,16 +401,24 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 		typename std::vector<BF>::const_iterator bf;
 		for(bf = vBF.begin(); bf != vBF.end(); ++bf, ++ip)
 		{
+            
+        // A. Compute Velocity at ip
+            MathVector<dim> stdVel(0.0);
+            for(size_t sh = 0; sh < bf->num_sh(); ++sh)
+                for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
+                    stdVel[d1] += u(d1, sh) * bf->shape(sh);
+
+            
 		//	A. The momentum equation:
 			diffusive_flux_Jac<BF> (ip, *bf, J, u);
 			if (!m_spMaster->stokes ())
-				convective_flux_Jac<BF> (ip, *bf, J, u);
+				convective_flux_Jac<BF> (ip, *bf, J, u, stdVel);
+            //pressure_flux_Jac<BF> (ip, *bf, J, u);
 			
 		//	B. The continuity equation
 			for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
 				for (size_t d2 = 0; d2 < (size_t)dim; ++d2)
-					J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]
-						* m_imDensity [ip];
+                    J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]; //* m_imDensity [ip];
 		}
 	}
 }
@@ -413,22 +454,191 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		{
 		// A. Compute Velocity at ip
 			MathVector<dim> stdVel(0.0);
-			for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
-				for(size_t sh = 0; sh < bf->num_sh(); ++sh)
-					stdVel[d1] += u(d1, sh) * bf->shape(sh);
+            number pressure = 0;
+            for(size_t sh = 0; sh < bf->num_sh(); ++sh)
+            {
+                for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
+                    stdVel[d1] += u(d1, sh) * bf->shape(sh);
+                pressure += u(_P_, sh) * bf->shape(sh);
+            }
+                    
 
 		// B. Momentum equation:
 			diffusive_flux_defect<BF> (ip, *bf, d, u);
 			if (!m_spMaster->stokes ())
 				convective_flux_defect<BF> (ip, *bf, d, u, stdVel);
+            //pressure_flux_defect<BF> (ip, *bf, d, u, pressure , stdVel);
 		
 		// c. Continuity equation:
-			d(_P_, bf->node_id()) += VecDot (stdVel, bf->normal()) * m_imDensity[ip];
+            d(_P_, bf->node_id()) += VecDot (stdVel, bf->normal());// * m_imDensity[ip];
 		}
 	}
 }
 
+/// Assembling of the diffusive flux (due to the viscosity) in the defect of the momentum eq.
+template<typename TDomain>
+template<typename BF>
+void NavierStokesNoNormalStressOutflowFV1<TDomain>::
+diffusive_flux_lin_defect
+ (
+     const size_t ip, // index of the integration point (for the density)
+     const BF& bf, // boundary face to assemble
+  std::vector<std::vector<number> > vvvLinDef[], // local defect to update
+     const LocalVector& u // local solution
+ )
+{
+    MathMatrix<dim, dim> gradVel;
+    MathVector<dim> diffFlux;
 
+//     1. Get the gradient of the velocity at ip
+    for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
+        for(size_t d2 = 0; d2 < (size_t)dim; ++d2)
+        {
+        //    sum up contributions of each shape
+            gradVel(d1, d2) = 0.0;
+            for(size_t sh = 0; sh < bf.num_sh(); ++sh)
+                gradVel(d1, d2) += bf.global_grad(sh)[d2] * u(d1, sh);
+        }
+
+//    2. Compute the total flux
+
+//    - add (\nabla u) \cdot \vec{n}
+    MatVecMult(diffFlux, gradVel, bf.normal());
+
+//    - add (\nabla u)^T \cdot \vec{n}
+    if(!m_spMaster->laplace())
+        TransposedMatVecMultAdd(diffFlux, gradVel, bf.normal());
+
+//    3. Subtract the normal part:
+    VecScaleAppend (diffFlux, - VecDot (diffFlux, bf.normal()), bf.normal());
+
+//    A4. Scale by viscosity
+    //diffFlux *= - m_imKinViscosity[ip];
+
+//    5. Add flux to local defect
+    for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
+        vvvLinDef[ip][d1][bf.node_id()]+= diffFlux[d1];
+}
+/// Assembling of the convective flux (due to the quadratic inertial term) in the defect of the momentum eq.
+template<typename TDomain>
+template<typename BF>
+void NavierStokesNoNormalStressOutflowFV1<TDomain>::
+convective_flux_lin_defect
+(
+    const size_t ip, // index of the integration point (for the density)
+    const BF& bf, // boundary face to assemble
+ std::vector<std::vector<number> > vvvLinDef[], // local defect to update
+    const LocalVector& u // local solution
+)
+{
+    MathVector<dim> StdVel;
+    number old_momentum_flux;
+    VecSet(StdVel, 0);
+
+// The convection velocity according to the current approximation:
+    for(size_t sh = 0; sh < bf.num_sh(); ++sh)
+        for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+            StdVel[d1] += u(d1, sh) * bf.shape(sh);
+    old_momentum_flux = VecDot (StdVel, bf.normal ()) ;
+
+// We assume that there should be no inflow through the outflow boundary:
+    if (old_momentum_flux < 0)
+        old_momentum_flux = 0;
+
+// Add the flux to the defect:
+    for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+        vvvLinDef[ip][d1][bf.node_id()]+= old_momentum_flux * StdVel[d1];
+}
+//    computes the linearized defect w.r.t to the Density
+template<typename TDomain>
+template<typename TElem, typename TFVGeom>
+void NavierStokesNoNormalStressOutflowFV1<TDomain>::
+lin_def_density(const LocalVector& u, std::vector<std::vector<number> > vvvLinDef[], const size_t nip)
+{
+    
+    UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
+
+//     get finite volume geometry
+    static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+    typedef typename TFVGeom::BF BF;
+    
+    //    reset the values for the linearized defect
+    for(size_t ip = 0; ip < nip; ++ip)
+        for(size_t c = 0; c < vvvLinDef[ip].size(); ++c)
+            for(size_t sh = 0; sh < vvvLinDef[ip][c].size(); ++sh)
+                vvvLinDef[ip][c][sh] = 0.0;
+    //UG_LOG("Anfang add_def_A_elem");
+
+//     loop registered boundary segments
+    typename std::vector<int>::const_iterator subsetIter;
+    size_t ip = 0;
+    for(subsetIter = m_vBndSubSetIndex.begin();
+        subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
+    {
+    //    get subset index corresponding to boundary
+        const int bndSubset = *subsetIter;
+
+    //    get the list of the ip's:
+        if(geo.num_bf(bndSubset) == 0) continue;
+        const std::vector<BF>& vBF = geo.bf(bndSubset);
+
+    //     loop the boundary faces
+        typename std::vector<BF>::const_iterator bf;
+        for(bf = vBF.begin(); bf != vBF.end(); ++bf)
+        {
+            if (!m_spMaster->stokes ())
+                convective_flux_lin_defect<BF> (ip, *bf, vvvLinDef, u);
+                
+        // Next IP:
+            ip++;
+        }
+    }
+}
+//    computes the linearized defect w.r.t to the Density
+template<typename TDomain>
+template<typename TElem, typename TFVGeom>
+void NavierStokesNoNormalStressOutflowFV1<TDomain>::
+lin_def_viscosity(const LocalVector& u, std::vector<std::vector<number> > vvvLinDef[], const size_t nip)
+{
+    
+    UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
+
+//     get finite volume geometry
+    static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+    typedef typename TFVGeom::BF BF;
+    
+    //    reset the values for the linearized defect
+    for(size_t ip = 0; ip < nip; ++ip)
+        for(size_t c = 0; c < vvvLinDef[ip].size(); ++c)
+            for(size_t sh = 0; sh < vvvLinDef[ip][c].size(); ++sh)
+                vvvLinDef[ip][c][sh] = 0.0;
+    //UG_LOG("Anfang add_def_A_elem");
+
+//     loop registered boundary segments
+    typename std::vector<int>::const_iterator subsetIter;
+    size_t ip = 0;
+    for(subsetIter = m_vBndSubSetIndex.begin();
+        subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
+    {
+    //    get subset index corresponding to boundary
+        const int bndSubset = *subsetIter;
+
+    //    get the list of the ip's:
+        if(geo.num_bf(bndSubset) == 0) continue;
+        const std::vector<BF>& vBF = geo.bf(bndSubset);
+
+    //     loop the boundary faces
+        typename std::vector<BF>::const_iterator bf;
+        for(bf = vBF.begin(); bf != vBF.end(); ++bf)
+        {
+            if (!m_spMaster->stokes ())
+                diffusive_flux_lin_defect<BF> (ip, *bf, vvvLinDef, u);
+                
+        // Next IP:
+            ip++;
+        }
+    }
+}
 ////////////////////////////////////////////////////////////////////////////////
 //	register assemble functions
 ////////////////////////////////////////////////////////////////////////////////

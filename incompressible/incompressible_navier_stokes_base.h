@@ -235,6 +235,8 @@ class IncompressibleNavierStokesBase
 
 	///	returns the export of the velocity
 		SmartPtr<CplUserData<MathVector<dim>, dim> > velocity() {return m_exVelocity;}
+    ///    returns the export of the velocity
+        SmartPtr<CplUserData<MathVector<dim>, dim> > velocity_ip() {return m_exVelocity_div;}
 
 	///	returns the export of the velocity gradient
 		SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > velocity_grad() {return m_exVelocityGrad;}
@@ -263,6 +265,8 @@ class IncompressibleNavierStokesBase
 
 	///	Export for the velocity
 		SmartPtr<DataExport<MathVector<dim>,dim> > m_exVelocity;
+    ///    Export for the velocity
+        SmartPtr<DataExport<MathVector<dim>,dim> > m_exVelocity_div;
 
 	///	Export for the velocity gradient
         SmartPtr<DataExport<MathMatrix<dim, dim>,dim> > m_exVelocityGrad;
