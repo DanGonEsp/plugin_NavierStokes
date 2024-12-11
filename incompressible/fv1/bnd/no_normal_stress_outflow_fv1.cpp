@@ -250,6 +250,7 @@ diffusive_flux_defect
 {
 	MathMatrix<dim, dim> gradVel;
 	MathVector<dim> diffFlux;
+    MathVector<dim> diffFlux_normal;
 
 // 	1. Get the gradient of the velocity at ip
 	for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
@@ -271,11 +272,13 @@ diffusive_flux_defect
 		TransposedMatVecMultAdd(diffFlux, gradVel, bf.normal());
 
 //	3. Subtract the normal part:
+    VecScale(diffFlux_normal,bf.normal(),VecDot (diffFlux, bf.normal()));
 	VecScaleAppend (diffFlux, - VecDot (diffFlux, bf.normal()), bf.normal());
 
 //	A4. Scale by viscosity
 	diffFlux *= - m_imKinViscosity[ip] * m_imDensity [ip];
-
+    diffFlux_normal *= -m_imKinViscosity[ip] * m_imDensity [ip];
+    
 //	5. Add flux to local defect
 	for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
 		d(d1, bf.node_id()) += diffFlux[d1];
@@ -346,10 +349,19 @@ pressure_flux_Jac
     const LocalVector& u // local solution
 )
 {
+    MathVector<dim> n;
+    number mag=sqrt(VecDot(bf.normal(),bf.normal()));
+    VecScale(n,bf.normal(),mag);
+    number flux;
+    
 
     for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
         for(size_t sh = 0; sh < bf.num_sh(); ++sh)
-            J(d1, bf.node_id(), _P_, sh) += bf.shape(sh)*bf.normal ()[d1];
+        {
+            flux=VecDot(bf.global_grad(sh),n);
+            J(d1, bf.node_id(), _P_, sh) -= flux* n[d1] * bf.volume ();
+            //J(d1, bf.node_id(), _P_, sh) -=  bf.shape(sh) * bf.normal ()[d1];
+        }
 
 }
 /// Assembling of the convective flux (due to the quadratic inertial term) in the defect of the momentum eq.
@@ -363,13 +375,20 @@ pressure_flux_defect
     LocalVector& d, // local defect to update
     const LocalVector& u, // local solution
     const number& pressure, // pressure at ip
-    const MathVector<dim>& StdVel // velocity at ip
+    const MathVector<dim>& PressureGrad // velocity at ip
 )
 {
-    number static_pressure = pressure; //-0.5 * m_imDensity[ip] * VecProd(StdVel,StdVel);
+    //number static_pressure = pressure;//-0.5 * m_imDensity[ip] * VecProd(StdVel,StdVel);
 // Add the flux to the defect:
+    MathVector<dim> n;
+    MathVector<dim> NormalGrad(0);
+    number mag=sqrt(VecDot(bf.normal(),bf.normal()));
+    VecScale(n,bf.normal(),mag);
+    
+    VecScaleAppend (NormalGrad, VecDot (PressureGrad, n), n);
     for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
-        d(d1, bf.node_id()) += static_pressure * bf.normal()[d1];
+        d(d1, bf.node_id()) -= NormalGrad[d1] * bf.volume();
+        //d(d1, bf.node_id()) -= pressure* bf.normal ()[d1];
 }
 
 template<typename TDomain>
@@ -454,11 +473,15 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		{
 		// A. Compute Velocity at ip
 			MathVector<dim> stdVel(0.0);
+            MathVector<dim> PressureGrad(0.0);
             number pressure = 0;
             for(size_t sh = 0; sh < bf->num_sh(); ++sh)
             {
                 for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
+                {
                     stdVel[d1] += u(d1, sh) * bf->shape(sh);
+                    PressureGrad[d1] += u(_P_, sh) * bf->global_grad(sh)[d1];
+                }
                 pressure += u(_P_, sh) * bf->shape(sh);
             }
                     
@@ -467,7 +490,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			diffusive_flux_defect<BF> (ip, *bf, d, u);
 			if (!m_spMaster->stokes ())
 				convective_flux_defect<BF> (ip, *bf, d, u, stdVel);
-            //pressure_flux_defect<BF> (ip, *bf, d, u, pressure , stdVel);
+            //pressure_flux_defect<BF> (ip, *bf, d, u, pressure , PressureGrad);
 		
 		// c. Continuity equation:
             d(_P_, bf->node_id()) += VecDot (stdVel, bf->normal());// * m_imDensity[ip];

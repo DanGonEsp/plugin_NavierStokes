@@ -198,7 +198,7 @@ class NavierStokesNoNormalStressOutflowFV1
             LocalVector& d,
             const LocalVector& u,
             const number& pressure,
-            const MathVector<dim>& StdVel
+            const MathVector<dim>& PressureGrad
         );
     /// adds the convective part of the local defect of the momentum equation
         template <typename BF>

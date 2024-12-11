@@ -68,6 +68,7 @@ set(SOURCES	../navier_stokes_base.cpp
 			#fvcr/cr_reorder.cpp
 
 			fv1/stabilization.cpp
+            fv1/pressure_jump.cpp
 			
 			fv1/register_fv1.cpp
 			fv/register_fv.cpp

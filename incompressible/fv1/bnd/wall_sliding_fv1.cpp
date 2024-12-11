@@ -492,6 +492,11 @@ NavierStokesWSBCFV1(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaster
 
 //	yet no boundary subsets
 	m_vBndSubSetIndex.clear ();
+    
+    m_imKinViscosity.set_comp_lin_defect(false);
+    m_imDensity.set_comp_lin_defect(false);
+    m_imSlidingFactor.set_comp_lin_defect(false);
+    m_imSlidingLimit.set_comp_lin_defect(false);
 
 //	register imports
 	this->register_import(m_imKinViscosity);

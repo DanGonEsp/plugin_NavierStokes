@@ -45,6 +45,7 @@
 #include "../incompressible_navier_stokes_base.h"
 #include "../../upwind_interface.h"
 #include "stabilization.h"
+#include "pressure_jump.h"
 
 namespace ug{
 namespace NavierStokes{
@@ -172,6 +173,7 @@ class NavierStokesFV1
 
 	///	sets the density
 		void set_density(SmartPtr<CplUserData<number, dim> > user);
+        void set_density_ref(number user){ m_density_ref = user; }
 
 	///	returns density
 		SmartPtr<CplUserData<number, dim> > density() {return m_imDensitySCVF.user_data ();}
@@ -179,7 +181,11 @@ class NavierStokesFV1
 	///	sets the source function
 		void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
+        void set_pressure_jump(SmartPtr<CplUserData<number, dim> > user);
+        void set_vol_fraction(SmartPtr<CplUserData<number, dim> > user);
+        void set_jump_shape(SmartPtr<CplUserData<number, dim> > user);
         void set_source_surface(SmartPtr<CplUserData<number, dim> > user);
+        void set_interface_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
 	/// returns scvf source
 		DataImport<MathVector<dim>, dim> sourceSCVF(){ return m_imSourceSCVF;}
 
@@ -525,6 +531,10 @@ class NavierStokesFV1
 		template <typename TFVGeom>
 		inline number peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip,
 		                           const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
+    
+        template <typename TFVGeom>
+        inline void PropertiesJump(const TFVGeom& geo,
+                                   number pressure_jump, const DataImport<number, dim>& VolFraction,const DataImport<number, dim>& JumpShape,const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscositySCV,  size_t numSh, bool& interface, number& mu_l, number& mu_g, number& rho_l, number& rho_g);
 
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>
@@ -591,8 +601,6 @@ class NavierStokesFV1
                               std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
     
     
-    public:
-        void set_density_old(SmartPtr<CplUserData<number, dim> > data);
 		
 	protected:
 	///	Data import for source
@@ -608,13 +616,19 @@ class NavierStokesFV1
 
 	///	Data import for density
 		DataImport<number, dim> m_imDensitySCVF;
-        DataImport<number, dim> m_imDensitySCVF_OLD;
 		DataImport<number, dim> m_imDensitySCV;
-        DataImport<number, dim> m_imDensitySCV_OLD;
-        
+    
+    ///    Data import for multiphase flow
+        DataImport<number, dim> m_imJumpShape;
+        DataImport<MathVector<dim>, dim> m_imSurfaceNormal;
+        DataImport<number, dim> m_imVolumeFraction;
+        number m_interface_vol_fraction = 0.5;
     
 	///	Stabilization for velocity in continuity equation
 		SmartPtr<INavierStokesFV1Stabilization<dim> > m_spStab;
+    
+    ///    Pressure jump in Pressure field
+        SmartPtr<INavierStokesPressureJump<dim> > m_spPressureJump;
 
 	///	Stabilization for velocity in convective term of momentum equation
 	///	Here, the stabilization is used as an upwinding
@@ -631,6 +645,7 @@ class NavierStokesFV1
 		using base_type::m_bStokes;
 		using base_type::m_bLaplace;
         using base_type::m_gradDivFactor;
+        number m_density_ref = 0;
 
 		virtual void init();
 

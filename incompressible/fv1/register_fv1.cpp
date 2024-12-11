@@ -40,6 +40,8 @@
 #include "bnd/symmetric_boundary_fv1.h"
 #include "bnd/wall_sliding_fv1.h"
 #include "stabilization.h"
+#include "pressure_jump.h"
+#include "nodal_pressure_grad.h"
 
 #include "turbulent_viscosity_fv1.h"
 
@@ -128,6 +130,25 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "FV1DynamicTurbViscData", tag);
 	}
+    // NodalPressureGradient
+    {
+        string name = string("NodalPressureGradient").append(suffix);
+        typedef NodalPressureGradient<TFct> T;
+        typedef CplUserData<MathVector<dim>, dim> TBase;
+        typedef INewtonUpdate TBase2;
+        reg.add_class_<T, TBase,TBase2>(name, grp)
+            .template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
+                .add_method("set_source", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_source), "", "Source")
+                .add_method("set_source", static_cast<void (T::*)(number)>(&T::set_source), "", "F_x")
+                .add_method("set_source", static_cast<void (T::*)(number,number)>(&T::set_source), "", "F_x, F_y")
+                .add_method("set_source", static_cast<void (T::*)(number,number,number)>(&T::set_source), "", "F_x, F_y, F_z")
+            #ifdef UG_FOR_LUA
+                .add_method("set_source", static_cast<void (T::*)(const char*)>(&T::set_source), "", "Source Vector")
+            #endif
+                .add_method("update", &T::update)
+        .set_construct_as_smart_pointer(true);
+        reg.add_class_to_group(name, "NodalPressureGradient", tag);
+    }
 
 }
 
@@ -179,9 +200,12 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesUpwind<dim> >)>(&T::set_upwind))
 			.add_method("set_upwind",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind))
             .add_method("set_mass_change", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_mass_change), "", "Mass")
-            .add_method("set_density_old", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_density_old), "", "Density_OLD")
             .add_method("set_source_surface", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_source_surface), "", "SourceSurface")
 			.add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
+            .add_method("set_density_ref", static_cast<void (T::*)(number)>(&T::set_density_ref), "", "Mass")
+            .add_method("set_jump_shape", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> > )>(&T::set_jump_shape), "", "JumpShape")
+            .add_method("set_interface_normal", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_interface_normal), "", "SurfaceNormal")
+            .add_method("set_vol_fraction", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> > )>(&T::set_vol_fraction), "", "VolFraction")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesFV1", tag);
 	}
@@ -295,6 +319,24 @@ static void Dimension(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesFV1WithoutStabilization", tag);
 	}
+//    INavierStokesPressureJump
+    {
+        typedef INavierStokesPressureJump<dim> T;
+        string name = string("INavierStokesPressureJump").append(suffix);
+        reg.add_class_<T>(name, grp);
+        reg.add_class_to_group(name, "INavierStokesPressureJump", tag);
+    }
+
+//    NavierStokesFIELDSStabilization
+    {
+        typedef NavierStokesViscousPressureJump<dim> T;
+        typedef INavierStokesPressureJump<dim> TBase;
+        string name = string("NavierStokesViscousPressureJump").append(suffix);
+        reg.add_class_<T, TBase>(name, grp)
+            .add_constructor()
+            .set_construct_as_smart_pointer(true);
+        reg.add_class_to_group(name, "NavierStokesViscousPressureJump", tag);
+    }
 }
 
 }; // end Functionality
