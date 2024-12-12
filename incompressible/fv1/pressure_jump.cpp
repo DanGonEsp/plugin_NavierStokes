@@ -208,7 +208,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             
             {
                 
-                number sumVel = 2 * (mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] ) * SumInv2[ip] ;
+                number sumVel =  (mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] ) * SumInv2[ip] ;
                 
                 shape_vel(ip, d1, k) = sumVel;
 
@@ -249,7 +249,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     for(size_t ip = 0; ip < N; ++ip)
     {
         pressure_jump(ip) = P_jump[ip];
-        if (f)
+        if (false)
         {
             //const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             if(ip==0) printf("Pressure jump at model\n" );
