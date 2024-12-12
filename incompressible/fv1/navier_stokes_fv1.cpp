@@ -751,7 +751,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             
         }
 	}
-    if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given())
+    if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given() && interface)
     {
         //     loop Sub Control Volumes (SCV)
         for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -789,13 +789,13 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                             for(size_t sh3 = 0; sh3 < scvf.num_sh(); ++sh3)
                             {
                                 if (m_imJumpShape[from]<0.0)
-                                    J(d1, from, d2, sh2) += deriv_pressure_g * scvf.normal()[d1] * press_jump.shape_vel(sh2,d2,sh3);
+                                    J(d1, from, d2, sh2) += deriv_pressure_g * scvf.normal()[d1] * press_jump.pressure_shape_vel(sh2,d2,sh3);
                                 else
-                                    J(d1, from, d2, sh2) += deriv_pressure_l * scvf.normal()[d1] * press_jump.shape_vel(sh2,d2,sh3);
+                                    J(d1, from, d2, sh2) += deriv_pressure_l * scvf.normal()[d1] * press_jump.pressure_shape_vel(sh2,d2,sh3);
                                 if (m_imJumpShape[to]<0.0)
-                                    J(d1, to, d2, sh2) -= deriv_pressure_g * scvf.normal()[d1] * press_jump.shape_vel(sh2,d2,sh3);
+                                    J(d1, to, d2, sh2) -= deriv_pressure_g * scvf.normal()[d1] * press_jump.pressure_shape_vel(sh2,d2,sh3);
                                 else
-                                    J(d1, to, d2, sh2) -= deriv_pressure_l * scvf.normal()[d1] * press_jump.shape_vel(sh2,d2,sh3);
+                                    J(d1, to, d2, sh2) -= deriv_pressure_l * scvf.normal()[d1] * press_jump.pressure_shape_vel(sh2,d2,sh3);
                             }
                         }
                     }
@@ -816,8 +816,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 {
                     for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
                     {
-                        J(_P_, from, d1, sh2) += contFlux_p * press_jump.shape_vel(sh,d1,sh2);
-                        J(_P_, to  , d1, sh2) -= contFlux_p * press_jump.shape_vel(sh,d1,sh2);
+                        J(_P_, from, d1, sh2) += contFlux_p * press_jump.pressure_shape_vel(sh,d1,sh2);
+                        J(_P_, to  , d1, sh2) -= contFlux_p * press_jump.pressure_shape_vel(sh,d1,sh2);
                     }
 
                 }
@@ -1107,7 +1107,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         
 	}
     
-    if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given())
+    if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given() && interface)
     {
         //     loop Sub Control Volumes (SCV)
         for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -1144,7 +1144,18 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                     d(d1, to) -= pressure_l * scvf.normal()[d1];
 
             }
-            
+            /*
+            //Continuity equation
+            if (m_imJumpShape[from] * m_imJumpShape[to]<0.0)
+            {
+                
+                //    compute flux at ip
+                const number contFlux = VecProd(Vel_ip[ip], scvf.normal());// * m_imDensitySCVF[ip];
+                
+                //    Add contributions to local defect
+                d(_P_, scvf.from()) += contFlux;
+                d(_P_, scvf.to()  ) -= contFlux;
+            }*/
         }
         
     }

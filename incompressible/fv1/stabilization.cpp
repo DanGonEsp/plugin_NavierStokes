@@ -1114,7 +1114,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     number alpha = 1.0;
                     if(jump_shape[scvf.from()] * jump_shape[k]>0.0 && jump_shape[scvf.from()] >0.0)
                     {
-                        alpha = 2;
+                        alpha = 1.0;
                     }
                     
                     //    Pressure part

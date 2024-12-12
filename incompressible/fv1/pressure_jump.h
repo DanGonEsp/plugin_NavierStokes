@@ -106,32 +106,38 @@ class INavierStokesPressureJump
     ///    number of shapes (corners)
         size_t num_sh () const {return m_numSh;}
     
-    /// stabilized velocity
+    ///    returns if stab velocity comp depends on other vel components
+        bool press_jump_comp_connected() const {return m_bPressJumpCompConnected;}
+    
+    /// pressure jump
         const number& pressure_jump(size_t sh) const
         {
             UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
             return m_vPressureJump[sh];
         }
 
-    ///    returns if stab velocity comp depends on other vel components
-        bool press_jump_comp_connected() const {return m_bPressJumpCompConnected;}
-
     /// computed stab shape for velocity. This is: The pressure_jump derivative
     /// w.r.t velocity unknowns in the corner for each component
-        number shape_vel(size_t sh1, size_t d, size_t sh2) const
+        number pressure_shape_vel(size_t sh1, size_t d, size_t sh2) const
         {
             UG_NSSTAB_ASSERT(sh1 < m_numSh, "Invalid index.");
             UG_NSSTAB_ASSERT(d < dim, "Invalid index.");
             UG_NSSTAB_ASSERT(sh2 < m_numSh, "Invalid index.");
-            return m_vvvvShapeVel[sh1][d][sh2];
+            return m_vvvvPressureShapeVel[sh1][d][sh2];
         }
 
     ///    computed stab shape for pressure.
-        number shape_p(size_t sh1, size_t sh2) const
+        number pressure_shape_p(size_t sh1, size_t sh2) const
         {
             UG_NSSTAB_ASSERT(sh1 < m_numSh, "Invalid index.");
             UG_NSSTAB_ASSERT(sh2 < m_numSh, "Invalid index.");
-            return m_vvvShapePressure[sh1][sh2];
+            return m_vvvPressureShapeP[sh1][sh2];
+        }
+    
+    /// Tangent vector
+        MathVector<dim> tangent_vector() const
+        {
+            return m_vTangentVector;
         }
 
 
@@ -158,32 +164,39 @@ class INavierStokesPressureJump
 
     protected:
     
-    /// stabilized velocity
+    ///    sets the pressure comp connected flag
+        void set_pressure_jump_comp_connected(bool bPressJumpCompConnected) {m_bPressJumpCompConnected = bPressJumpCompConnected;}
+    
+    /// Pressure jump
         number& pressure_jump(size_t sh)
         {
             UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
             return m_vPressureJump[sh];
         }
 
-    ///    sets the pressure comp connected flag
-        void set_pressure_jump_comp_connected(bool bPressJumpCompConnected) {m_bPressJumpCompConnected = bPressJumpCompConnected;}
-
     /// computed stab shape for velocity. This is: The pressure_jump derivative
     /// w.r.t velocity unknowns in the corner for each component
-        number& shape_vel(size_t sh1, size_t d, size_t sh2)
+        number& pressure_shape_vel(size_t sh1, size_t d, size_t sh2)
         {
             UG_NSSTAB_ASSERT(sh1 < m_numSh, "Invalid index.");
             UG_NSSTAB_ASSERT(d < dim, "Invalid index.");
             UG_NSSTAB_ASSERT(sh2 < m_numSh, "Invalid index.");
-            return m_vvvvShapeVel[sh1][d][sh2];
+            return m_vvvvPressureShapeVel[sh1][d][sh2];
         }
 
     ///    computed stab shape for pressure.
-        number& shape_p(size_t sh1, size_t sh2)
+        number& pressure_shape_p(size_t sh1, size_t sh2)
         {
             UG_NSSTAB_ASSERT(sh1 < m_numSh, "Invalid index.");
             UG_NSSTAB_ASSERT(sh2 < m_numSh, "Invalid index.");
-            return m_vvvShapePressure[sh1][sh2];
+            return m_vvvPressureShapeP[sh1][sh2];
+        }
+    
+    /// tangent vector
+        MathVector<dim>& tangent_vector(size_t sh)
+        {
+            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+            return m_vPressureJump[sh];
         }
 
     /////////////////////////////////////////
@@ -200,15 +213,17 @@ class INavierStokesPressureJump
 
     ///    values of pressure Jump at ip
         number m_vPressureJump[maxNumSH];
+    
+        MathVector<dim> m_vTangentVector;
 
     ///    flag if pressure jump components are interconnected
         bool m_bPressJumpCompConnected;
 
     ///    pressure jump shapes w.r.t vel
-        number m_vvvvShapeVel[maxNumSH][dim][maxNumSH];
+        number m_vvvvPressureShapeVel[maxNumSH][dim][maxNumSH];
 
     ///    pressure shapes w.r.t pressure
-        number m_vvvShapePressure[maxNumSH][maxNumSH];
+        number m_vvvPressureShapeP[maxNumSH][maxNumSH];
     
 
 
@@ -274,8 +289,8 @@ class NavierStokesViscousPressureJump
         using base_type::register_update_func;
         using base_type::set_pressure_jump_comp_connected;
 
-        using base_type::shape_vel;
-        using base_type::shape_p;
+        using base_type::pressure_shape_vel;
+        using base_type::pressure_shape_p;
         using base_type::pressure_jump;
         
 

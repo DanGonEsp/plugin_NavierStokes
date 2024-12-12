@@ -210,7 +210,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 number sumVel =  (mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] ) * SumInv2[ip] ;
                 
-                shape_vel(ip, d1, k) = sumVel;
+                pressure_shape_vel(ip, d1, k) = sumVel;
 
                 
                 rhs[ip] += sumVel * vCornerValue(d1, k);
@@ -222,7 +222,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             
             number sumP = VecProd(xRho_interface[ip],scv.global_grad(k)) * SumInv2[ip];
             
-            shape_p(ip, k) = sumP ;
+            pressure_shape_p(ip, k) = sumP ;
 
             
             rhs[ip] += sumP * vCornerValue(_P_, k);
