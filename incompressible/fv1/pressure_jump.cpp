@@ -233,13 +233,16 @@ update(const FV1Geometry<TElem, dim>* geo,
         }
     }
     bool f= true;
+    number yy = 0.0;
     for(size_t ip = 0; ip < N; ++ip)
     {
     
         if (!((geo->scv_global_ips()[ip][0] > 9.749) && (geo->scv_global_ips()[ip][0] < 10.001)))
         {
             f = f && false;
+            
         }
+        yy += geo->scv_global_ips()[ip][1];
     }
     
     DenseVector< FixedArray1<number, N> > P_jump;
@@ -253,6 +256,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         {
             //const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             if(ip==0) printf("Pressure jump at model\n" );
+            printf("yy = %f\n", yy/N);
             printf("Pressure[%zu] = %f\n",ip, P_jump[ip]);
             printf("rhs[%zu] = %f\n",ip, rhs[ip]);
             printf("SumInv2[%zu] = %f\n",ip, SumInv2[ip]);

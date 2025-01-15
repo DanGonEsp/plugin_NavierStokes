@@ -196,7 +196,7 @@ class INavierStokesPressureJump
         MathVector<dim>& tangent_vector(size_t sh)
         {
             UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vPressureJump[sh];
+            return m_vTangentVector;
         }
 
     /////////////////////////////////////////
