@@ -534,7 +534,7 @@ class NavierStokesFV1
     
         template <typename TFVGeom>
         inline void PropertiesJump(const TFVGeom& geo,
-                                   number pressure_jump, const DataImport<number, dim>& VolFraction,const DataImport<number, dim>& JumpShape,const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscositySCV,  size_t numSh, bool& interface, bool& phase, number& mu_l, number& mu_g, number& rho_l, number& rho_g);
+                                   number pressure_jump, const DataImport<number, dim>& VolFraction,const DataImport<number, dim>& JumpShape,const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscositySCV,  size_t numSh, bool& interface, bool* Phase1, number& theta, number& mu_l, number& mu_g, number& rho_l, number& rho_g);
 
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>

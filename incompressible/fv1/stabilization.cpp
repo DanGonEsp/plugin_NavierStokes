@@ -136,12 +136,15 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& densitySCV,
        const number pressure_jump[],
+       const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
        const DataImport<MathVector<dim>, dim>* pSource,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
-       const bool multiphase)
+       const bool multiphase,
+       const bool phase_2[],
+       const number theta)
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for FIELDS stabilization.");
@@ -460,12 +463,15 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& densitySCV,
        const number pressure_jump[],
+       const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
        const DataImport<MathVector<dim>, dim>* pSource,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
-       const bool multiphase)
+       const bool multiphase,
+       const bool phase_2[],
+       const number theta)
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for FLOW stabilization.");
@@ -837,14 +843,648 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& densitySCV,
        const number pressure_jump[],
+       const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
        const DataImport<MathVector<dim>, dim>* pSource,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
-       const bool multiphase)
+       const bool multiphase,
+       const bool phase_2[],
+       const number theta)
 {
+    if( non_zero_shape_ip())
+    {
+        UG_THROW("Not implemented for ip velocities depending on other ip.");
+    }
     
+    
+    
+    //    abbreviation for pressure
+    static const size_t _P_ = dim;
+    
+    //    Some constants
+    static const size_t numIp = FV1Geometry<TElem, dim>::numSCVF;
+    static const size_t numSh = FV1Geometry<TElem, dim>::numSCV;
+    
+    for(size_t ip = 0; ip < numIp; ++ip)
+    {
+        for(size_t k = 0; k < numSh; ++k)
+        {
+            for(int d1 = 0; d1 < dim; d1++)
+            {
+                for(int d2 = 0; d2 < dim; d2++)
+                {
+                    stab_shape_vel(ip, d2, d1, k) = 0.0;
+                    stab_shape_slip_vel(ip, d2, d1, k) = 0.0;
+                    stab_shape_vel_2(ip, d2, d1, k) =  0.0;
+                    stab_shape_slip_vel_2(ip, d2, d1, k) =  0.0;
+                }
+                stab_shape_p(ip, d1, k) = 0.0;
+                stab_shape_p_jump(ip, d1, k) =  0.0;
+                stab_shape_p_2(ip, d1, k) = 0.0;
+                stab_shape_p_jump_2(ip, d1, k) = 0.0;
+                
+            }
+        }
+    }
+    
+    //    compute upwind and downwind (no convective terms for the Stokes eq. => no upwind)
+    if (! bStokes)
+    {
+        this->compute_upwind(geo, vStdVel);
+        //this->compute_downwind(geo, vStdVel);
+    }
+    
+    //    compute diffusion length
+    this->compute_diff_length(*geo);
+    
+    number mu_2 = 0.0, mu_1 = 0.0;
+    number rho_2 = 0.0, rho_1 = 0.0;
+    number visc1 = -10000000, visc2 = -10000000;
+    number rho1 = -10000000, rho2 = -10000000;
+    
+    number alpha1 = 2.0;
+    number alpha2 = 2.0;
+    number alpha3 = 0.1;
+
+    
+    if (multiphase)
+    {
+
+        
+        for(size_t sh = 0; sh < numSh; ++sh)
+        {
+            if (jump_shape[sh]>0)
+            {
+                visc2 = fmax( visc2, densitySCV[sh] * kinViscoSCV[sh]);
+                rho2 = fmax( rho2, densitySCV[sh] );
+            }
+            else
+            {
+                visc1 = fmax( visc1, -densitySCV[sh] * kinViscoSCV[sh]);
+                rho1 = fmax( rho1, -densitySCV[sh] );
+            }
+            
+        }
+        
+        mu_2 = visc2;
+        mu_1 = -visc1;
+        rho_2 = rho2;
+        rho_1 = -rho1;
+        
+        if ((mu_2 < mu_1)||(mu_2<0.0)||(mu_1<0.0))
+            UG_THROW("Viscosity in phase 1 is lower that phase 2");
+        if ((rho_2 < rho_1)||(rho_2<0.0)||(rho_1<0.0))
+            UG_THROW("Density in phase 1 is lower that phase 2");
+    }
+    
+
+    //    cache values
+    number vViscoPerDiffLenSq[numIp];
+    bool interface_change[numIp];
+    
+    number vNormStdVelPerConvLen[numIp];
+    //number vNormStdVelPerDownLen[numIp];
+    
+    for(size_t ip = 0; ip < numIp; ++ip)
+    {
+        if (multiphase)
+        {
+            const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+            if(jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0)
+            {
+                interface_change[ip] = true;
+                vViscoPerDiffLenSq[ip] = (mu_2/rho_2) * diff_length_sq_inv(ip);
+            }
+                
+            else
+            {
+                interface_change[ip] = false;
+                if (jump_shape[scvf.from()]>0 )
+                    vViscoPerDiffLenSq[ip] = (mu_2/rho_2) * diff_length_sq_inv(ip);
+                else
+                    vViscoPerDiffLenSq[ip] = (mu_1/rho_1) * diff_length_sq_inv(ip);
+            }
+
+            
+        }
+        else
+            vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
+        
+        if(!bStokes)
+        {
+            const number norm = VecTwoNorm(vStdVel[ip]);
+            vNormStdVelPerConvLen[ip] = norm / upwind_conv_length(ip);
+            //vNormStdVelPerDownLen[ip] = norm / (downwind_conv_length(ip) + upwind_conv_length(ip));
+            
+        }
+
+
+    }
+    
+    
+    
+    
+    //    Find out if upwinded velocities depend on other ip velocities. In that case
+    //    we have to solve a matrix system. Else the system is diagonal and we can
+    //    compute the inverse directly
+    
+    //    diagonal case (i.e. upwind vel depend only on corner vel or no upwind)
+
+    //    Loop integration points
+    for(size_t ip = 0; ip < numIp; ++ip)
+    {
+        //    get SubControlVolumeFace
+        const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+        
+        if (!multiphase || (multiphase && !interface_change[ip]))
+        {
+
+            
+            //    First, we compute the contributions to the diagonal
+            //    Note: - There is no contribution of the upwind vel to the diagonal
+            //            in this case, only for non-diag problems
+            //          - The diag does not depend on the dimension
+            
+            //    the diagonal entry
+            number diag = vViscoPerDiffLenSq[ip];
+            
+            //    Time part
+            if(pvCornerValueOldTime != NULL)
+                diag += 1./dt;
+            
+            //    Convective Term  (no convective terms in the Stokes eq.)
+            if (! bStokes)
+                diag += vNormStdVelPerConvLen[ip];
+            
+            if( multiphase &&(jump_shape[scvf.from()] * jump_shape[scvf.to()]>0))
+            {
+                if(jump_shape[scvf.to()]>0.0)
+                    diag *= 1.0/theta;
+                else
+                    diag *= 1.0 / (1.0-theta);
+            }
+            
+            //     Loop components of velocity
+            for(int d = 0; d < dim; d++)
+            {
+                //    Now, we can assemble the rhs. This rhs is assembled by all
+                //    terms, that are non-dependent on the ip vel.
+                //    Note, that we can compute the stab_shapes on the fly when setting
+                //    up the system.
+                
+                //    Source
+                number rhs = 0.0;
+                if(pSource != NULL)
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                
+                //    Time
+                if(pvCornerValueOldTime != NULL)
+                {
+                    //    interpolate old time step
+                    number oldIPVel = 0.0;
+                    for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+                        oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+                    
+                    //    add to rhs
+                    rhs += oldIPVel / dt;
+                }
+                
+                //    loop shape functions
+                for(size_t k = 0; k < scvf.num_sh(); ++k)
+                {
+                    //    Diffusion part
+                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+                    
+                    //    Convective term (no convective terms in the Stokes eq.)
+                    if (! bStokes)
+                    {
+                        sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+                        
+                    }
+                    
+                    
+                    //    Add to rhs
+                    rhs += sumVel * vCornerValue(d, k);
+                    
+                    //    set stab shape
+                    stab_shape_vel(ip, d, d, k) = sumVel / diag;
+                    
+                    
+                    //    Pressure part
+                    number sumP = 0.0;
+                    if(multiphase)
+                    {
+                        if (jump_shape[scvf.from()]>0)
+                        {
+                            //sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d]  / rho_2;
+                            //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_2;
+                            sumP += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_2;
+                            
+                        }
+                        else
+                        {
+                            //sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d]  / rho_1;
+                            //sumP = -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_1;
+                            sumP = -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_1;
+                        }
+
+                        
+                    }
+                    else
+                    {
+                        sumP = -1.0 * alpha1 * (scvf.global_grad(k))[d]  / density[ip];
+                    }
+                    
+                    
+                    
+                    //    Add to rhs
+                    rhs += sumP * vCornerValue(_P_, k);
+                    
+                    //    set stab shape
+                     
+                    /*if ( multiphase&&((jump_shape[scvf.from()]>0 && jump_shape[k]<0) || (jump_shape[scvf.from()]<0 && jump_shape[k]>0)))
+                        sumP = 0.0;*/
+                        
+                    stab_shape_p(ip, d, k) = sumP / diag;
+                    
+                    number sumPJump =0.0;
+                    number sumSlipVel = 0.0;
+                    
+                    if(multiphase)
+                    {
+                        
+                        
+
+                        if (((jump_shape[scvf.from()]>0) && jump_shape[k]<0.0) || ((jump_shape[scvf.from()]<0) && jump_shape[k]>0.0))
+                        {
+                            //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
+                            //sumPJump +=  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
+                            sumPJump +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_1;
+                        }
+                            
+                        
+                        //    Add to rhs
+                        rhs += sumPJump *(pressure_jump[k]);
+                        
+                
+                        if ((jump_shape[scvf.from()]>0 && jump_shape[k]<0.0) || (jump_shape[scvf.from()]<0 && jump_shape[k]>0.0))
+                            sumSlipVel = vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
+                        
+                        rhs += sumSlipVel * SlipVel[k][d];
+                        stab_shape_slip_vel(ip, d, d, k) = sumSlipVel/diag;
+                    }
+
+                    
+                    stab_shape_p_jump(ip, d, k) = sumPJump/diag;
+                        
+                    stab_shape_slip_vel(ip, d, d, k) = sumSlipVel/diag;
+                        
+
+                    
+                    
+                }
+                
+                //    Finally, the can invert this row
+                stab_vel(ip)[d] = rhs / diag;
+                
+            }
+        }
+        else
+        {
+
+            
+            
+            //    First, we compute the contributions to the diagonal
+            //    Note: - There is no contribution of the upwind vel to the diagonal
+            //            in this case, only for non-diag problems
+            //          - The diag does not depend on the dimension
+            
+            //    the diagonal entry
+            
+            number vViscoPerDiffLenSq_1 = (mu_1/rho_1) * diff_length_sq_inv(ip);
+            number vViscoPerDiffLenSq_2 = (mu_2/rho_2) * diff_length_sq_inv(ip);
+            
+            number diag1 = vViscoPerDiffLenSq_1;
+            number diag2 = vViscoPerDiffLenSq_2;
+            
+            
+            
+            
+            
+            
+            //    Time part
+            if(pvCornerValueOldTime != NULL)
+            {
+                diag1 += 1./dt;
+                diag2 += 1./dt;
+            }
+            
+            //    Convective Term  (no convective terms in the Stokes eq.)
+            if (! bStokes)
+            {
+                diag1 += vNormStdVelPerConvLen[ip];
+                diag2 += vNormStdVelPerConvLen[ip];
+            }
+            
+            /*if (!interface_change[ip])
+             {
+             if(phase_2[ip])
+             diag *= 1.0/fmin(2*theta, 1.0);
+             else
+             diag *= 1.0 / fmin(2*(1.0-theta), 1.0);
+             }*/
+            
+            //     Loop components of velocity
+            for(int d = 0; d < dim; d++)
+            {
+                //    Now, we can assemble the rhs. This rhs is assembled by all
+                //    terms, that are non-dependent on the ip vel.
+                //    Note, that we can compute the stab_shapes on the fly when setting
+                //    up the system.
+                
+                //    Source
+                number rhs1 = 0.0;
+                number rhs2 = 0.0;
+                if(pSource != NULL)
+                {
+                    rhs1 = (  ( rho_1-density_ref) / rho_1) * (*pSource)[ip][d];
+                    rhs2 = (  ( rho_2-density_ref) / rho_2) * (*pSource)[ip][d];
+                }
+                    //rhs = (  ( density[ip]-density_ref) / density[ip]) * VecProd((*pSource)[ip], normal[ip]) * normal[ip][d];
+                
+                //    Time
+                if(pvCornerValueOldTime != NULL)
+                {
+                    //    interpolate old time step
+                    number oldIPVel = 0.0;
+                    for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+                    {
+                        oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+                        
+                        /*for(int d2 = 0; d2 < dim; d2++)
+                            oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d2, sh) * normal [ip][d2] * normal[ip][d];*/
+                    }
+                        
+                        
+                    //    add to rhs
+                    rhs1 += oldIPVel / dt;
+                    rhs2 += oldIPVel / dt;
+                }
+                
+                //    loop shape functions
+                for(size_t k = 0; k < scvf.num_sh(); ++k)
+                {
+                    //    Diffusion part
+                    number sumVel_1  = vViscoPerDiffLenSq_1 * scvf.shape(k);
+                    number sumVel_2  = vViscoPerDiffLenSq_2 * scvf.shape(k);
+                    
+                    //    Convective term (no convective terms in the Stokes eq.)
+                    if (! bStokes)
+                    {
+                        sumVel_1 += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+                        sumVel_2 += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+                        
+                    }
+                    
+                    
+                    
+                    //    Add to rhs
+                    rhs1 += sumVel_1 * vCornerValue(d, k);
+                    rhs2 += sumVel_2 * vCornerValue(d, k);
+                    
+                    //    set stab shape
+                    stab_shape_vel  (ip, d, d, k)   = sumVel_1 / diag1;
+                    stab_shape_vel_2(ip, d, d, k)   = sumVel_2 / diag2;
+                    
+                    
+                    //    Pressure part
+                    number sumP_1 = 0.0;
+                    number sumP_2 = 0.0;
+
+                    //sumP_1 += -1.0 * alpha3 * (scvf.global_grad(k)[d] ) / rho_1;
+                    //sumP_2 += -1.0 * alpha3 * (scvf.global_grad(k)[d] ) / rho_2;
+                    
+                    //sumP_1 += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_1;
+                    //sumP_2 += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_2;
+                    
+                    //sumP_1 += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ rho_1;
+                    //sumP_2 += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ rho_2;
+
+
+                    
+                    //    Add to rhs
+                    rhs1 += sumP_1 * vCornerValue(_P_, k);
+                    rhs2 += sumP_2 * vCornerValue(_P_, k);
+                    
+                    /*if ( jump_shape[k]<0)
+                        sumP_2 = 0.0;
+                    else
+                        sumP_1 = 0.0;*/
+                    //    set stab shape
+                    stab_shape_p  (ip, d, k) = sumP_1 / diag1;
+                    stab_shape_p_2(ip, d, k) = sumP_2 / diag2;
+                    
+                    number sumPJump_1 =0.0;
+                    number sumPJump_2 =0.0;
+                    
+                    
+                    if(jump_shape[k]>0.0)
+                    {
+                        //sumPJump_1 = alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / rho_1;
+                        sumPJump_1 += alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_1;
+                        //sumPJump_1 += alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ rho_1;
+                    }
+                    if(jump_shape[k]<0.0)
+                    {
+                        //sumPJump_2 =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / rho_2;
+                        sumPJump_2 +=  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d] / rho_2;
+                        //sumPJump_2 +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ rho_2;
+                    }
+
+
+
+
+                    
+                    //    Add to rhs
+                    rhs1 += sumPJump_1 * (pressure_jump[k]);
+                    rhs2 += sumPJump_2 * (pressure_jump[k]);
+                    
+                    /*if ( jump_shape[k]<0)
+                        sumPJump_2 = 0.0;
+                    else
+                        sumPJump_1 = 0.0;*/
+                    
+                    stab_shape_p_jump(ip, d, k)   = sumPJump_1/diag1;
+                    stab_shape_p_jump_2(ip, d, k) = sumPJump_2/diag2;
+                    
+                    
+                    number sumSlipVel_1 = 0.0;
+                    number sumSlipVel_2 = 0.0;
+                    
+                    if (jump_shape[k]>0.0)
+                        sumSlipVel_1 = vViscoPerDiffLenSq_1 * scvf.shape(k) * jump_shape[k];
+                    if (jump_shape[k]<0.0)
+                        sumSlipVel_2 = vViscoPerDiffLenSq_2 * scvf.shape(k) * jump_shape[k];
+                    
+                    rhs1 += sumSlipVel_1 * SlipVel[k][d];
+                    rhs2 += sumSlipVel_2 * SlipVel[k][d];
+                    
+                    stab_shape_slip_vel  (ip, d, d, k) = sumSlipVel_1 / diag1;
+                    stab_shape_slip_vel_2(ip, d, d, k) = sumSlipVel_2 / diag2;
+                    
+                }
+                
+                //    Finally, the can invert this row
+                stab_vel  (ip)[d] = rhs1 / diag1;
+                stab_vel_2(ip)[d] = rhs2 / diag2;
+                
+            }
+            /*if (((geo->scv_global_ips()[0][0] > 3.99) && (geo->scv_global_ips()[0][0] < 4.251))&&((geo->scv_global_ips()[1][0] > 3.99) && (geo->scv_global_ips()[1][0] < 4.251)) &&((geo->scv_global_ips()[2][0] > 3.99) && (geo->scv_global_ips()[2][0] < 4.251)))
+            {
+                printf("IP Inicio %zu\n",ip);
+                printf("y = %f   %f   \n",stab_vel(ip)[0],stab_vel(ip)[1]);
+            }*/
+            
+            //VecProd(stab_vel_2(ip),normal[0]) / VecProd(stab_vel(ip),normal[0]);
+            //number Magnitud = VecProd(stab_vel_2(ip),normal[0]);
+            
+            MathVector<dim> DX = stab_vel_2(ip);
+            
+            number Vec1 = sqrt(VecProd(stab_vel(ip), stab_vel(ip)));
+            number Vec2 = sqrt(VecProd(stab_vel_2(ip), stab_vel_2(ip)));
+            if (Vec2>1e-06)  VecScale(DX,DX, 1.0/Vec2);
+            else VecScale(DX,DX, 0.0);
+            
+            number Factor1 = (Vec1 > 1.0e-06) ? Vec2/ Vec1 : 0.0;
+            number Factor2 = 1.0;
+            
+            VecScale(stab_vel(ip)  ,  stab_vel(ip),  Factor1 );
+            VecScale(stab_vel_2(ip),  stab_vel_2(ip),Factor2 );
+            //VecScaleAdd(DX, theta, stab_vel_2(ip), 1.0-theta, stab_vel(ip));
+            //number Magnitud = sqrt(VecProd(DX,DX));
+            
+            /*if (((geo->scv_global_ips()[0][0] > 3.99) && (geo->scv_global_ips()[0][0] < 4.251))&&((geo->scv_global_ips()[1][0] > 3.99) && (geo->scv_global_ips()[1][0] < 4.251)) &&((geo->scv_global_ips()[2][0] > 3.99) && (geo->scv_global_ips()[2][0] < 4.251)))
+            {
+                printf("y = %f   %f   \n",stab_vel(ip)[0],stab_vel(ip)[1]);
+                printf("y = %f   %f   \n",stab_vel_2(ip)[0],stab_vel_2(ip)[1]);
+                printf("IP ----------------------- %zu\n",ip);
+                printf("y ----------------------- %f    %f    %f\n",geo->scv_global_ips()[0][1],geo->scv_global_ips()[1][1],geo->scv_global_ips()[2][1]);
+                printf("Relation V1/v2 = %f\n",Vec1/Vec2);
+                printf("Cos V1 anv2 = %f\n",VecProd(stab_vel_2(ip),stab_vel(ip))/(Vec1*Vec2));
+                printf("theta = %f\n",theta);
+                printf("magnitud vec1 = %f\n",Vec1);
+                printf("magnitud vec2 = %f\n",Vec2);
+                //printf("magnitud = %f\n",Magnitud);
+            }*/
+            
+            
+            
+            
+
+        
+            
+
+            
+            
+            
+            for(size_t k = 0; k < scvf.num_sh(); ++k)
+            {
+                
+                
+                number ValueV = 0.0;
+                number ValueP = 0.0;
+                number ValueJumpP = 0.0;
+                number ValueSlipV = 0.0;
+                
+                number ValueV_2 = 0.0;
+                number ValueP_2 = 0.0;
+                number ValueJumpP_2 = 0.0;
+                number ValueSlipV_2 = 0.0;
+                
+                for(int d1 = 0; d1 < dim; d1++)
+                {
+                    
+                    ValueP += stab_shape_p(ip, d1, k) * DX[d1];
+                    ValueJumpP += stab_shape_p_jump(ip, d1, k) * DX[d1];
+                    
+                    
+                    //ValueP_2 += stab_shape_p_2(ip, d1, k) * DX[d1];
+                    //ValueJumpP_2 += stab_shape_p_jump_2(ip, d1, k) * DX[d1];
+                    
+                    ValueV = 0.0;
+                    ValueSlipV = 0.0;
+                    
+                    ValueV_2 = 0.0;
+                    ValueSlipV_2 = 0.0;
+                    
+                    for(int d2 = 0; d2 < dim; d2++)
+                    {
+                        ValueV       += stab_shape_vel(ip, d2, d1, k)      * DX[d2];
+                        ValueSlipV   += stab_shape_slip_vel(ip, d2, d1, k) * DX[d2];
+                        //ValueV_2     += stab_shape_vel(ip, d2, d1, k)      * DX[d2];
+                        //ValueSlipV_2 += stab_shape_slip_vel(ip, d2, d1, k) * DX[d2];
+                        
+                    }
+                    for(int d2 = 0; d2 < dim; d2++)
+                    {
+                        
+                        stab_shape_vel(ip, d2, d1, k) = Factor1 * ValueV * DX[d2];
+                        stab_shape_slip_vel(ip, d2, d1, k) = Factor1 * ValueSlipV * DX[d2];
+                        
+                        //stab_shape_vel_2(ip, d2, d1, k) =  Factor2 * ValueV_2 * DX[d2];
+                        //stab_shape_slip_vel_2(ip, d2, d1, k) = Factor2 * ValueSlipV_2 * DX[d2];
+                        
+                        stab_shape_vel(ip, d2, d1, k) = Factor1 * stab_shape_vel(ip, d2, d1, k);
+                        stab_shape_slip_vel(ip, d2, d1, k) = Factor1 * stab_shape_slip_vel(ip, d2, d1, k);
+                        
+                        //stab_shape_vel_2(ip, d2, d1, k) =  Factor2 * stab_shape_vel_2(ip, d2, d1, k);
+                        //stab_shape_slip_vel_2(ip, d2, d1, k) = Factor2 * stab_shape_slip_vel_2(ip, d2, d1, k);
+                        
+
+                        
+                    }
+                    
+                }
+                
+                for(int d1 = 0; d1 < dim; d1++)
+                {
+
+                    stab_shape_p(ip, d1, k) = Factor1 * ValueP * DX[d1];
+                    stab_shape_p_jump(ip, d1, k) =  Factor1 * ValueJumpP * DX[d1];
+                    
+                    //stab_shape_p_2(ip, d1, k) = Factor2 * ValueP_2 * DX[d1];
+                    //stab_shape_p_jump_2(ip, d1, k) = Factor2 * ValueJumpP_2 * DX[d1];
+                    
+                    stab_shape_p(ip, d1, k) = Factor1 * stab_shape_p(ip, d1, k);
+                    stab_shape_p_jump(ip, d1, k) =  Factor1 * stab_shape_p_jump(ip, d1, k);
+                    
+                    //stab_shape_p_2(ip, d1, k) = Factor2 * stab_shape_p_2(ip, d1, k);
+                    //stab_shape_p_jump_2(ip, d1, k) = Factor2 * stab_shape_p_jump_2(ip, d1, k);
+                    
+                }
+
+                
+            }
+            
+             
+            
+        }
+    }
+    /*
+     number sumVel2;
+     if ( d == d2)
+         sumVel2 = scvf.shape(k);
+     else
+         sumVel2 = 0.0;
+     //sumVel2 = scvf.shape(k) * normal[k][d2] *normal[k][d];
+     */
+
+}
+/*{
+    if(multiphase)
+        UG_THROW("Slip Vel Jump Not implemented for fields_2 stabilization.");
     if( non_zero_shape_ip())
     {
         UG_THROW("Not implemented for ip velocities depending on other ip.");
@@ -1186,10 +1826,10 @@ update(const FV1Geometry<TElem, dim>* geo,
                         for(size_t d2 = 0; d2 < dim; ++d2)
                         {
                             number sumVel2;
-                            /*if ( d == d2)
+                            if ( d == d2)
                                 sumVel2 = scvf.shape(k);
                             else
-                                sumVel2 = 0.0;*/
+                                sumVel2 = 0.0;
                             sumVel2 = scvf.shape(k) * normal[k][d2] *normal[k][d];
 
                             
@@ -1225,7 +1865,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         }
         
     }
-}
+}*/
 /*
  
  {
@@ -1857,12 +2497,15 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& densitySCV,
        const number pressure_jump[],
+       const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
        const DataImport<MathVector<dim>, dim>* pSource,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
-       const bool multiphase)
+       const bool multiphase,
+       const bool phase_2[],
+       const number theta)
 {
     if( non_zero_shape_ip())
     {
@@ -1894,12 +2537,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     number alpha2 = 1.0;
     number alpha3 = 1.0;
     
-    if (multiphase)
-    {
-        alpha1 = 5.0;
-        alpha2 = 5.0;
-        alpha3 = 1.0;
-    }
+
     
     if (multiphase)
     {
@@ -1947,18 +2585,476 @@ update(const FV1Geometry<TElem, dim>* geo,
             if(jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0)
             {
                 interface_change[ip] = true;
-                vViscoPerDiffLenSq[ip] = (mu_1/rho_1) * diff_length_sq_inv(ip);
             }
+                
             else
             {
                 interface_change[ip] = false;
-                if (jump_shape[scvf.to()]<0.0)
-                    vViscoPerDiffLenSq[ip] = (mu_1/rho_1) * diff_length_sq_inv(ip);
-                else
-                    vViscoPerDiffLenSq[ip] = (mu_2/rho_2) * diff_length_sq_inv(ip);
+            }
+            if (phase_2[ip])
+                vViscoPerDiffLenSq[ip] = (mu_2/rho_2) * diff_length_sq_inv(ip);
+            else
+                vViscoPerDiffLenSq[ip] = (mu_1/rho_1) * diff_length_sq_inv(ip);
+            
+        }
+        else
+            vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
+        
+        if(!bStokes)
+        {
+            const number norm = VecTwoNorm(vStdVel[ip]);
+            vNormStdVelPerConvLen[ip] = norm / upwind_conv_length(ip);
+            vNormStdVelPerDownLen[ip] = norm / (downwind_conv_length(ip) + upwind_conv_length(ip));
+            
+        }
+
+
+    }
+    
+    
+    
+    
+    //    Find out if upwinded velocities depend on other ip velocities. In that case
+    //    we have to solve a matrix system. Else the system is diagonal and we can
+    //    compute the inverse directly
+    
+    //    diagonal case (i.e. upwind vel depend only on corner vel or no upwind)
+
+    //    Loop integration points
+    for(size_t ip = 0; ip < numIp; ++ip)
+    {
+        //    get SubControlVolumeFace
+        const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+        
+        if (!multiphase )
+        {
+
+            
+            //    First, we compute the contributions to the diagonal
+            //    Note: - There is no contribution of the upwind vel to the diagonal
+            //            in this case, only for non-diag problems
+            //          - The diag does not depend on the dimension
+            
+            //    the diagonal entry
+            number diag = vViscoPerDiffLenSq[ip];
+            
+            //    Time part
+            if(pvCornerValueOldTime != NULL)
+                diag += 1./dt;
+            
+            //    Convective Term  (no convective terms in the Stokes eq.)
+            if (! bStokes)
+                diag += vNormStdVelPerConvLen[ip];
+            
+            //     Loop components of velocity
+            for(int d = 0; d < dim; d++)
+            {
+                //    Now, we can assemble the rhs. This rhs is assembled by all
+                //    terms, that are non-dependent on the ip vel.
+                //    Note, that we can compute the stab_shapes on the fly when setting
+                //    up the system.
+                
+                //    Source
+                number rhs = 0.0;
+                if(pSource != NULL)
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                
+                //    Time
+                if(pvCornerValueOldTime != NULL)
+                {
+                    //    interpolate old time step
+                    number oldIPVel = 0.0;
+                    for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+                        oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+                    
+                    //    add to rhs
+                    rhs += oldIPVel / dt;
+                }
+                
+                //    loop shape functions
+                for(size_t k = 0; k < scvf.num_sh(); ++k)
+                {
+                    //    Diffusion part
+                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+                    
+                    //    Convective term (no convective terms in the Stokes eq.)
+                    if (! bStokes)
+                    {
+                        sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+                        
+                        sumVel += vNormStdVelPerDownLen[ip] *
+                        (downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
+                    }
+                    
+                    for(int d2 = 0; d2 < dim; ++d2)
+                    {
+                        if(d2 == d) continue;
+                        
+                        sumVel -= vStdVel[ip][d2] * (scvf.global_grad(k))[d2];
+                    }
+                    
+                    //    Add to rhs
+                    rhs += sumVel * vCornerValue(d, k);
+                    
+                    //    set stab shape
+                    stab_shape_vel(ip, d, d, k) = sumVel / diag;
+                    
+                    for(int d2 = 0; d2 < dim; ++d2)
+                    {
+                        if(d2 == d) continue;
+                        
+                        const number sumVel2 = vStdVel[ip][d] * (scvf.global_grad(k))[d2];
+                        
+                        rhs += sumVel2 * vCornerValue(d2, k);
+                        
+                        stab_shape_vel(ip, d, d2, k) = sumVel2 / diag;
+                    }
+                    
+                    //    Pressure part
+                    number sumP;
+                    
+                    sumP = -1.0 * alpha1 * (scvf.global_grad(k))[d]  / density[ip];
+                    
+                    //    Add to rhs
+                    rhs += sumP * vCornerValue(_P_, k);
+                    
+                    //    set stab shape
+                    stab_shape_p(ip, d, k) = sumP / diag;
+                    
+                    number sumPJump =0.0;
+
+                    stab_shape_p_jump(ip, d, k) = sumPJump/diag;
+                }
+                
+                //    Finally, the can invert this row
+                stab_vel(ip)[d] = rhs / diag;
+                
+            }
+        }
+        else
+        {
+            
+            
+            //    First, we compute the contributions to the diagonal
+            //    Note: - There is no contribution of the upwind vel to the diagonal
+            //            in this case, only for non-diag problems
+            //          - The diag does not depend on the dimension
+            
+            //    the diagonal entry
+            number diag = vViscoPerDiffLenSq[ip];
+            
+            //    Time part
+            if(pvCornerValueOldTime != NULL)
+                diag += 1./dt;
+            
+            //    Convective Term  (no convective terms in the Stokes eq.)
+            if (! bStokes)
+                diag += vNormStdVelPerConvLen[ip];
+            
+
+            
+            //     Loop components of velocity
+            for(int d = 0; d < dim; d++)
+            {
+                //    Now, we can assemble the rhs. This rhs is assembled by all
+                //    terms, that are non-dependent on the ip vel.
+                //    Note, that we can compute the stab_shapes on the fly when setting
+                //    up the system.
+                
+                //    Source
+                number rhs = 0.0;
+                if(pSource != NULL)
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                //rhs = (  ( density[ip]-density_ref) / density[ip]) * VecProd((*pSource)[ip], normal[ip]) * normal[ip][d];
+                
+                //    Time
+                if(pvCornerValueOldTime != NULL)
+                {
+                    //    interpolate old time step
+                    number oldIPVel = 0.0;
+                    for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+                        
+                            oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+                    //for(int d2 = 0; d2 < dim; d2++)
+                    //oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d2, sh) * normal [ip][d2] * normal[ip][d];
+                    
+                    
+                    //    add to rhs
+                    rhs += oldIPVel / dt;
+                }
+                
+                //    loop shape functions
+                for(size_t k = 0; k < scvf.num_sh(); ++k)
+                {
+                    //    Diffusion part
+                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+                    
+                    //    Convective term (no convective terms in the Stokes eq.)
+                    if (! bStokes)
+                    {
+                        sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+                        
+                        sumVel += vNormStdVelPerDownLen[ip] *
+                        (downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
+                    }
+                    
+                    for(int d2 = 0; d2 < dim; ++d2)
+                    {
+                        if(d2 == d) continue;
+                        
+                        sumVel -= vStdVel[ip][d2] * (scvf.global_grad(k))[d2];
+                    }
+                    
+                    //    Add to rhs
+                    rhs += sumVel * vCornerValue(d, k);
+                    
+                    //    set stab shape
+                    stab_shape_vel(ip, d, d, k) = sumVel / diag;
+                    
+                    for(int d2 = 0; d2 < dim; ++d2)
+                    {
+                        if(d2 == d) continue;
+                        
+                        const number sumVel2 = vStdVel[ip][d] * (scvf.global_grad(k))[d2];
+                        
+                        rhs += sumVel2 * vCornerValue(d2, k);
+                        
+                        stab_shape_vel(ip, d, d2, k) = sumVel2 / diag;
+                    }
+                    
+                    //    Pressure part
+                    number sumP = 0.0;
+                    if (interface_change[ip])
+                    {
+                        sumP = -1.0 * alpha3 * (scvf.global_grad(k)[d] ) / density[ip];
+                        //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
+                        //sumP += -1.0 * alpha3 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
+                        
+                    }
+                    else
+                    {
+                        sumP =  -1.0 * alpha2 * (scvf.global_grad(k)[d] ) / density[ip];
+                        //sumP += -1.0 * alpha2 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
+                        //sumP = -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
+                    }
+                    
+                    //    Add to rhs
+                    rhs += sumP * vCornerValue(_P_, k);
+                    
+                    //    set stab shape
+                    stab_shape_p(ip, d, k) = sumP / diag;
+                    
+                    number sumPJump =0.0;
+                    
+                    
+                    if (interface_change[ip] )
+                    {
+                        if((phase_2[ip] && jump_shape[k]<0.0) || (!phase_2[ip] && jump_shape[k]>0.0) )
+                        {
+                            //sumPJump =  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d] / rho_1;
+                            //sumPJump +=  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
+                            sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
+                        }
+
+                    }
+                    else
+                    {
+                        if ((phase_2[ip] && jump_shape[k]<0.0) || (!phase_2[ip] && jump_shape[k]>0.0))
+                        {
+                            sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
+                            //sumPJump =  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
+                            //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_1;
+                        }
+                        
+                    }
+                        
+                    //    Add to rhs
+                    rhs += sumPJump *(pressure_jump[k]);
+                    
+                    
+                    stab_shape_p_jump(ip, d, k) = sumPJump/diag;
+                    
+                    
+                    
+                    number sumSlipVel = 0.0;
+                    if ((phase_2[ip] && jump_shape[k]<0.0) )
+                        sumSlipVel = vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
+                    
+                    rhs += sumSlipVel * SlipVel[k][d];
+                    stab_shape_slip_vel(ip, d, d, k) = sumSlipVel/diag;
+
+                }
+                
+                //    Finally, the can invert this row
+                stab_vel(ip)[d] = rhs / diag;
+                
             }
             
+            /*if (interface_change[ip])
+            {
+                VecScale(stab_vel(ip),normal[ip],VecProd(stab_vel(ip), normal[ip]));
+                for(size_t k = 0; k < scvf.num_sh(); ++k)
+                    for(int d1 = 0; d1 < dim; d1++)
+                    {
+                        number ValueV = 0.0;
+                        number ValueP = 0.0;
+                        number ValueJumpP = 0.0;
+                        number ValueSlipV = 0.0;
+                        for(int d2 = 0; d2 < dim; d2++)
+                        {
+                            ValueV += stab_shape_vel(ip, d2, d1, k) * normal[ip][d2];
+                            ValueP += stab_shape_p(ip, d2, k) * normal[ip][d2];
+                            ValueJumpP += stab_shape_p_jump(ip, d2, k) * normal[ip][d2];
+                            ValueSlipV += stab_shape_slip_vel(ip, d2, d1, k) * normal[ip][d2];
+                            
+                        }
+                        for(int d2 = 0; d2 < dim; d2++)
+                        {
+                            stab_shape_vel(ip, d2, d1, k) = ValueV * normal[ip][d2];
+                            stab_shape_slip_vel(ip, d2, d1, k) = ValueSlipV * normal[ip][d2];
+                            
+                        }
+                        stab_shape_p(ip, d1, k) = ValueP * normal[ip][d1];
+                        stab_shape_p_jump(ip, d1, k) = ValueJumpP * normal[ip][d1];
+                    }
+                
             
+            }
+            else
+            {
+                MathVector<dim> T = SlipVel[0];
+                VecScale(T,T,sqrt(VecProd(T,T)));
+                VecScale(stab_vel(ip),T,VecProd(stab_vel(ip), T));
+                for(size_t k = 0; k < scvf.num_sh(); ++k)
+                    for(int d1 = 0; d1 < dim; d1++)
+                    {
+                        number ValueV = 0.0;
+                        number ValueP = 0.0;
+                        number ValueJumpP = 0.0;
+                        number ValueSlipV = 0.0;
+                        for(int d2 = 0; d2 < dim; d2++)
+                        {
+                            ValueV += stab_shape_vel(ip, d2, d1, k) * T[d2];
+                            ValueP += stab_shape_p(ip, d2, k) * T[d2];
+                            ValueJumpP += stab_shape_p_jump(ip, d2, k) * T[d2];
+                            ValueSlipV += stab_shape_slip_vel(ip, d2, d1, k) * T[d2];
+                            
+                        }
+                        for(int d2 = 0; d2 < dim; d2++)
+                        {
+                            stab_shape_vel(ip, d2, d1, k) = ValueV * T[d2];
+                            
+                        }
+                        stab_shape_p(ip, d1, k) = ValueP * T[d1];
+                        stab_shape_p_jump(ip, d1, k) = ValueJumpP * T[d1];
+                    }
+                
+                
+            }*/
+            
+            
+                
+        }
+    }
+    /*
+     number sumVel2;
+     if ( d == d2)
+         sumVel2 = scvf.shape(k);
+     else
+         sumVel2 = 0.0;
+     //sumVel2 = scvf.shape(k) * normal[k][d2] *normal[k][d];
+     */
+
+}
+/*{
+    if( non_zero_shape_ip())
+    {
+        UG_THROW("Not implemented for ip velocities depending on other ip.");
+    }
+    //    abbreviation for pressure
+    static const size_t _P_ = dim;
+    
+    //    Some constants
+    static const size_t numIp = FV1Geometry<TElem, dim>::numSCVF;
+    static const size_t numSh = FV1Geometry<TElem, dim>::numSCV;
+    
+    //    compute upwind and downwind (no convective terms for the Stokes eq. => no upwind)
+    if (! bStokes)
+    {
+        this->compute_upwind(geo, vStdVel);
+        this->compute_downwind(geo, vStdVel);
+    }
+    
+    //    compute diffusion length
+    this->compute_diff_length(*geo);
+    
+    number mu_2 = 0.0, mu_1 = 0.0;
+    number rho_2 = 0.0, rho_1 = 0.0;
+    number visc1 = -10000000, visc2 = -10000000;
+    number rho1 = -10000000, rho2 = -10000000;
+    
+    number alpha1 = 1.0;
+    number alpha2 = 1.0;
+    number alpha3 = 0.0;
+    
+
+    
+    if (multiphase)
+    {
+
+        
+        for(size_t sh = 0; sh < numSh; ++sh)
+        {
+            if (jump_shape[sh]>0)
+            {
+                visc2 = fmax( visc2, densitySCV[sh] * kinViscoSCV[sh]);
+                rho2 = fmax( rho2, densitySCV[sh] );
+            }
+            else
+            {
+                visc1 = fmax( visc1, -densitySCV[sh] * kinViscoSCV[sh]);
+                rho1 = fmax( rho1, -densitySCV[sh] );
+            }
+            
+        }
+        
+        mu_2 = visc2;
+        mu_1 = -visc1;
+        rho_2 = rho2;
+        rho_1 = -rho1;
+        
+        if ((mu_2 < mu_1)||(mu_2<0.0)||(mu_1<0.0))
+            UG_THROW("Viscosity in phase 1 is lower that phase 2");
+        if ((rho_2 < rho_1)||(rho_2<0.0)||(rho_1<0.0))
+            UG_THROW("Density in phase 1 is lower that phase 2");
+    }
+    
+
+    //    cache values
+    number vViscoPerDiffLenSq[numIp];
+    bool interface_change[numIp];
+    
+    number vNormStdVelPerConvLen[numIp];
+    number vNormStdVelPerDownLen[numIp];
+    
+    for(size_t ip = 0; ip < numIp; ++ip)
+    {
+        if (multiphase)
+        {
+            const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+            if(jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0)
+            {
+                interface_change[ip] = true;
+            }
+                
+            else
+            {
+                interface_change[ip] = false;
+            }
+            if (phase_2[ip])
+                vViscoPerDiffLenSq[ip] = (mu_2/rho_2) * diff_length_sq_inv(ip);
+            else
+                vViscoPerDiffLenSq[ip] = (mu_1/rho_1) * diff_length_sq_inv(ip);
             
         }
         else
@@ -2186,10 +3282,19 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     //    Pressure part
                     number sumP = 0.0;
-                    if (!interface_change[ip])
-                        sumP = -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
+                    if (interface_change[ip])
+                    {
+                        //sumP = -1.0 * alpha3 * (scvf.global_grad(k)[d] ) / density[ip];
+                        //sumP = -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
+                        sumP = -1.0 * alpha3 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
+                        
+                    }
                     else
-                        sumP = -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
+                    {
+                        //sumP =  -1.0 * alpha2 * (scvf.global_grad(k)[d] ) / density[ip];
+                        //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
+                        sumP = -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
+                    }
                     
                     //    Add to rhs
                     rhs += sumP * vCornerValue(_P_, k);
@@ -2199,31 +3304,51 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     number sumPJump =0.0;
                     
-                        
-                    if (jump_shape[k]>0.0)
+                    
+                    if (interface_change[ip] )
                     {
-                        if (!interface_change[ip])
-                            sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / density[ip];
-                        else
-                            sumPJump =  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d] / rho_1;
+                        if((phase_2[ip] && jump_shape[k]<0.0) || (!phase_2[ip] && jump_shape[k]>0.0) )
+                        {
+                            //sumPJump =  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d] / rho_1;
+                            sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
+                            //sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
+                        }
+
+                    }
+                    else
+                    {
+                        if ((phase_2[ip] && jump_shape[k]<0.0) || (!phase_2[ip] && jump_shape[k]>0.0))
+                        {
+                            //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
+                            //sumPJump =  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
+                            sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_1;
+                        }
                         
                     }
                         
-                        
-
-
                     //    Add to rhs
                     rhs += sumPJump *(pressure_jump[k]);
                     
                     
                     stab_shape_p_jump(ip, d, k) = sumPJump/diag;
+                    
+                    
+                    
+                    number sumSlipVel = 0.0;
+                    if ((phase_2[ip] && jump_shape[k]<0.0) || (!phase_2[ip] && jump_shape[k]>0.0))
+                        sumSlipVel = -vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
+                    
+                    rhs += sumSlipVel * SlipVel[k][d];
+                    stab_shape_slip_vel(ip, d, d, k) = sumSlipVel/diag;
+
                 }
                 
                 //    Finally, the can invert this row
                 stab_vel(ip)[d] = rhs / diag;
                 
             }
-            if (false)
+            
+            if (interface_change[ip])
             {
                 VecScale(stab_vel(ip),normal[ip],VecProd(stab_vel(ip), normal[ip]));
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
@@ -2232,38 +3357,74 @@ update(const FV1Geometry<TElem, dim>* geo,
                         number ValueV = 0.0;
                         number ValueP = 0.0;
                         number ValueJumpP = 0.0;
+                        number ValueSlipV = 0.0;
                         for(int d2 = 0; d2 < dim; d2++)
                         {
                             ValueV += stab_shape_vel(ip, d2, d1, k) * normal[ip][d2];
                             ValueP += stab_shape_p(ip, d2, k) * normal[ip][d2];
                             ValueJumpP += stab_shape_p_jump(ip, d2, k) * normal[ip][d2];
+                            ValueSlipV += stab_shape_slip_vel(ip, d2, d1, k) * normal[ip][d2];
                             
                         }
                         for(int d2 = 0; d2 < dim; d2++)
                         {
                             stab_shape_vel(ip, d2, d1, k) = ValueV * normal[ip][d2];
+                            stab_shape_slip_vel(ip, d2, d1, k) = ValueSlipV * normal[ip][d2];
                             
                         }
                         stab_shape_p(ip, d1, k) = ValueP * normal[ip][d1];
                         stab_shape_p_jump(ip, d1, k) = ValueJumpP * normal[ip][d1];
                     }
+                
             
+            }
+            else
+            {
+                MathVector<dim> T = SlipVel[0];
+                VecScale(T,T,sqrt(VecProd(T,T)));
+                VecScale(stab_vel(ip),T,VecProd(stab_vel(ip), T));
+                for(size_t k = 0; k < scvf.num_sh(); ++k)
+                    for(int d1 = 0; d1 < dim; d1++)
+                    {
+                        number ValueV = 0.0;
+                        number ValueP = 0.0;
+                        number ValueJumpP = 0.0;
+                        number ValueSlipV = 0.0;
+                        for(int d2 = 0; d2 < dim; d2++)
+                        {
+                            ValueV += stab_shape_vel(ip, d2, d1, k) * T[d2];
+                            ValueP += stab_shape_p(ip, d2, k) * T[d2];
+                            ValueJumpP += stab_shape_p_jump(ip, d2, k) * T[d2];
+                            ValueSlipV += stab_shape_slip_vel(ip, d2, d1, k) * T[d2];
+                            
+                        }
+                        for(int d2 = 0; d2 < dim; d2++)
+                        {
+                            stab_shape_vel(ip, d2, d1, k) = ValueV * T[d2];
+                            
+                        }
+                        stab_shape_p(ip, d1, k) = ValueP * T[d1];
+                        stab_shape_p_jump(ip, d1, k) = ValueJumpP * T[d1];
+                    }
+                
+                
             }
             
             
                 
         }
     }
-    /*
+    
      number sumVel2;
      if ( d == d2)
          sumVel2 = scvf.shape(k);
      else
          sumVel2 = 0.0;
      //sumVel2 = scvf.shape(k) * normal[k][d2] *normal[k][d];
-     */
+     
 
-}/*
+}*/
+/*
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for Viscosity stabilization.");
@@ -2611,12 +3772,15 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& densitySCV,
        const number pressure_jump[],
+       const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
        const DataImport<MathVector<dim>, dim>* pSource,
        const LocalVector* pvCornerValueOldTime, number dt, 
        const number density_ref,
-       const bool multiphase)
+       const bool multiphase,
+       const bool phase_2[],
+       const number theta)
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for KARIMIAN stabilization.");
@@ -2833,12 +3997,15 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& densitySCV,
        const number pressure_jump[],
+       const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
        const DataImport<MathVector<dim>, dim>* pSource,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
-       const bool multiphase)
+       const bool multiphase,
+       const bool phase_2[],
+       const number theta)
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for NoStabiliation stabilization.");
@@ -2933,12 +4100,15 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& densitySCV,
        const number pressure_jump[],
+       const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
        const DataImport<MathVector<dim>, dim>* pSource,
        const LocalVector* pvCornerValueOldTime, number dt, 
        const number density_ref,
-       const bool multiphase)
+       const bool multiphase,
+       const bool phase_2[],
+       const number theta)
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for  stabilization.");
