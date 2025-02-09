@@ -787,12 +787,11 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 ////////////////////////////////////////////////////
                 
                 //     Compute flux derivative at IP
-                const number flux_sh =  -1.0 * (MU-m_imKinViscosity[ip] * m_imDensitySCVF[ip]) * VecDot(scvf.global_grad(sh), scvf.normal());
                 
                 number flux_sh_jump = 0.0;
                 
                 if ((Phase2[ip] && m_imJumpShape[sh]<0.0) || (!Phase2[ip] && m_imJumpShape[sh]>0.0))
-                    flux_sh_jump =  -1.0 * MU * m_imJumpShape[sh] * VecDot(scvf.global_grad(sh), scvf.normal());
+                    flux_sh_jump =  1.0 * MU * m_imJumpShape[sh] * VecDot(scvf.global_grad(sh), scvf.normal());
                 
                 //     Add flux derivative  to local matrix
                 for(int d1 = 0; d1 < dim; ++d1)
@@ -803,8 +802,6 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                         J(d1, scvf.from(), d2, sh) += flux_sh_jump *  press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
                         J(d1, scvf.to()  , d2, sh) -= flux_sh_jump *  press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
                     }
-                    J(d1, scvf.from(), d1, sh) +=  + flux_sh;
-                    J(d1, scvf.to()  , d1, sh) -=  + flux_sh;
                 }
                 
                
@@ -813,15 +810,11 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     for(int d1 = 0; d1 < dim; ++d1)
                         for(int d2 = 0; d2 < dim; ++d2)
                         {
-                            const number flux2_sh = -1.0 * (MU - m_imKinViscosity[ip] * m_imDensitySCVF[ip]) * scvf.global_grad(sh)[d1] * scvf.normal()[d2];
-                            
+                    
                             number flux2_sh_jump = 0.0;
 
                             if ((Phase2[ip] && m_imJumpShape[sh]<0.0) || (!Phase2[ip] && m_imJumpShape[sh]>0.0))
-                                flux2_sh_jump =  -1.0 * MU * scvf.global_grad(sh)[d1] * scvf.normal()[d2];
-                            
-                            J(d1, scvf.from(), d2, sh) += +flux2_sh;
-                            J(d1, scvf.to()  , d2, sh) -= +flux2_sh;
+                                flux2_sh_jump =  1.0 * MU * m_imJumpShape[sh] * scvf.global_grad(sh)[d1] * scvf.normal()[d2];
                             
                             for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
                             for(int d3 = 0; d3 < dim; ++d3)
@@ -837,7 +830,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 ////////////////////////////////////////////////////
                 // Pressure Term (Momentum Equation)
                 ////////////////////////////////////////////////////
-                
+                /*
                 if(m_imJumpShape[sh]>0.0)
                     deriv_pressure_g = -scvf.shape(sh) * m_imJumpShape[sh];
                 else
@@ -865,7 +858,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                         }
                     }
 
-                }
+                }*/
 
                 ////////////////////////////////////////////////////
                 ////////////////////////////////////////////////////
@@ -970,7 +963,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                             for(int d2 = 0; d2 < dim; ++d2)
                             {
                                 contFlux_vel_1 += 0.0;
-                                contFlux_vel_2 += (stab.stab_shape_vel_2(ip, d2, d1, sh) -stab.stab_shape_vel(ip, d2, d1, sh)) * dA[d2];
+                                contFlux_vel_2 += 0.0;//(stab.stab_shape_vel_2(ip, d2, d1, sh) -stab.stab_shape_vel(ip, d2, d1, sh)) * dA[d2];
                             }
                             if (m_imJumpShape[from]<0)
                             {
@@ -992,7 +985,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                         for(int d1 = 0; d1 < dim; ++d1)
                         {
                             const number contFlux_vel_1 = 0.0;
-                            const number contFlux_vel_2 = (stab.stab_shape_vel_2(ip, d1, d1, sh)-stab.stab_shape_vel(ip, d1, d1, sh)) * dA[d1];
+                            const number contFlux_vel_2 = 0.0;//(stab.stab_shape_vel_2(ip, d1, d1, sh)-stab.stab_shape_vel(ip, d1, d1, sh)) * dA[d1];
                             
                             if (m_imJumpShape[from]<0)
                             {
@@ -1018,7 +1011,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     for(int d1 = 0; d1 < dim; ++d1)
                     {
                         contFlux_p_1 += 0.0;
-                        contFlux_p_2 += (stab.stab_shape_p_2(ip, d1, sh) - stab.stab_shape_p(ip, d1, sh) ) * dA[d1];
+                        contFlux_p_2 += 0.0;//(stab.stab_shape_p_2(ip, d1, sh) - stab.stab_shape_p(ip, d1, sh) ) * dA[d1];
                     }
                     if (m_imJumpShape[from]<0)
                     {
@@ -1209,8 +1202,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			//	sum up contributions of each shape
 				gradVel(d1, d2) = 0.0;
 				for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-					gradVel(d1, d2) += scvf.global_grad(sh)[d2]
-					                    * u(d1, sh);
+					gradVel(d1, d2) += scvf.global_grad(sh)[d2] * u(d1, sh);
 			}
 
 	//	2. Compute flux
@@ -1346,7 +1338,6 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             ////////////////////////////////////////////////////
 
         //     1. Interpolate Functional Matrix of velocity at ip
-            MathMatrix<dim, dim> gradVel;
             MathMatrix<dim, dim> gradVel_jump;
             number MU = (Phase2[ip]) ? mu_l : mu_g;
 
@@ -1354,48 +1345,43 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                 for(int d2 = 0; d2 <dim; ++d2)
                 {
                 //    sum up contributions of each shape
-                    gradVel(d1, d2) = 0.0;
+                    //gradVel(d1, d2) = 0.0;
                     gradVel_jump(d1, d2) = 0.0;
                     for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
                     {
-                        gradVel(d1, d2) += scvf.global_grad(sh)[d2]
-                        * u(d1, sh);
                         if ((Phase2[ip] && m_imJumpShape[sh]<0.0) || (!Phase2[ip] && m_imJumpShape[sh]>0.0))
                         {
-                            gradVel_jump(d1, d2) += scvf.global_grad(sh)[d2]
-                            * m_imJumpShape[sh] * press_jump.tang_vel(sh)[d1];
+                            gradVel_jump(d1, d2) += - scvf.global_grad(sh)[d2] * m_imJumpShape[sh] * press_jump.tang_vel(sh)[d1];
                         }
                     }
                 }
 
         //    2. Compute flux
-            MathVector<dim> diffFlux;
             MathVector<dim> diffFlux_jump;
 
         //    Add (\nabla u) \cdot \vec{n}
-            MatVecMult(diffFlux, gradVel, scvf.normal());
             MatVecMult(diffFlux_jump, gradVel_jump, scvf.normal());
 
         //    Add (\nabla u)^T \cdot \vec{n}
             if(!m_bLaplace)
             {
-                TransposedMatVecMultAdd(diffFlux, gradVel, scvf.normal());
                 TransposedMatVecMultAdd(diffFlux_jump, gradVel_jump, scvf.normal());
             }
 
         //    scale by viscosity
-            VecScale(diffFlux, diffFlux, (-1.0) * (MU - m_imKinViscosity[ip] * m_imDensitySCVF[ip]));
             VecScale(diffFlux_jump, diffFlux_jump, (-1.0) * MU);
 
         //    3. Add flux to local defect
             for(int d1 = 0; d1 < dim; ++d1)
             {
-                d(d1, scvf.from()) += diffFlux_jump[d1] + diffFlux[d1];
-                d(d1, scvf.to()  ) -= diffFlux_jump[d1] + diffFlux[d1];
+                d(d1, scvf.from()) += diffFlux_jump[d1];
+                d(d1, scvf.to()  ) -= diffFlux_jump[d1];
             }
             
-            
-            
+            ////////////////////////////////////////////////////
+            // Pressure Term Term (Momentum Equation)
+            ////////////////////////////////////////////////////
+            /*
         //    1. Interpolate pressure at ip
             number pressure_g = 0.0;
             number pressure_l = 0.0;
@@ -1420,7 +1406,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                 else
                     d(d1, to) -= pressure_l * scvf.normal()[d1];
 
-            }
+            }*/
             
             
             ////////////////////////////////////////////////////
@@ -1438,13 +1424,13 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                 number contFlux_to = 0.0;
                 if (m_imJumpShape[from]<0)
                 {
-                    contFlux_from = VecProd(stab.stab_vel(ip),   scvf.normal()) - VecProd(Vel_ip[ip], scvf.normal());
-                    contFlux_to   = VecProd(stab.stab_vel_2(ip), scvf.normal()) - VecProd(Vel_ip[ip], scvf.normal());
+                    contFlux_from = 0.0;//VecProd(stab.stab_vel(ip),   scvf.normal()) - VecProd(Vel_ip[ip], scvf.normal());
+                    contFlux_to   = 0.0;//VecProd(stab.stab_vel_2(ip), scvf.normal()) - VecProd(Vel_ip[ip], scvf.normal());
                 }
                 else
                 {
-                    contFlux_from = VecProd(stab.stab_vel_2(ip), scvf.normal()) - VecProd(Vel_ip[ip], scvf.normal());
-                    contFlux_to   = VecProd(stab.stab_vel(ip),   scvf.normal()) - VecProd(Vel_ip[ip], scvf.normal());
+                    contFlux_from = 0.0;//VecProd(stab.stab_vel_2(ip), scvf.normal()) - VecProd(Vel_ip[ip], scvf.normal());
+                    contFlux_to   = 0.0;//VecProd(stab.stab_vel(ip),   scvf.normal()) - VecProd(Vel_ip[ip], scvf.normal());
                 }
                 
                 //    Add contributions to local defect
@@ -1712,8 +1698,8 @@ PropertiesJump(const TFVGeom& geo,
         theta = (Cmax-m_interface_vol_fraction)/(Cmax-Cmin);
         
         
-        if (theta >0.9)
-            Fluid2 = true;
+        if (theta >0.8)
+            Fluid2 = false;
         
         for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
         {
