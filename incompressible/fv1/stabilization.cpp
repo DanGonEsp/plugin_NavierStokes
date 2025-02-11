@@ -908,7 +908,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     number alpha2 = 1.0;
     number alpha3 = 1.0;
     
-    number fase1 = 0.0;
+    //number fase1 = 0.0;
     
     if (multiphase)
     {
@@ -927,7 +927,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 rho1 = fmax( rho1, -densitySCV[sh] );
             }
             
-            fase1 +=jump_shape[sh];
+            //fase1 +=jump_shape[sh];
         }
         
         mu_2 = visc2;
@@ -1119,7 +1119,13 @@ update(const FV1Geometry<TElem, dim>* geo,
                         
                         
 
-                        if (((jump_shape[scvf.from()]>0) && jump_shape[k]<0.0) || ((jump_shape[scvf.from()]<0) && jump_shape[k]>0.0))
+                        if ((jump_shape[scvf.from()]>0) && jump_shape[k]<0.0 )
+                        {
+                            //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
+                            //sumPJump +=  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
+                            //sumPJump +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_1;
+                        }
+                        else if ((jump_shape[scvf.from()]<0) && jump_shape[k]>0.0)
                         {
                             //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
                             //sumPJump +=  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
@@ -1132,7 +1138,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                         
                 
                         /*if ((jump_shape[scvf.from()]>0 && jump_shape[k]<0.0) || (jump_shape[scvf.from()]<0 && jump_shape[k]>0.0))
-                            sumSlipVel = vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
+                            sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
                         
                         rhs += sumSlipVel * SlipVel[k][d];*/
             
@@ -1294,15 +1300,15 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     if(jump_shape[k]>0.0)
                     {
-                        //sumPJump_1 = alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / rho_1;
+                        sumPJump_1 = alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / rho_1;
                         //sumPJump_1 += alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_1;
-                        //sumPJump_1 += alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ rho_1;
+                        //sumPJump_1 += alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) *(1-theta) / rho_1;
                     }
                     if(jump_shape[k]<0.0)
                     {
-                        //sumPJump_2 =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / rho_2;
-                        //sumPJump_2 +=  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d] / rho_2;
-                        //sumPJump_2 +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ rho_2;
+                        //sumPJump_1 =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / rho_2;
+                        //sumPJump_1 +=  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d] / rho_2;
+                        //sumPJump_1 +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ rho_2;
                     }
 
 
@@ -1326,9 +1332,9 @@ update(const FV1Geometry<TElem, dim>* geo,
                     number sumSlipVel_2 = 0.0;
                     
                     /*if (jump_shape[k]>0.0)
-                        sumSlipVel_1 = vViscoPerDiffLenSq_1 * scvf.shape(k) * jump_shape[k];
+                        sumSlipVel_1 = -1.0 * vViscoPerDiffLenSq_1 * scvf.shape(k) * jump_shape[k];
                     if (jump_shape[k]<0.0)
-                        sumSlipVel_2 = vViscoPerDiffLenSq_2 * scvf.shape(k) * jump_shape[k];*/
+                        sumSlipVel_2 = -1.0 * vViscoPerDiffLenSq_2 * scvf.shape(k) * jump_shape[k];*/
                     
                     rhs1 += sumSlipVel_1 * SlipVel[k][d];
                     rhs2 += sumSlipVel_2 * SlipVel[k][d];
