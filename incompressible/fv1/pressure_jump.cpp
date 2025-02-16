@@ -113,6 +113,21 @@ update(const FV1Geometry<TElem, dim>* geo,
 //    size of the system
     static const size_t N = numSh;
     
+    for(size_t ip = 0; ip < N; ++ip)
+    {
+        
+        pressure_jump(ip) = 0.0;
+        for(size_t k = 0; k < numSh; ++k)
+        {
+            pressure_shape_p(ip, k) = 0.0 ;
+            for(size_t d1 =0; d1 < dim; ++d1)
+                pressure_shape_vel(ip, d1, k) = 0.0;
+
+        }
+        
+        
+    }
+    
     
     /////////////////////////////////////////////////////////////////////////////
     // Calculation X_interface
@@ -121,7 +136,6 @@ update(const FV1Geometry<TElem, dim>* geo,
     MathVector<dim> x_interface[numSh];
     number interN[numSh];
     size_t NumSCVF = geo->num_scvf();
-
     
     number theta_to, theta_from, c_to, c_from, DC;
     number rho;
@@ -271,7 +285,8 @@ update(const FV1Geometry<TElem, dim>* geo,
         /*for(size_t ip2 = 0; ip2 < N; ++ip2)
         {
             const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip2);
-            mat(ip, ip2) -= VecProd(scv.global_grad(ip2),x_interface[ip]) ;
+            if((jump_shape[ip]>0 && jump_shape[ip2] <0.0) || (jump_shape[ip]<0 && jump_shape[ip2] >0.0))
+            mat(ip, ip2) += -jump_shape[ip2]*(rho_l-rho_g)*VecProd(scv.global_grad(ip2),x_interface[ip])/rho ;
             
         }*/
         
@@ -299,7 +314,8 @@ update(const FV1Geometry<TElem, dim>* geo,
     DenseVector< FixedArray1<number, N> > SumInv;
     SumInv2 = 1.0;
 
-    
+    DenseVector< FixedArray1<number, N> > rhs;
+    rhs = 0.0;
     DenseVector< FixedArray1<number, N> > P_jump;
     P_jump = 0.0;
     MatMult(SumInv, 1.0, inv, SumInv2);    //// Remember to change this vartiable to sum the contribution of all ips in the actual one
@@ -329,12 +345,12 @@ update(const FV1Geometry<TElem, dim>* geo,
             
             
             
-            number sumP = 0.0; //VecProd(x_interface[ip],scv.global_grad(k)) * SumInv2[ip];
+            number sumP = 0.0;//VecProd(x_interface[ip],scv.global_grad(k)) * (rho_l-rho_g)  / rho;
             
             pressure_shape_p(ip, k) = sumP ;
 
             
-            P_jump[ip] += sumP * vCornerValue(_P_, k);
+            rhs[ip] += sumP * vCornerValue(_P_, k);
             
             
             
@@ -360,7 +376,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     for(size_t ip = 0; ip < N; ++ip)
     {
-        //pressure_jump(ip) = rhs[ip];
+        pressure_jump(ip) = P_jump[ip];
         if (false)
         {
             //const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);

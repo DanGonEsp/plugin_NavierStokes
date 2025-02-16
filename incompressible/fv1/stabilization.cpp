@@ -944,6 +944,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 
     //    cache values
     number vViscoPerDiffLenSq[numIp];
+    number RHO[numIp];
     bool interface_change[numIp];
     
     number vNormStdVelPerConvLen[numIp];
@@ -957,22 +958,32 @@ update(const FV1Geometry<TElem, dim>* geo,
             if(jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0)
             {
                 interface_change[ip] = true;
-                vViscoPerDiffLenSq[ip] = (mu_2/rho_2) * diff_length_sq_inv(ip);
             }
                 
             else
             {
                 interface_change[ip] = false;
-                if (jump_shape[scvf.from()]>0 )
-                    vViscoPerDiffLenSq[ip] = (mu_2/rho_2) * diff_length_sq_inv(ip);
-                else
-                    vViscoPerDiffLenSq[ip] = (mu_1/rho_1) * diff_length_sq_inv(ip);
+
+            }
+            
+            if(phase_2[ip])
+            {
+                vViscoPerDiffLenSq[ip] = (mu_2/rho_2) * diff_length_sq_inv(ip);
+                RHO[ip]=rho_2;
+            }
+            else
+            {
+                vViscoPerDiffLenSq[ip] = (mu_1/rho_1) * diff_length_sq_inv(ip);
+                RHO[ip]=rho_1;
             }
 
             
         }
         else
+        {
             vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
+            RHO[ip]=density[ip];
+        }
         
         if(!bStokes)
         {
@@ -1000,7 +1011,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         //    get SubControlVolumeFace
         const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
         
-        if (!multiphase || (multiphase && !interface_change[ip]))
+        if (true)
         {
 
             
@@ -1039,7 +1050,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 //    Source
                 number rhs = 0.0;
                 if(pSource != NULL)
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                    rhs = (  ( RHO[ip]-density_ref) / RHO[ip]) * (*pSource)[ip][d];
                 
                 //    Time
                 if(pvCornerValueOldTime != NULL)
@@ -1078,20 +1089,18 @@ update(const FV1Geometry<TElem, dim>* geo,
                     number sumP = 0.0;
                     if(multiphase)
                     {
-                        if (jump_shape[scvf.from()]>0)
+                        if( (interface_change[ip]))
                         {
-                            sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d]  / rho_2;
-                            //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_2;
-                            //sumP += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_2;
+                            sumP = -1.0 * alpha3 * (scvf.global_grad(k))[d]  / RHO[ip];
                             
                         }
                         else
                         {
-                            sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d]  / rho_1;
-                            //sumP = -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_1;
-                            //sumP = -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_1;
+                            sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d]  / RHO[ip];
                         }
-
+                        
+                        //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_2;
+                        //sumP += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_2;
                         
                     }
                     else
@@ -1119,28 +1128,36 @@ update(const FV1Geometry<TElem, dim>* geo,
                         
                         
 
-                        if ((jump_shape[scvf.from()]>0) && jump_shape[k]<0.0 )
+                        if ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )
+                            
                         {
-                            //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
+                            
+                            if( interface_change[ip])
+                            {
+                                
+                                //sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
+                                
+                            }
+                            else
+                            {
+                                
+                                //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
+                            }
+
                             //sumPJump +=  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
                             //sumPJump +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_1;
                         }
-                        else if ((jump_shape[scvf.from()]<0) && jump_shape[k]>0.0)
-                        {
-                            //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
-                            //sumPJump +=  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
-                            //sumPJump +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / rho_1;
-                        }
+
                             
                         
                         //    Add to rhs
                         rhs += sumPJump *(pressure_jump[k]);
                         
                 
-                        /*if ((jump_shape[scvf.from()]>0 && jump_shape[k]<0.0) || (jump_shape[scvf.from()]<0 && jump_shape[k]>0.0))
-                            sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
+                        if ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )
+                            //sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
                         
-                        rhs += sumSlipVel * SlipVel[k][d];*/
+                        rhs += sumSlipVel * SlipVel[k][d];
             
                     }
 
@@ -1158,6 +1175,101 @@ update(const FV1Geometry<TElem, dim>* geo,
                 stab_vel(ip)[d] = rhs / diag;
                 
             }
+            if(false)//multiphase && (interface_change[ip]))
+            {
+
+                
+                
+                
+                MathVector<dim> DX = normal[0];
+                number Factor1 = 1.0;//Magnitud;//Vec2/Vec1;
+
+                
+                VecScale(stab_vel(ip)  ,  DX,  Factor1 * VecProd(DX,stab_vel(ip)));
+
+                
+                for(size_t k = 0; k < scvf.num_sh(); ++k)
+                {
+                    
+                    
+                    number ValueV = 0.0;
+                    number ValueP = 0.0;
+                    number ValueJumpP = 0.0;
+                    number ValueSlipV = 0.0;
+                    
+                    number ValueV_2 = 0.0;
+                    number ValueP_2 = 0.0;
+                    number ValueJumpP_2 = 0.0;
+                    number ValueSlipV_2 = 0.0;
+                    
+                    for(int d1 = 0; d1 < dim; d1++)
+                    {
+                        
+                        ValueP += stab_shape_p(ip, d1, k) * DX[d1];
+                        ValueJumpP += stab_shape_p_jump(ip, d1, k) * DX[d1];
+                        
+                        
+                        //ValueP_2 += stab_shape_p_2(ip, d1, k) * DX[d1];
+                        //ValueJumpP_2 += stab_shape_p_jump_2(ip, d1, k) * DX[d1];
+                        
+                        ValueV = 0.0;
+                        ValueSlipV = 0.0;
+                        
+                        ValueV_2 = 0.0;
+                        ValueSlipV_2 = 0.0;
+                        
+                        for(int d2 = 0; d2 < dim; d2++)
+                        {
+                            ValueV       += stab_shape_vel(ip, d2, d1, k)      * DX[d2];
+                            ValueSlipV   += stab_shape_slip_vel(ip, d2, d1, k) * DX[d2];
+                            //ValueV_2     += stab_shape_vel(ip, d2, d1, k)      * DX[d2];
+                            //ValueSlipV_2 += stab_shape_slip_vel(ip, d2, d1, k) * DX[d2];
+                            
+                        }
+                        for(int d2 = 0; d2 < dim; d2++)
+                        {
+                            
+                            stab_shape_vel(ip, d2, d1, k) = Factor1 * ValueV * DX[d2];
+                            stab_shape_slip_vel(ip, d2, d1, k) = Factor1 * ValueSlipV * DX[d2];
+                            
+                            //stab_shape_vel_2(ip, d2, d1, k) =  Factor2 * ValueV_2 * DX[d2];
+                            //stab_shape_slip_vel_2(ip, d2, d1, k) = Factor2 * ValueSlipV_2 * DX[d2];
+                            
+                            //stab_shape_vel(ip, d2, d1, k) = Factor1 * stab_shape_vel(ip, d2, d1, k);
+                            //stab_shape_slip_vel(ip, d2, d1, k) = Factor1 * stab_shape_slip_vel(ip, d2, d1, k);
+                            
+                            //stab_shape_vel_2(ip, d2, d1, k) =  Factor2 * stab_shape_vel_2(ip, d2, d1, k);
+                            //stab_shape_slip_vel_2(ip, d2, d1, k) = Factor2 * stab_shape_slip_vel_2(ip, d2, d1, k);
+                            
+
+                            
+                        }
+                        
+                    }
+                    
+                    for(int d1 = 0; d1 < dim; d1++)
+                    {
+
+                        stab_shape_p(ip, d1, k) = Factor1 * ValueP * DX[d1];
+                        stab_shape_p_jump(ip, d1, k) =  Factor1 * ValueJumpP * DX[d1];
+                        
+                        //stab_shape_p_2(ip, d1, k) = Factor2 * ValueP_2 * DX[d1];
+                        //stab_shape_p_jump_2(ip, d1, k) = Factor2 * ValueJumpP_2 * DX[d1];
+                        
+                        //stab_shape_p(ip, d1, k) = Factor1 * stab_shape_p(ip, d1, k);
+                        //stab_shape_p_jump(ip, d1, k) =  Factor1 * stab_shape_p_jump(ip, d1, k);
+                        
+                        //stab_shape_p_2(ip, d1, k) = Factor2 * stab_shape_p_2(ip, d1, k);
+                        //stab_shape_p_jump_2(ip, d1, k) = Factor2 * stab_shape_p_jump_2(ip, d1, k);
+                        
+                    }
+
+                    
+                }
+                
+                
+            }
+            
         }
         else
         {
@@ -1318,7 +1430,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     //    Add to rhs
                     rhs1 += sumPJump_1 * (pressure_jump[k]);
                     rhs2 += sumPJump_2 * (pressure_jump[k]);
-                    
+                    //printf("Pressure jumpe = %f\n",pressure_jump[k]);
                     /*if ( jump_shape[k]<0)
                         sumPJump_2 = 0.0;
                     else

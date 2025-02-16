@@ -1741,9 +1741,9 @@ PropertiesJump(const TFVGeom& geo,
             if(JumpShape[scvf.to()]*JumpShape[scvf.from()]<0.0)
             {
                 if (Fluid2)
-                    Phase2[ip]=true;
+                    Phase2[ip]=false;
                 else
-                    Phase2[ip]=true;
+                    Phase2[ip]=false;
                 
             }
             else
