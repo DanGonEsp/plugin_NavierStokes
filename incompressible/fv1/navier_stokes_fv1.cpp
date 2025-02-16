@@ -848,7 +848,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 ////////////////////////////////////////////////////
                 // Pressure Term (Momentum Equation)
                 ////////////////////////////////////////////////////
-                /*
+                
                 if(m_imJumpShape[sh]>0.0)
                     deriv_pressure_g = -scvf.shape(sh) * m_imJumpShape[sh];
                 else
@@ -876,7 +876,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                         }
                     }
 
-                }*/
+                }
 
                 ////////////////////////////////////////////////////
                 ////////////////////////////////////////////////////
@@ -1418,7 +1418,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             ////////////////////////////////////////////////////
             
         //    1. Interpolate pressure at ip
-            /*number pressure_g = 0.0;
+            number pressure_g = 0.0;
             number pressure_l = 0.0;
             for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
             {
@@ -1441,7 +1441,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                 else
                     d(d1, to) -= pressure_l * scvf.normal()[d1];
 
-            }*/
+            }
             
             
             ////////////////////////////////////////////////////

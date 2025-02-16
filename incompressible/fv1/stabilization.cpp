@@ -1135,13 +1135,13 @@ update(const FV1Geometry<TElem, dim>* geo,
                             if( interface_change[ip])
                             {
                                 
-                                //sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
+                                sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
                                 
                             }
                             else
                             {
                                 
-                                //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
+                                sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
                             }
 
                             //sumPJump +=  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
