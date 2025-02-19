@@ -904,9 +904,9 @@ update(const FV1Geometry<TElem, dim>* geo,
     number visc1 = -10000000, visc2 = -10000000;
     number rho1 = -10000000, rho2 = -10000000;
     
-    number alpha1 = 1.0;
-    number alpha2 = 1.0;
-    number alpha3 = 1.0;
+    number alpha1 = ((!multiphase && jump_shape[0]>0))? 10.0 : 10.0;
+    number alpha2 = ((!multiphase && jump_shape[0]>0))? 10.0 : 10.0;
+    number alpha3 = 10.0;
     
     //number fase1 = 0.0;
     
@@ -1092,11 +1092,14 @@ update(const FV1Geometry<TElem, dim>* geo,
                         if( (interface_change[ip]))
                         {
                             sumP = -1.0 * alpha3 * (scvf.global_grad(k))[d]  / RHO[ip];
+                            //sumP += -1.0 * alpha3 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
+                            //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / RHO[ip];
                             
                         }
                         else
                         {
                             sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d]  / RHO[ip];
+                            //sumP += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                         }
                         
                         //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / rho_2;
@@ -1136,12 +1139,15 @@ update(const FV1Geometry<TElem, dim>* geo,
                             {
                                 
                                 sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
+                                //sumPJump +=  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / RHO[ip];
+                                //sumPJump +=  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                                 
                             }
                             else
                             {
                                 
                                 sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
+                                //sumPJump +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                             }
 
                             //sumPJump +=  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
@@ -1154,8 +1160,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                         rhs += sumPJump *(pressure_jump[k]);
                         
                 
-                        if ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )
-                            //sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
+                        if (  ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )   )
+                            sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
                         
                         rhs += sumSlipVel * SlipVel[k][d];
             

@@ -34,7 +34,7 @@
 #include <locale>
 
 #include "pressure_jump.h"
-
+#include "diffusion_length.h"
 #include "common/math/math_vector_matrix/math_vector_functions.h"
 #include "common/math/math_vector_matrix/math_matrix_functions.h"
 #include "lib_disc/spatial_disc/disc_util/geom_provider.h"
@@ -77,7 +77,40 @@ register_update_func(TAssFunc func)
 //    set pointer
     m_vUpdateFunc[id] = (UpdateFunc)func;
 }
+/////////////////////////////////////////////////////////////////////////////
+// Common functions for the Schneider-Raw-type Stabilizations
+/////////////////////////////////////////////////////////////////////////////
 
+template <int dim>
+void
+INavierStokesPressureJump<dim>::
+set_diffusion_length(std::string diffLength)
+{
+    std::string n = TrimString(diffLength);
+    std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+    
+    if      (n == "raw")        m_diffLengthType = RAW;
+    else if (n == "fivepoint")  m_diffLengthType = FIVEPOINT;
+    else if (n == "cor")        m_diffLengthType = COR;
+    else
+        UG_THROW("Diffusion Length calculation method not found."
+                 " Use one of [Raw, Fivepoint, Cor].");
+}
+template <int dim>
+template <typename TFVGeom>
+void
+INavierStokesPressureJump<dim>::
+compute_diff_length(const TFVGeom& geo)
+{
+    //     Compute Diffusion Length in corresponding IPs
+    switch(m_diffLengthType)
+    {
+        case FIVEPOINT: NSDiffLengthFivePoint(m_vDiffLengthSqInv, geo); return;
+        case RAW:       NSDiffLengthRaw(m_vDiffLengthSqInv, geo); return;
+        case COR:       NSDiffLengthCor(m_vDiffLengthSqInv, geo); return;
+        default: UG_THROW(" Diffusion Length type not found.");
+    }
+}
 
 
 
@@ -91,12 +124,17 @@ void
 NavierStokesViscousPressureJump<TDim>::
 update(const FV1Geometry<TElem, dim>* geo,
        const LocalVector& vCornerValue,
+       const MathVector<dim> vStdVel[],
+       const bool bStokes,
        const DataImport<MathVector<dim>, dim>& n,
        const DataImport<number, dim>& kinViscoSCV,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& densitySCV,
        const DataImport<number, dim>& jump_shape,
        const DataImport<number, dim>& vol_fraction,
+       const DataImport<MathVector<dim>, dim>* pSource,
+       const LocalVector* pvCornerValueOldTime, number dt,
+       const number density_ref,
        const number mu_l,
        const number rho_l,
        const number mu_g,
@@ -106,12 +144,24 @@ update(const FV1Geometry<TElem, dim>* geo,
     
 //     Only first order implemented
     UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
+    
+    if( non_zero_shape_ip())
+    {
+        UG_THROW("Not implemented for ip velocities depending on other ip.");
+    }
 //    abbreviation for pressure
     static const size_t _P_ = dim;
 
     static const size_t numSh = FV1Geometry<TElem, dim>::numSCV;
 //    size of the system
     static const size_t N = numSh;
+    
+    //    compute upwind (no convective terms for the Stokes eq. => no upwind)
+    if (! bStokes) this->compute_upwind(geo, vStdVel);
+    
+    //    compute diffusion length
+    this->compute_diff_length(*geo);
+    
     
     for(size_t ip = 0; ip < N; ++ip)
     {
@@ -139,6 +189,11 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     number theta_to, theta_from, c_to, c_from, DC;
     number rho;
+    
+    
+    number Inv_DiffLenSq = 0.0;
+    number vNormStdVelPerConvLen = 0.0;
+    number count_interface=0;
 
     for(size_t ip = 0; ip < N; ++ip)
     {
@@ -155,7 +210,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         
         if (jump_shape[from]*jump_shape[to] < 0.0)
         {
-
+            diff_length_sq_inv(ip);
             c_from = vol_fraction[from];
             c_to = vol_fraction[to];
 
@@ -171,6 +226,20 @@ update(const FV1Geometry<TElem, dim>* geo,
             
             interN[from] += 1.0;
             interN[to] += 1.0;
+            
+            
+            
+            Inv_DiffLenSq += diff_length_sq_inv(ip);
+            count_interface += 1.0;
+            
+            
+            if(!bStokes)
+            {
+                const number norm = VecTwoNorm(vStdVel[ip]);
+                vNormStdVelPerConvLen += norm / upwind_conv_length(ip);
+                //vNormStdVelPerDownLen[ip] = norm / (downwind_conv_length(ip) + upwind_conv_length(ip));
+                
+            }
         }
     }
     for(size_t ip = 0; ip < N; ++ip)
@@ -178,7 +247,24 @@ update(const FV1Geometry<TElem, dim>* geo,
         VecScale(x_interface[ip], x_interface[ip], 1.0 / interN[ip]  );
 
     }
+    Inv_DiffLenSq *= 1.0/count_interface;
     
+    if(!bStokes)
+        vNormStdVelPerConvLen *= 1.0/count_interface;
+    
+    number diag2 = Inv_DiffLenSq * mu_l;
+    number diag1 = Inv_DiffLenSq * mu_g;
+    
+    /*if(pvCornerValueOldTime != NULL)
+    {
+        diag2 += 1.0/dt;
+        diag1 += 1.0/dt;
+    }
+    if(!bStokes)
+    {
+        diag2 += vNormStdVelPerConvLen;
+        diag1 += vNormStdVelPerConvLen;
+    }*/
     
     /////////////////////////////////////////////////////////////////////////////
     // SlipVelocity
@@ -282,13 +368,15 @@ update(const FV1Geometry<TElem, dim>* geo,
         
         mat(ip, ip) += 1.0;
         
-        /*for(size_t ip2 = 0; ip2 < N; ++ip2)
+        for(size_t ip2 = 0; ip2 < N; ++ip2)
         {
             const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip2);
-            if((jump_shape[ip]>0 && jump_shape[ip2] <0.0) || (jump_shape[ip]<0 && jump_shape[ip2] >0.0))
-            mat(ip, ip2) += -jump_shape[ip2]*(rho_l-rho_g)*VecProd(scv.global_grad(ip2),x_interface[ip])/rho ;
+            const number Ng = (jump_shape[ip]>0 && jump_shape[ip2] <0.0)? 1.0 : 0.0;
+            const number Nl = (jump_shape[ip]<0 && jump_shape[ip2] >0.0)? 1.0 : 0.0;
+
+            mat(ip, ip2) += -VecProd(scv.global_grad(ip2),x_interface[ip])*(Ng*mu_l/rho_l+Nl*mu_g/rho_g)/(mu_l/rho_l+mu_g/rho_g) ;
             
-        }*/
+        }
         
     }
     /*printf("----------------------------------------------------------- Velocity grad[]\n");
@@ -344,13 +432,16 @@ update(const FV1Geometry<TElem, dim>* geo,
             }
             
             
-            
-            number sumP = 0.0;//VecProd(x_interface[ip],scv.global_grad(k)) * (rho_l-rho_g)  / rho;
+            number sumP = 0.0;
+            for(size_t ip2 = 0; ip2 < N; ++ip2)
+            {
+                sumP += mat(ip, ip2) * VecProd(x_interface[ip2],scv.global_grad(k)) * (mu_l/rho_l-mu_g/rho_g)  /(mu_l/rho_l+mu_g/rho_g) ;
+            }
             
             pressure_shape_p(ip, k) = sumP ;
 
             
-            rhs[ip] += sumP * vCornerValue(_P_, k);
+            P_jump[ip] += sumP * vCornerValue(_P_, k);
             
             
             

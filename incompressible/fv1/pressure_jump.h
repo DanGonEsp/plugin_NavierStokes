@@ -40,7 +40,7 @@
 #include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
 #include "lib_disc/spatial_disc/user_data/data_import.h"
 #include "lib_disc/spatial_disc/disc_util/geom_provider.h"
-
+#include "../../upwind_interface.h"
 
 namespace ug{
 namespace NavierStokes{
@@ -51,6 +51,13 @@ class INavierStokesPressureJump
     protected:
     ///    used traits
         typedef fv1_dim_traits<dim, dim> traits;
+
+        enum DiffusionLength
+        {
+            RAW = 0,
+            FIVEPOINT,
+            COR
+        };
 
     public:
     ///    number of SubControlVolumes
@@ -69,10 +76,28 @@ class INavierStokesPressureJump
     public:
     ///    constructor
         INavierStokesPressureJump()
-        :    m_numScv(0), m_numSh(0)
+        :    m_numScv(0), m_numSh(0), m_spUpwind(NULL)
         {
             m_vUpdateFunc.clear();
+            //    default setup
+            set_diffusion_length("RAW");
         }
+    
+    ///    sets the type of diff length used for evaluation
+        void set_diffusion_length(std::string diffLength);
+    
+    ///    sets the upwind method
+        void set_upwind(SmartPtr<INavierStokesUpwind<dim> > spUpwind)
+        {
+            m_spUpwind = spUpwind;
+            m_spConstUpwind = spUpwind;
+        }
+
+    ///    returns the upwind
+        const ConstSmartPtr<INavierStokesUpwind<dim> >& upwind() const {return m_spConstUpwind;}
+        
+    /// returns if the upwind pointer is valid
+        bool upwind_valid() const {return m_spConstUpwind.valid();}
 
     ///    set the FV1 Geometry type to use for next updates
         template <typename TFVGeom>
@@ -90,8 +115,32 @@ class INavierStokesPressureJump
             TFVGeom& geo = GeomProvider<TFVGeom>::get();
             m_numScv = geo.num_scv();
             m_numSh = geo.num_sh();
+            if(m_spUpwind.valid()) m_spUpwind->template set_geometry_type<TFVGeom>();
 
         }
+    /////////////////////////////////////////
+    // interface to the upwind
+    /////////////////////////////////////////
+    
+    protected:
+    
+    ///    computes the upwind shapes
+        template <typename TFVGeom>
+        void compute_upwind(const TFVGeom& geo,
+                            const MathVector<dim> vStdVel[])
+        {
+            UG_NSSTAB_ASSERT(m_spUpwind.valid(), "No upwind object");
+            m_spUpwind->update_upwind(geo, vStdVel);
+        };
+
+    ///    computes the downwind shapes
+        template <typename TFVGeom>
+        void compute_downwind(const TFVGeom& geo,
+                              const MathVector<dim> vStdVel[])
+        {
+            UG_NSSTAB_ASSERT(m_spUpwind.valid(), "No upwind object");
+            m_spUpwind->update_downwind(geo, vStdVel);
+        };
     
         
     /////////////////////////////////////////
@@ -154,18 +203,23 @@ class INavierStokesPressureJump
     ///    compute values for new geometry and corner velocities
         void update(const FVGeometryBase* geo,
                     const LocalVector& vCornerValue,
+                    const MathVector<dim> vStdVel[],
+                    const bool bStokes,
                     const DataImport<MathVector<dim>, dim>& n,
                     const DataImport<number, dim>& kinViscoSCV,
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
                     const DataImport<number, dim>& JumpShape,
                     const DataImport<number, dim>& vol_fraction,
+                    const DataImport<MathVector<dim>, dim>* pSource,
+                    const LocalVector* pvCornerValueOldTime, number dt,
+                    const number density_ref,
                     const number mu_l,
                     const number rho_l,
                     const number mu_g,
                     const number rho_g,
                     const number interface_value)
-    {(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, n, kinViscoSCV, density, densitySCV, JumpShape, vol_fraction, mu_l, rho_l, mu_g, rho_g, interface_value);}
+    {(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel, bStokes,n, kinViscoSCV, density, densitySCV, JumpShape, vol_fraction, pSource, pvCornerValueOldTime, dt, density_ref, mu_l, rho_l, mu_g, rho_g, interface_value);}
 
 
     /////////////////////////////////////////
@@ -217,6 +271,69 @@ class INavierStokesPressureJump
             UG_NSSTAB_ASSERT(sh2 < m_numSh, "Invalid index.");
             return m_vvvvTangVelShapeVel[sh1][compOut][compIn][sh2];
         }
+    ///    diff length
+        number diff_length_sq_inv(size_t scvf) const
+        {
+            UG_NSSTAB_ASSERT(scvf < this_type::num_ip(), "Invalid index.");
+            return m_vDiffLengthSqInv[scvf];
+        }
+    
+    /////////////////////////////////////////
+    // forward methods of Upwind Velocity
+    /////////////////////////////////////////
+
+    ///    Convection Length
+        number upwind_conv_length(size_t scvf) const
+        {
+            UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+            return this_type::upwind()->upwind_conv_length(scvf);
+        }
+
+    ///    Convection Length
+        number downwind_conv_length(size_t scvf) const
+        {
+            UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+            return this_type::upwind()->downwind_conv_length(scvf);
+        }
+
+    ///    upwind shape for corner vel
+        number upwind_shape_sh(size_t scvf, size_t sh) const
+        {
+            UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+            return this_type::upwind()->upwind_shape_sh(scvf, sh);
+        }
+
+    ///    upwind shape for corner vel
+        number downwind_shape_sh(size_t scvf, size_t sh) const
+        {
+            UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+            return this_type::upwind()->downwind_shape_sh(scvf, sh);
+        }
+
+    ///    returns if upwind shape w.r.t. ip vel is non-zero
+        bool non_zero_shape_ip() const
+        {
+            UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+            return this_type::upwind()->non_zero_shape_ip();
+        }
+
+    ///    upwind shapes for ip vel
+        number upwind_shape_ip(size_t scvf, size_t scvf2) const
+        {
+            UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+            return this_type::upwind()->upwind_shape_ip(scvf, scvf2);
+        }
+
+    ///    upwind shapes for ip vel
+        number downwind_shape_ip(size_t scvf, size_t scvf2) const
+        {
+            UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+            return this_type::upwind()->downwind_shape_ip(scvf, scvf2);
+        }
+    
+    ///    computes the diffusion length
+        template <typename TFVGeom>
+        void compute_diff_length(const TFVGeom& geo);
 
     /////////////////////////////////////////
     // the data
@@ -243,6 +360,12 @@ class INavierStokesPressureJump
 
     ///    velocity jump shapes w.r.t vel
         number m_vvvvTangVelShapeVel[maxNumSH][dim][dim][maxNumSH];
+    
+    ///    type of diffusion length computation
+        DiffusionLength m_diffLengthType;
+
+    ///    vector holding diffusion Length squared and inverted
+        number m_vDiffLengthSqInv[this_type::maxNumSCVF];
 
 
     
@@ -254,25 +377,35 @@ class INavierStokesPressureJump
     ///    id of current geometry type
         int m_id;
     
+    ///    Upwind object (if set)
+        SmartPtr<INavierStokesUpwind<dim> > m_spUpwind;
+    ///    Upwind object (if set), the same as m_spUpwind, but as a const
+        ConstSmartPtr<INavierStokesUpwind<dim> > m_spConstUpwind;
+    
     //////////////////////////
     // registering mechanism
     //////////////////////////
 
     protected:
     ///    type of update function
-        typedef void (this_type::*UpdateFunc)(    const FVGeometryBase* geo,
-                                                const LocalVector& vCornerValue,
-                                                const DataImport<MathVector<dim>, dim>& n,
-                                                const DataImport<number, dim>& kinViscoSCV,
-                                                const DataImport<number, dim>& density,
-                                                const DataImport<number, dim>& densitySCV,
-                                                const DataImport<number, dim>& JumpShape,
-                                                const DataImport<number, dim>& vol_fraction,
-                                                const number mu_l,
-                                                const number rho_l,
-                                                const number mu_g,
-                                                const number rho_g,
-                                                const number interface_value);
+        typedef void (this_type::*UpdateFunc)(const FVGeometryBase* geo,
+                                              const LocalVector& vCornerValue,
+                                              const MathVector<dim> vStdVel[],
+                                              const bool bStokes,
+                                              const DataImport<MathVector<dim>, dim>& n,
+                                              const DataImport<number, dim>& kinViscoSCV,
+                                              const DataImport<number, dim>& density,
+                                              const DataImport<number, dim>& densitySCV,
+                                              const DataImport<number, dim>& JumpShape,
+                                              const DataImport<number, dim>& vol_fraction,
+                                              const DataImport<MathVector<dim>, dim>* pSource,
+                                              const LocalVector* pvCornerValueOldTime, number dt,
+                                              const number density_ref,
+                                              const number mu_l,
+                                              const number rho_l,
+                                              const number mu_g,
+                                              const number rho_g,
+                                              const number interface_value);
 
     public:
     ///    register a update function for a Geometry
@@ -319,6 +452,20 @@ class NavierStokesViscousPressureJump
     
         using base_type::tang_vel_shape_vel;
         using base_type::tang_vel;
+    
+    
+        using base_type::diff_length_sq_inv;
+    
+    //    functions from upwind
+        using base_type::upwind_conv_length;
+        using base_type::downwind_conv_length;
+        using base_type::upwind_shape_sh;
+        using base_type::downwind_shape_sh;
+        using base_type::non_zero_shape_ip;
+        using base_type::upwind_shape_ip;
+        using base_type::downwind_shape_ip;
+    
+
         
 
 
@@ -340,12 +487,17 @@ class NavierStokesViscousPressureJump
         template <typename TElem>
         void update(const FV1Geometry<TElem, dim>* geo,
                     const LocalVector& vCornerValue,
+                    const MathVector<dim> vStdVel[],
+                    const bool bStokes,
                     const DataImport<MathVector<dim>, dim>& n,
                     const DataImport<number, dim>& kinViscoSCV,
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
                     const DataImport<number, dim>& JumpShape,
                     const DataImport<number, dim>& vol_fraction,
+                    const DataImport<MathVector<dim>, dim>* pSource,
+                    const LocalVector* pvCornerValueOldTime, number dt,
+                    const number density_ref,
                     const number mu_l,
                     const number rho_l,
                     const number mu_g,
@@ -363,12 +515,17 @@ class NavierStokesViscousPressureJump
             typedef FV1Geometry<TElem, dim> TGeom;
             typedef void (this_type::*TFunc)(const TGeom* geo,
                                              const LocalVector& vCornerValue,
+                                             const MathVector<dim> vStdVel[],
+                                             const bool bStokes,
                                              const DataImport<MathVector<dim>, dim>& n,
                                              const DataImport<number, dim>& kinViscoSCV,
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& densitySCV,
                                              const DataImport<number, dim>& JumpShape,
                                              const DataImport<number, dim>& vol_fraction,
+                                             const DataImport<MathVector<dim>, dim>* pSource,
+                                             const LocalVector* pvCornerValueOldTime, number dt,
+                                             const number density_ref,
                                              const number mu_l,
                                              const number rho_l,
                                              const number mu_g,

@@ -183,7 +183,7 @@ class NavierStokesFV1
         void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
         void set_pressure_jump(SmartPtr<CplUserData<number, dim> > user);
         void set_vol_fraction(SmartPtr<CplUserData<number, dim> > user);
-        void set_jump_shape(SmartPtr<CplUserData<number, dim> > user);
+        void set_jump_shape(SmartPtr<CplUserData<number, dim> > user, const std::string& diffLength);
         void set_source_surface(SmartPtr<CplUserData<number, dim> > user);
         void set_interface_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
 	/// returns scvf source
