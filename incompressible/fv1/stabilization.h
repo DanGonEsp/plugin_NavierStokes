@@ -203,50 +203,6 @@ class INavierStokesFV1Stabilization
             return m_vvvvStabShapeSlipVel[scvf][compOut][compIn][sh];
         }
     
-    // Second Vel
-    /// stabilized velocity
-        const MathVector<dim>& stab_vel_2(size_t scvf) const
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            return m_vStabVel_2[scvf];
-        }
-
-    /// computed stab shape for velocity. This is: The stab_vel derivative
-    /// w.r.t velocity unknowns in the corner for each component
-        number stab_shape_vel_2(size_t scvf, size_t compOut, size_t compIn, size_t sh) const
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvvStabShapeVel_2[scvf][compOut][compIn][sh];
-        }
-
-    ///    computed stab shape for pressure.
-        number stab_shape_p_2(size_t scvf, size_t compOut, size_t sh) const
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvStabShapePressure_2[scvf][compOut][sh];
-        }
-    ///    computed stab shape for pressure.
-        number stab_shape_p_jump_2(size_t scvf, size_t compOut, size_t sh) const
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvStabShapePressureJump_2[scvf][compOut][sh];
-        }
-        number stab_shape_slip_vel_2(size_t scvf, size_t compOut, size_t compIn, size_t sh) const
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvvStabShapeSlipVel_2[scvf][compOut][compIn][sh];
-        }
-    
 
 
 	///	compute values for new geometry and corner velocities
@@ -323,51 +279,7 @@ class INavierStokesFV1Stabilization
             UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
             return m_vvvvStabShapeSlipVel[scvf][compOut][compIn][sh];
         }
-    
-    
-    /// stabilized velocity For second phase
-        MathVector<dim>& stab_vel_2(size_t scvf)
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            return m_vStabVel_2[scvf];
-        }
 
-
-    /// computed stab shape for velocity. This is: The stab_vel derivative
-    /// w.r.t velocity unknowns in the corner for each component
-        number& stab_shape_vel_2(size_t scvf, size_t compOut, size_t compIn, size_t sh)
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvvStabShapeVel_2[scvf][compOut][compIn][sh];
-        }
-
-    ///    computed stab shape for pressure.
-        number& stab_shape_p_2(size_t scvf, size_t compOut, size_t sh)
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvStabShapePressure_2[scvf][compOut][sh];
-        }
-    ///    computed stab shape for pressure jump.
-        number& stab_shape_p_jump_2(size_t scvf, size_t compOut, size_t sh)
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvStabShapePressureJump_2[scvf][compOut][sh];
-        }
-        number& stab_shape_slip_vel_2(size_t scvf, size_t compOut, size_t compIn, size_t sh)
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvvStabShapeSlipVel_2[scvf][compOut][compIn][sh];
-        }
 
 	/////////////////////////////////////////
 	// the data
@@ -399,22 +311,6 @@ class INavierStokesFV1Stabilization
     ///    stab shapes w.r.t Slip vel
         number m_vvvvStabShapeSlipVel[maxNumSCVF][dim][dim][maxNumSH];
     
-    //-------------------------------
-    
-    ///    values of stabilized velocity at ip
-        MathVector<dim> m_vStabVel_2[maxNumSCVF];
-
-    ///    stab shapes w.r.t vel
-        number m_vvvvStabShapeVel_2[maxNumSCVF][dim][dim][maxNumSH];
-
-    ///    stab shapes w.r.t pressure
-        number m_vvvStabShapePressure_2[maxNumSCVF][dim][maxNumSH];
-    
-    ///    stab shapes w.r.t pressure jump
-        number m_vvvStabShapePressureJump_2[maxNumSCVF][dim][maxNumSH];
-    
-    ///    stab shapes w.r.t Slip vel
-        number m_vvvvStabShapeSlipVel_2[maxNumSCVF][dim][dim][maxNumSH];
 
 	///	id of current geometry type
 		int m_id;
@@ -816,14 +712,6 @@ class NavierStokesFIELDS_2_Stabilization
     
         using base_type::stab_shape_p_jump;
         using base_type::stab_shape_slip_vel;
-    
-    
-        using base_type::stab_shape_vel_2;
-        using base_type::stab_shape_p_2;
-        using base_type::stab_vel_2;
-
-        using base_type::stab_shape_p_jump_2;
-        using base_type::stab_shape_slip_vel_2;
 
     //    functions from upwind
         using base_type::upwind_conv_length;

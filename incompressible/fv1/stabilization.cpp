@@ -877,13 +877,9 @@ update(const FV1Geometry<TElem, dim>* geo,
                 {
                     stab_shape_vel(ip, d2, d1, k) = 0.0;
                     stab_shape_slip_vel(ip, d2, d1, k) = 0.0;
-                    stab_shape_vel_2(ip, d2, d1, k) =  0.0;
-                    stab_shape_slip_vel_2(ip, d2, d1, k) =  0.0;
                 }
                 stab_shape_p(ip, d1, k) = 0.0;
                 stab_shape_p_jump(ip, d1, k) =  0.0;
-                stab_shape_p_2(ip, d1, k) = 0.0;
-                stab_shape_p_jump_2(ip, d1, k) = 0.0;
                 
             }
         }
@@ -904,9 +900,11 @@ update(const FV1Geometry<TElem, dim>* geo,
     number visc1 = -10000000, visc2 = -10000000;
     number rho1 = -10000000, rho2 = -10000000;
     
-    number alpha1 = ((!multiphase && jump_shape[0]>0))? 10.0 : 10.0;
-    number alpha2 = ((!multiphase && jump_shape[0]>0))? 10.0 : 10.0;
-    number alpha3 = 10.0;
+    number alpha1 = ((!multiphase && jump_shape[0]>0))? 20 : 2.0;
+    number alpha2 = ((!multiphase && jump_shape[0]>0))? 20 : 2.0;
+    number alpha3 = 20;
+    
+    //printf("Bug1 \n");
     
     //number fase1 = 0.0;
     
@@ -1024,20 +1022,20 @@ update(const FV1Geometry<TElem, dim>* geo,
             number diag = vViscoPerDiffLenSq[ip];
             
             //    Time part
-            if(pvCornerValueOldTime != NULL)
-                diag += 1./dt;
+            /*if(pvCornerValueOldTime != NULL)
+                diag += 1./dt;*/
             
             //    Convective Term  (no convective terms in the Stokes eq.)
             if (! bStokes)
                 diag += vNormStdVelPerConvLen[ip];
             
-            /*if( multiphase &&(jump_shape[scvf.from()] * jump_shape[scvf.to()]>0))
+            if( multiphase &&(jump_shape[scvf.from()] * jump_shape[scvf.to()]>0))
             {
                 if(jump_shape[scvf.to()]>0.0)
-                    diag *= 1.0/theta;
+                    diag *= 0.5/theta;
                 else
-                    diag *= 1.0 / (1.0-theta);
-            }*/
+                    diag *= 0.5 / (1.0-theta);
+            }
             
             //     Loop components of velocity
             for(int d = 0; d < dim; d++)
@@ -1053,7 +1051,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     rhs = (  ( RHO[ip]-density_ref) / RHO[ip]) * (*pSource)[ip][d];
                 
                 //    Time
-                if(pvCornerValueOldTime != NULL)
+                /*if(pvCornerValueOldTime != NULL)
                 {
                     //    interpolate old time step
                     number oldIPVel = 0.0;
@@ -1062,7 +1060,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     //    add to rhs
                     rhs += oldIPVel / dt;
-                }
+                }*/
                 
                 //    loop shape functions
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
@@ -1179,6 +1177,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Finally, the can invert this row
                 stab_vel(ip)[d] = rhs / diag;
+                //printf("Bug7 \n");
                 
             }
             if(false)//multiphase && (interface_change[ip]))
@@ -1203,10 +1202,6 @@ update(const FV1Geometry<TElem, dim>* geo,
                     number ValueJumpP = 0.0;
                     number ValueSlipV = 0.0;
                     
-                    number ValueV_2 = 0.0;
-                    number ValueP_2 = 0.0;
-                    number ValueJumpP_2 = 0.0;
-                    number ValueSlipV_2 = 0.0;
                     
                     for(int d1 = 0; d1 < dim; d1++)
                     {
@@ -1215,21 +1210,15 @@ update(const FV1Geometry<TElem, dim>* geo,
                         ValueJumpP += stab_shape_p_jump(ip, d1, k) * DX[d1];
                         
                         
-                        //ValueP_2 += stab_shape_p_2(ip, d1, k) * DX[d1];
-                        //ValueJumpP_2 += stab_shape_p_jump_2(ip, d1, k) * DX[d1];
                         
                         ValueV = 0.0;
                         ValueSlipV = 0.0;
                         
-                        ValueV_2 = 0.0;
-                        ValueSlipV_2 = 0.0;
                         
                         for(int d2 = 0; d2 < dim; d2++)
                         {
                             ValueV       += stab_shape_vel(ip, d2, d1, k)      * DX[d2];
                             ValueSlipV   += stab_shape_slip_vel(ip, d2, d1, k) * DX[d2];
-                            //ValueV_2     += stab_shape_vel(ip, d2, d1, k)      * DX[d2];
-                            //ValueSlipV_2 += stab_shape_slip_vel(ip, d2, d1, k) * DX[d2];
                             
                         }
                         for(int d2 = 0; d2 < dim; d2++)
@@ -1238,14 +1227,10 @@ update(const FV1Geometry<TElem, dim>* geo,
                             stab_shape_vel(ip, d2, d1, k) = Factor1 * ValueV * DX[d2];
                             stab_shape_slip_vel(ip, d2, d1, k) = Factor1 * ValueSlipV * DX[d2];
                             
-                            //stab_shape_vel_2(ip, d2, d1, k) =  Factor2 * ValueV_2 * DX[d2];
-                            //stab_shape_slip_vel_2(ip, d2, d1, k) = Factor2 * ValueSlipV_2 * DX[d2];
                             
                             //stab_shape_vel(ip, d2, d1, k) = Factor1 * stab_shape_vel(ip, d2, d1, k);
                             //stab_shape_slip_vel(ip, d2, d1, k) = Factor1 * stab_shape_slip_vel(ip, d2, d1, k);
                             
-                            //stab_shape_vel_2(ip, d2, d1, k) =  Factor2 * stab_shape_vel_2(ip, d2, d1, k);
-                            //stab_shape_slip_vel_2(ip, d2, d1, k) = Factor2 * stab_shape_slip_vel_2(ip, d2, d1, k);
                             
 
                             
@@ -1259,14 +1244,10 @@ update(const FV1Geometry<TElem, dim>* geo,
                         stab_shape_p(ip, d1, k) = Factor1 * ValueP * DX[d1];
                         stab_shape_p_jump(ip, d1, k) =  Factor1 * ValueJumpP * DX[d1];
                         
-                        //stab_shape_p_2(ip, d1, k) = Factor2 * ValueP_2 * DX[d1];
-                        //stab_shape_p_jump_2(ip, d1, k) = Factor2 * ValueJumpP_2 * DX[d1];
                         
                         //stab_shape_p(ip, d1, k) = Factor1 * stab_shape_p(ip, d1, k);
                         //stab_shape_p_jump(ip, d1, k) =  Factor1 * stab_shape_p_jump(ip, d1, k);
                         
-                        //stab_shape_p_2(ip, d1, k) = Factor2 * stab_shape_p_2(ip, d1, k);
-                        //stab_shape_p_jump_2(ip, d1, k) = Factor2 * stab_shape_p_jump_2(ip, d1, k);
                         
                     }
 
@@ -1382,7 +1363,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     //    set stab shape
                     stab_shape_vel  (ip, d, d, k)   = sumVel_1 / diag1;
-                    stab_shape_vel_2(ip, d, d, k)   = sumVel_2 / diag2;
+                    
                     
                     
                     //    Pressure part
@@ -1410,7 +1391,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                         sumP_1 = 0.0;*/
                     //    set stab shape
                     stab_shape_p  (ip, d, k) = sumP_1 / diag1;
-                    stab_shape_p_2(ip, d, k) = sumP_2 / diag2;
+                    
                     
                     number sumPJump_1 =0.0;
                     number sumPJump_2 =0.0;
@@ -1443,7 +1424,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                         sumPJump_1 = 0.0;*/
                     
                     stab_shape_p_jump(ip, d, k)   = sumPJump_1/diag1;
-                    stab_shape_p_jump_2(ip, d, k) = sumPJump_2/diag2;
+                    
                     
                     
                     number sumSlipVel_1 = 0.0;
@@ -1458,13 +1439,13 @@ update(const FV1Geometry<TElem, dim>* geo,
                     rhs2 += sumSlipVel_2 * SlipVel[k][d];
                     
                     stab_shape_slip_vel  (ip, d, d, k) = sumSlipVel_1 / diag1;
-                    stab_shape_slip_vel_2(ip, d, d, k) = sumSlipVel_2 / diag2;
+                    
                     
                 }
                 
                 //    Finally, the can invert this row
                 stab_vel  (ip)[d] = rhs1 / diag1;
-                stab_vel_2(ip)[d] = rhs2 / diag2;
+                
                 
             }
             /*if (((geo->scv_global_ips()[0][0] > 3.99) && (geo->scv_global_ips()[0][0] < 4.251))&&((geo->scv_global_ips()[1][0] > 3.99) && (geo->scv_global_ips()[1][0] < 4.251)) &&((geo->scv_global_ips()[2][0] > 3.99) && (geo->scv_global_ips()[2][0] < 4.251)))

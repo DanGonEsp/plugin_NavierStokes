@@ -856,18 +856,28 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     deriv_pressure_l = -scvf.shape(sh) * m_imJumpShape[sh];
                 
                 
+                
             //    2. Add contributions to local defect
                 for(int d1 = 0; d1 < dim; ++d1)
                 {
-                    const number flux_sh_p = scvf.shape(sh) * (dA[d1]-scvf.normal()[d1]);
+                    //const number flux_sh_p = scvf.shape(sh) * (dA[d1]-scvf.normal()[d1]);
                     
-                    //J(d1, scvf.from(), _P_, sh) += flux_sh_p;
-                    //J(d1, scvf.to()  , _P_, sh) -= flux_sh_p;
-                    for(int d2 = 0; d2 < dim; ++d2)
+
+
+                    for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
                     {
-                        for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
+                        if (m_imJumpShape[from]<0.0)
+                            J(d1, from, _P_, sh2) += deriv_pressure_g * dA[d1] * press_jump.pressure_shape_p(sh,sh2);
+                        else
+                            J(d1, from, _P_, sh2) += deriv_pressure_l * dA[d1] * press_jump.pressure_shape_p(sh,sh2);
+                        if (m_imJumpShape[to]<0.0)
+                            J(d1, to, _P_, sh2) -= deriv_pressure_g * dA[d1] * press_jump.pressure_shape_p(sh,sh2);
+                        else
+                            J(d1, to, _P_, sh2) -= deriv_pressure_l * dA[d1] * press_jump.pressure_shape_p(sh,sh2);
+                        
+                        for(size_t sh3 = 0; sh3 < scvf.num_sh(); ++sh3)
                         {
-                            for(size_t sh3 = 0; sh3 < scvf.num_sh(); ++sh3)
+                            for(int d2 = 0; d2 < dim; ++d2)
                             {
                                 if (m_imJumpShape[from]<0.0)
                                     J(d1, from, d2, sh2) += deriv_pressure_g * dA[d1] * press_jump.pressure_shape_vel(sh2,d2,sh3);
@@ -888,90 +898,48 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 // Continuity Equation (conservation of mass)
                 ////////////////////////////////////////////////////
                 ////////////////////////////////////////////////////
-                MathVector<dim> dA2;
-                if(m_imJumpShape[from]*m_imJumpShape[to]<0.0)
-                {
-                    //dA = m_imSurfaceNormal[scvf.from()];
-                    //VecScale(dA2,dA2,VecProd(dA,scvf.normal()));
-                    MathVector<dim> dA2 = scvf.normal();
-                }
-                else
-                {
-                    MathVector<dim> dA2 = scvf.normal();
-        
-                }
+                MathVector<dim> dA2 = scvf.normal();
+
                 //    Add derivative of stabilized flux w.r.t pressure to local matrix
-                number contFlux_p_1 = 0.0;
-                number contFlux_p_2 = 0.0;
-                number contFlux_p_from = 0.0;
-                number contFlux_p_to = 0.0;
+                number contFlux_p = 0.0;
+
                 for(int d1 = 0; d1 < dim; ++d1)
                 {
-                    contFlux_p_1 += stab.stab_shape_p_jump(ip, d1, sh) * dA2[d1];
-                    if(m_imJumpShape[from]*m_imJumpShape[to]<0)
-                        contFlux_p_2 += stab.stab_shape_p_jump_2(ip, d1, sh) * dA2[d1];
+                    contFlux_p += stab.stab_shape_p_jump(ip, d1, sh) * dA2[d1];
                 }
-                contFlux_p_to   = contFlux_p_1;
-                contFlux_p_from = contFlux_p_1;
                 
-                if(m_imJumpShape[from]*m_imJumpShape[to]<0)
-                {
-                    if (m_imJumpShape[from]<0)
-                    {
-                        contFlux_p_from = contFlux_p_1;
-                        contFlux_p_to   = contFlux_p_2;
-                    }
-                    else
-                    {
-                        contFlux_p_to   = contFlux_p_1;
-                        contFlux_p_from = contFlux_p_2;
-                    }
-                }
 
-                for(int d1 = 0; d1 < dim; ++d1)
+               
+                for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
                 {
-                    for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
+                    J(_P_, from, _P_, sh2) += contFlux_p * press_jump.pressure_shape_p(sh,sh2);
+                    J(_P_, to  , _P_, sh2) -= contFlux_p * press_jump.pressure_shape_p(sh,sh2);
+                    
+                    for(int d1 = 0; d1 < dim; ++d1)
                     {
-                        J(_P_, from, d1, sh2) += contFlux_p_from * press_jump.pressure_shape_vel(sh,d1,sh2);
-                        J(_P_, to  , d1, sh2) -= contFlux_p_to * press_jump.pressure_shape_vel(sh,d1,sh2);
+                        J(_P_, from, d1, sh2) += contFlux_p * press_jump.pressure_shape_vel(sh,d1,sh2);
+                        J(_P_, to  , d1, sh2) -= contFlux_p * press_jump.pressure_shape_vel(sh,d1,sh2);
                     }
 
                 }
 
                 for(int d1 = 0; d1 < dim; ++d1)
                 {
-                    number contFlux_vel_1 = stab.stab_shape_slip_vel(ip, d1, d1, sh) * dA2[d1];
-                    number contFlux_vel_2 = stab.stab_shape_slip_vel(ip, d1, d1, sh) * dA2[d1];
-                    
-                    number contFlux_vel_from = contFlux_vel_1;
-                    number contFlux_vel_to   = contFlux_vel_1;
-                    
-                    if(m_imJumpShape[from]*m_imJumpShape[to]<0)
-                    {
-                        if (m_imJumpShape[from]<0)
-                        {
-                            contFlux_vel_from = contFlux_vel_1;
-                            contFlux_vel_to   = contFlux_vel_2;
-                        }
-                        else
-                        {
-                            contFlux_vel_to   = contFlux_vel_1;
-                            contFlux_vel_from = contFlux_vel_2;
-                        }
-                    }
+                    number contFlux_vel = stab.stab_shape_slip_vel(ip, d1, d1, sh) * dA2[d1];
+
                     
                     for(int d2 = 0; d2 < dim; ++d2)
                         for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
                         {
-                            J(_P_, scvf.from(), d2, sh2) += contFlux_vel_from * press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
-                            J(_P_, scvf.to()  , d2, sh2) -= contFlux_vel_to * press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
+                            J(_P_, scvf.from(), d2, sh2) += contFlux_vel * press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
+                            J(_P_, scvf.to()  , d2, sh2) -= contFlux_vel * press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
                         }
                     
                     
                     
                 }
                 
-                if(m_imJumpShape[from]*m_imJumpShape[to]<0.0)
+                /*if(m_imJumpShape[from]*m_imJumpShape[to]<0.0)
                 {
                     //MathVector<dim> dA = scvf.normal();
                     //VecScale(dA,dA,VecProd(dA,scvf.normal()));
@@ -1050,7 +1018,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     }
 
                     
-                }
+                }*/
                 
                 
             }
@@ -1461,7 +1429,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             ////////////////////////////////////////////////////
 
         //    compute flux at ip
-            if(m_imJumpShape[from]*m_imJumpShape[to]<0.0)
+            /*if(m_imJumpShape[from]*m_imJumpShape[to]<0.0)
             {
                 number contFlux_from = 0.0;
                 number contFlux_to = 0.0;
@@ -1479,7 +1447,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                 //    Add contributions to local defect
                 d(_P_, scvf.from()) += contFlux_from;
                 d(_P_, scvf.to()  ) -= contFlux_to;
-            }
+            }*/
 
         }
         
