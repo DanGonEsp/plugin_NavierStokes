@@ -223,10 +223,11 @@ class INavierStokesFV1Stabilization
                     const number density_ref,
                     const bool multiphase,
                     const bool phase_2[],
-                    const number theta)
+                    const number theta,
+                    number** SCVFinterShape)
 			{(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel,
 											bStokes, kinVisco, kinViscoSCV, density, densitySCV, pressure_jump, SlipVel, jump_shape, normal, pSource,
-											pvCornerValueOldTime, dt, density_ref, multiphase, phase_2, theta);}
+											pvCornerValueOldTime, dt, density_ref, multiphase, phase_2, theta, SCVFinterShape);}
 
 	/////////////////////////////////////////
 	// the data interface (for the implementation)
@@ -343,7 +344,8 @@ class INavierStokesFV1Stabilization
                                                 const number density_ref,
                                                 const bool multiphase,
                                                 const bool phase_2[],
-                                                const number theta);
+                                                const number theta,
+                                                number** SCVFinterShape);
 
 	public:
 	///	register a update function for a Geometry
@@ -546,7 +548,8 @@ class NavierStokesFIELDSStabilization
                     const number density_ref,
                     const bool multiphase,
                     const bool phase_2[],
-                    const number theta);
+                    const number theta,
+                    number** SCVFinterShape);
 
 	private:
 		void register_func();
@@ -572,7 +575,8 @@ class NavierStokesFIELDSStabilization
                                              const number density_ref,
                                              const bool multiphase,
                                              const bool phase_2[],
-                                             const number theta);
+                                             const number theta,
+                                             number** SCVFinterShape);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}
@@ -648,7 +652,8 @@ class NavierStokesFLOWStabilization
                     const number density_ref,
                     const bool multiphase,
                     const bool phase_2[],
-                    const number theta);
+                    const number theta,
+                    number** SCVFinterShape);
 
 	private:
 		void register_func();
@@ -674,7 +679,8 @@ class NavierStokesFLOWStabilization
                                              const number density_ref,
                                              const bool multiphase,
                                              const bool phase_2[],
-                                             const number theta);
+                                             const number theta,
+                                             number** SCVFinterShape);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}
@@ -752,7 +758,8 @@ class NavierStokesFIELDS_2_Stabilization
                     const number density_ref,
                     const bool multiphase,
                     const bool phase_2[],
-                    const number theta);
+                                        const number theta,
+                    number** SCVFinterShape);
     
 
     private:
@@ -779,7 +786,8 @@ class NavierStokesFIELDS_2_Stabilization
                                              const number density_ref,
                                              const bool multiphase,
                                              const bool phase_2[],
-                                             const number theta);
+                                             const number theta,
+                                             number** SCVFinterShape);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -857,7 +865,8 @@ class NavierStokesVISCOSITY_Stabilization
                     const number density_ref,
                     const bool multiphase,
                     const bool phase_2[],
-                    const number theta);
+                    const number theta,
+                    number** SCVFinterShape);
 
     private:
         void register_func();
@@ -883,7 +892,8 @@ class NavierStokesVISCOSITY_Stabilization
                                              const number density_ref,
                                              const bool multiphase,
                                              const bool phase_2[],
-                                             const number theta);
+                                             const number theta,
+                                             number** SCVFinterShape);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -960,7 +970,8 @@ class NavierStokesKARIMIANStabilization
                     const number density_ref,
                     const bool multiphase,
                     const bool phase_2[],
-                    const number theta);
+                    const number theta,
+                    number** SCVFinterShape);
 
     private:
         void register_func();
@@ -986,7 +997,8 @@ class NavierStokesKARIMIANStabilization
                                              const number density_ref,
                                              const bool multiphase,
                                              const bool phase_2[],
-                                             const number theta);
+                                             const number theta,
+                                             number** SCVFinterShape);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -1060,7 +1072,8 @@ class NavierStokesNOStabilization
                     const number density_ref,
                     const bool multiphase,
                     const bool phase_2[],
-                    const number theta);
+                    const number theta,
+                    number** SCVFinterShape);
 
     private:
         void register_func();
@@ -1086,7 +1099,8 @@ class NavierStokesNOStabilization
                                              const number density_ref,
                                              const bool multiphase,
                                              const bool phase_2[],
-                                             const number theta);
+                                             const number theta,
+                                             number** SCVFinterShape);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -1148,7 +1162,8 @@ class NavierStokesFV1WithoutStabilization
                     const number density_ref,
                     const bool multiphase,
                     const bool phase_2[],
-                    const number theta);
+                    const number theta,
+                    number** SCVFinterShape);
 
 	private:
 		void register_func();
@@ -1157,7 +1172,8 @@ class NavierStokesFV1WithoutStabilization
 		void register_func()
 		{
 			typedef FV1Geometry<TElem, dim> TGeom;
-			typedef void (this_type::*TFunc)(const TGeom* geo,
+			typedef void (this_type::*TFunc)(
+                                             const TGeom* geo,
 											 const LocalVector& vCornerValue,
 											 const MathVector<dim> vStdVel[],
 											 const bool bStokes,
@@ -1174,7 +1190,8 @@ class NavierStokesFV1WithoutStabilization
                                              const number density_ref,
                                              const bool multiphase,
                                              const bool phase_2[],
-                                             const number theta);
+                                             const number theta,
+                                             number** SCVFinterShape);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}

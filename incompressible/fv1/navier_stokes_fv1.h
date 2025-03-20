@@ -230,6 +230,11 @@ class NavierStokesFV1
 				else UG_THROW("Stabilization must be specified previously.\n");
 			}
 		}
+        void set_interface_value(number user)
+        {
+            m_interface_vol_fraction = user;
+        }
+    
     
 			
 	protected:
@@ -532,9 +537,8 @@ class NavierStokesFV1
 		inline number peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip,
 		                           const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
     
-        template <typename TFVGeom>
-        inline void PropertiesJump(const TFVGeom& geo,
-                                   number pressure_jump, const DataImport<number, dim>& VolFraction,const DataImport<number, dim>& JumpShape,const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscositySCV,  size_t numSh, bool& interface, bool* Phase1, number& theta, number& mu_l, number& mu_g, number& rho_l, number& rho_g);
+        template <typename TElem, typename TFVGeom>
+        inline void PropertiesJump(const TFVGeom& geo, number** interShape, const DataImport<number, dim>& VolFraction,const DataImport<number, dim>& JumpShape,const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscositySCV,  size_t numSh, bool& interface, bool* Phase1, number& theta, number& mu_l, number& mu_g, number& rho_l, number& rho_g);
 
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>

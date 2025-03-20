@@ -256,7 +256,8 @@ update(const FV1Geometry<TElem, dim>* geo,
     }
     for(size_t sh = 0; sh < N; ++sh)
     {
-        VecScale(x_interface[sh], x_interface[sh], 1.0 / interN[sh]  );
+        VecScale(x_interface[sh], x_interface[sh], 1.0 / interN[sh] );
+        //VecScale(x_interface[sh], n[sh], VecProd(x_interface[sh],n[sh]) );
 
     }
     Inv_DiffLenSq *= 1.0/count_interface;
@@ -279,9 +280,10 @@ update(const FV1Geometry<TElem, dim>* geo,
         diag2 += vNormStdVelPerConvLen;
         diag1 += vNormStdVelPerConvLen;
     }*/
-    
-    const number RhoDiag = rho_l*diag2+rho_g*diag1;
-    const number JumpRhoMu = (rho_l*diag2-rho_g*diag1) / RhoDiag;
+    const number alpha1= 1.0;
+    const number alpha2= 1.0;
+    const number RhoDiag = alpha1 * rho_l * diag2  +  alpha2 * rho_g * diag1;
+    const number JumpRhoMu = (alpha1 * rho_l*diag2-alpha2 * rho_g*diag1) / RhoDiag;
     const number RhoMu = rho_g * rho_l * (diag1 - diag2) / RhoDiag;
     const number Cvel = Inv_DiffLenSq*rho_g * rho_l * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2) / RhoDiag;
     const number Cvel_rel = Inv_DiffLenSq * rho_g * rho_l / RhoDiag;
@@ -372,8 +374,9 @@ update(const FV1Geometry<TElem, dim>* geo,
             {
                 for(size_t ip = 0; ip < numSh; ++ip)
                 {
-                    tang_vel_shape_vel(ip, d, d1, k) = -VecProd(n[ip],x_interface[ip]) * (mu_l - mu_g) * Deriv * Tang[d] / Visc_eff;
-                    tang_vel(ip)[d] += tang_vel_shape_vel(ip, d, d1, k) * vCornerValue(d1, k);
+                    number VelSum =  -VecProd(n[ip],x_interface[ip]) * (mu_l - mu_g) * Deriv * Tang[d] / Visc_eff;
+                    tang_vel_shape_vel(ip, d, d1, k) = VelSum;
+                    tang_vel(ip)[d] += VelSum * vCornerValue(d1, k);
                 }
                 
             }
@@ -401,15 +404,15 @@ update(const FV1Geometry<TElem, dim>* geo,
         
         mat(ip, ip) += 1.0;
         
-        /*for(size_t ip2 = 0; ip2 < N; ++ip2)
+        for(size_t ip2 = 0; ip2 < N; ++ip2)
         {
             const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             const number Ng = ( jump_shape[ip2] <0.0)? 1.0 : 0.0;
             const number Nl = ( jump_shape[ip2] >0.0)? 1.0 : 0.0;
 
-            mat(ip, ip2) += -VecProd(scv.global_grad(ip2),x_interface[ip])*(Ng*rho_l*diag2 + Nl*rho_g*diag1) / RhoDiag ;
+            //mat(ip, ip2) += -VecProd(scv.global_grad(ip2),x_interface[ip])*(Ng*rho_l*diag2 + Nl*rho_g*diag1) / RhoDiag ;
             
-        }*/
+        }
         
     }
 
