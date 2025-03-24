@@ -173,11 +173,16 @@ update(const FV1Geometry<TElem, dim>* geo,
     {
         
         pressure_jump(ip) = 0.0;
+        VecSet(tang_vel(ip),0.0);
         for(size_t k = 0; k < numSh; ++k)
         {
             pressure_shape_p(ip, k) = 0.0 ;
             for(size_t d1 =0; d1 < dim; ++d1)
+            {
                 pressure_shape_vel(ip, d1, k) = 0.0;
+                for(size_t d =0; d < dim; ++d)
+                    tang_vel_shape_vel(ip, d, d1, k) = 0.0;
+            }
 
         }
         
@@ -196,11 +201,15 @@ update(const FV1Geometry<TElem, dim>* geo,
     size_t NumSCVF = geo->num_scvf();
     
     number theta_to, theta_from, c_to, c_from, DC;
+    number theta_to_2, theta_from_2, c_to_2, c_from_2, DC_2;
     
     
     number Inv_DiffLenSq = 0.0;
     number vNormStdVelPerConvLen = 0.0;
     number count_interface=0;
+    
+    size_t _C_=vCornerValue.num_all_fct() -1 ;
+    //vCornerValue.access_all();
 
     for(size_t ip = 0; ip < N; ++ip)
     {
@@ -220,13 +229,18 @@ update(const FV1Geometry<TElem, dim>* geo,
             diff_length_sq_inv(ip);
             c_from = vol_fraction[from];
             c_to = vol_fraction[to];
-
+            
+            c_from_2 = fmin(1.0, fmax(vCornerValue(_C_,from),0));
+            c_to_2 = fmin(1.0, fmax(vCornerValue(_C_,to),0));
             
             DC=c_to-c_from;
+            DC_2=c_to_2-c_from_2;
+            printf("DC = %f\n",DC);
+            printf("DC_2 = %f\n",DC_2);
             VecSubtract(DX,geo->scv_global_ips()[to],geo->scv_global_ips()[from]);
             
-            theta_to=  (c_to   - interface_value)/DC;
-            theta_from=(c_from - interface_value)/DC;
+            theta_to=  (c_to   - interface_value)/DC_2;
+            theta_from=(c_from - interface_value)/DC_2;
             
             VecScaleAppend(x_interface[to], theta_to,   DX);
             VecScaleAppend(x_interface[from],   theta_from, DX);
@@ -354,8 +368,6 @@ update(const FV1Geometry<TElem, dim>* geo,
         Visc_eff -= (mu_l - mu_g) * (vol_fraction[sh] - interface_value) * Nl * VecProd(scv.global_grad(sh), n[0]) / C_grad_magnitud;
         
     }
-    for(size_t k = 0; k < numSh; ++k)
-        VecSet(tang_vel(k),0.0);
     
 
     
@@ -410,7 +422,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             const number Ng = ( jump_shape[ip2] <0.0)? 1.0 : 0.0;
             const number Nl = ( jump_shape[ip2] >0.0)? 1.0 : 0.0;
 
-            //mat(ip, ip2) += -VecProd(scv.global_grad(ip2),x_interface[ip])*(Ng*rho_l*diag2 + Nl*rho_g*diag1) / RhoDiag ;
+            mat(ip, ip2) += -VecProd(scv.global_grad(ip2),x_interface[ip])*(Ng*rho_l*diag2 + Nl*rho_g*diag1) / RhoDiag ;
             
         }
         
@@ -477,13 +489,15 @@ update(const FV1Geometry<TElem, dim>* geo,
             for(size_t d1 = 0; d1 < dim; ++d1)
             
             {
-                
-                number sumVel =  2.0*(mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] ) * SumInv[ip] ;
-                
-                pressure_shape_vel(ip, d1, k) += sumVel;
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                {
+                    number sumVel =  inv(ip, ip2) * 2.0*(mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] )  ;
+                    //if (isnan(sumVel))
+                        //printf("SumVel1\n");
+                    pressure_shape_vel(ip, d1, k) += sumVel;
 
-                
-                P_jump[ip] += sumVel * vCornerValue(d1, k);
+                    
+                    P_jump[ip] += sumVel * vCornerValue(d1, k);
                 
                 
 
@@ -491,10 +505,10 @@ update(const FV1Geometry<TElem, dim>* geo,
             // Pressure Gradient Jump respect Velocity
             
 
-                for(size_t ip2 = 0; ip2 < N; ++ip2)
-                {
+
                     number sumVel2 =  inv(ip, ip2) * x_interface[ip2][d1] *  vLocShape[k] * Cvel;
-                    
+                    //if (isnan(sumVel2))
+                      //  printf("SumVel2\n");
                     pressure_shape_vel(ip, d1, k) += sumVel2;
                     
                     P_jump[ip] += sumVel2 * vCornerValue(d1, k);
@@ -554,7 +568,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     for(size_t ip = 0; ip < N; ++ip)
     {
         pressure_jump(ip) = P_jump[ip];
-        if (false)
+        if (isnan(P_jump[ip]))
         {
             //const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             if(ip==0)
@@ -580,6 +594,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             //printf("yy = %f\n", yy/N);
             printf("Pressure[%zu] = %f\n",ip, P_jump[ip]);
             printf("JumpShape[%zu] = %f\n",ip, jump_shape[ip]);
+            printf("VolFrac[%zu] = %f\n",ip, vol_fraction[ip]);
 
             printf("SumInv2[%zu] = %f\n",ip, SumInv[ip]);
             

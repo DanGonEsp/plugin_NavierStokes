@@ -900,8 +900,6 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     number mu_2 = 0.0, mu_1 = 0.0;
     number rho_2 = 0.0, rho_1 = 0.0;
-    number visc1 = -10000000, visc2 = -10000000;
-    number rho1 = -10000000, rho2 = -10000000;
     
     number alpha1 = ((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
     number alpha2 = ((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
@@ -919,22 +917,18 @@ update(const FV1Geometry<TElem, dim>* geo,
         {
             if (jump_shape[sh]>0)
             {
-                visc2 = fmax( visc2, densitySCV[sh] * kinViscoSCV[sh]);
-                rho2 = fmax( rho2, densitySCV[sh] );
+                mu_2 = fmax( mu_2, densitySCV[sh] * kinViscoSCV[sh]);
+                rho_2 = fmax( rho_2, densitySCV[sh] );
             }
             else
             {
-                visc1 = fmax( visc1, -densitySCV[sh] * kinViscoSCV[sh]);
-                rho1 = fmax( rho1, -densitySCV[sh] );
+                mu_1 = fmax( mu_1, densitySCV[sh] * kinViscoSCV[sh]);
+                rho_1 = fmax( rho_1, densitySCV[sh] );
             }
             
             //fase1 +=jump_shape[sh];
         }
         
-        mu_2 = visc2;
-        mu_1 = -visc1;
-        rho_2 = rho2;
-        rho_1 = -rho1;
         
         if ((mu_2 < mu_1)||(mu_2<0.0)||(mu_1<0.0))
             UG_THROW("Viscosity in phase 1 is lower that phase 2");

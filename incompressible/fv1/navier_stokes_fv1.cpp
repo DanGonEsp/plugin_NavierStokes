@@ -454,7 +454,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	}
 
 
-	//const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
+	const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
 	const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
 
 // 	loop Sub Control Volume Faces (SCVF)
@@ -521,27 +521,27 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             if (! m_bStokes) // no convective terms in the Stokes equation
             {
                 //	compute upwind velocity
-                MathVector<dim> UpwindMomentum;
+                MathVector<dim> UpwindVel;
                 
                 //	switch PAC
-                if(m_spConvUpwind.valid())  UpwindMomentum = upwind.upwind_momentum(ip, u, m_imDensitySCV.values(), Vel_ip);
-                //else if (m_spConvStab.valid()) UpwindMomentum = convStab.stab_vel(ip);
+                if(m_spConvUpwind.valid())  UpwindVel = upwind.upwind_vel(ip, u, Vel_ip);
+                else if (m_spConvStab.valid()) UpwindVel = convStab.stab_vel(ip);
                 else UG_THROW("Cannot find upwind for convective term.");
                 
                 //	peclet blend
                 number w = 1.0;
                 if(m_bPecletBlend)
-                    w = peclet_blend(UpwindMomentum, geo, ip, Vel_ip[ip], m_imKinViscosity[ip],m_imDensitySCVF[ip]);
+                    w = peclet_blend(UpwindVel, geo, ip, StdVel[ip], m_imKinViscosity[ip]);
                 
                 //	compute product of stabilized vel and normal
-                const number prod = VecProd(Vel_ip[ip], scvf.normal());
+                const number prod = VecProd(Vel_ip[ip], scvf.normal()) * m_imDensitySCVF[ip];
                 
                 ///////////////////////////////////
                 //	Add fixpoint linearization
                 ///////////////////////////////////
                 
                 //	Stabilization used as upwind
-                /*if(m_spConvStab.valid())
+                if(m_spConvStab.valid())
                 {
                     //	velocity derivatives
                     if(stab.vel_comp_connected())
@@ -568,12 +568,12 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                         J(d1, scvf.from(), _P_, sh) += convFlux_p;
                         J(d1, scvf.to()  , _P_, sh) -= convFlux_p;
                     }
-                }*/
+                }
                 
                 //	Upwind used as upwind
                 if(m_spConvUpwind.valid())
                 {
-                    number convFlux_vel = upwind.upwind_shape_sh(ip, sh) * m_imDensitySCV[sh];
+                    number convFlux_vel = upwind.upwind_shape_sh(ip, sh);
                     
                     //	in some cases (e.g. PositiveUpwind, RegularUpwind) the upwind
                     //	velocity in an ip depends also on the upwind velocity in
@@ -582,14 +582,14 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     //	approximate upwind only from the corner velocities by using
                     //	u_up = \sum shape_co U_co + \sum shape_ip \tilde{u}_ip
                     //	     = \sum shape_co U_co + \sum \sum shape_ip norm_shape_co|_ip * U_co
-                    /*if(m_spConvUpwind->non_zero_shape_ip())
+                    if(m_spConvUpwind->non_zero_shape_ip())
                     {
                         for(size_t ip2 = 0; ip2 < geo.num_scvf(); ++ip2)
                         {
                             const typename TFVGeom::SCVF& scvf2 = geo.scvf(ip2);
                             convFlux_vel += scvf2.shape(sh) * upwind.upwind_shape_ip(ip, ip2);
                         }
-                    }*/
+                    }
                     
                     convFlux_vel *= prod * w;
                     
@@ -603,7 +603,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 //	derivative due to peclet blending
                 if(m_bPecletBlend)
                 {
-                    const number convFluxPe = prod * (1.0-w) * scvf.shape(sh)*m_imDensitySCVF[ip];
+                    const number convFluxPe = prod * (1.0-w) * scvf.shape(sh);
                     for(int d1 = 0; d1 < dim; ++d1)
                     {
                         J(d1, scvf.from(), d1, sh) += convFluxPe;
@@ -619,7 +619,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 if(m_bFullNewtonFactor)
                 {
                     //	Stabilization used as upwind
-                    /*if(m_spConvStab.valid())
+                    if(m_spConvStab.valid())
                     {
                         //	loop defect components
                         for(int d1 = 0; d1 < dim; ++d1)
@@ -659,7 +659,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                             J(d1, scvf.from(), _P_, sh) += prod_p * UpwindVel[d1];
                             J(d1, scvf.to()  , _P_, sh) -= prod_p * UpwindVel[d1];
                         }
-                    }*/
+                    }
                     
                     //	Upwind used as upwind
                     if(m_spConvUpwind.valid())
@@ -670,10 +670,10 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                             {
                                 //	derivatives w.r.t. velocity
                                 number prod_vel = w * upwind.upwind_shape_sh(ip,sh)
-                                * scvf.normal()[d2] ;
+                                * scvf.normal()[d2] * m_imDensitySCVF[ip];
                                 
-                                J(d1, scvf.from(), d2, sh) += prod_vel * UpwindMomentum[d1];
-                                J(d1, scvf.to()  , d2, sh) -= prod_vel * UpwindMomentum[d1];
+                                J(d1, scvf.from(), d2, sh) += prod_vel * UpwindVel[d1];
+                                J(d1, scvf.to()  , d2, sh) -= prod_vel * UpwindVel[d1];
                             }
                     }
                     
@@ -683,7 +683,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                         for(int d1 = 0; d1 < dim; ++d1)
                             for(int d2 = 0; d2 < dim; ++d2)
                             {
-                                const number convFluxPe = UpwindMomentum[d1] * (1.0-w)
+                                const number convFluxPe = UpwindVel[d1] * (1.0-w)
                                 * scvf.shape(sh)
                                 * scvf.normal()[d2]
                                 * m_imDensitySCVF[ip];
@@ -1174,7 +1174,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	}
 
 
-	//const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
+	const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
 	const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
 
 // 	loop Sub Control Volume Faces (SCVF)
@@ -1237,27 +1237,27 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		if (! m_bStokes) // no convective terms in the Stokes equation
 		{
 		//	find the upwind velocity at ip
-			MathVector<dim> UpwindMomentum;
+			MathVector<dim> UpwindVel;
 	
 		//	switch PAC
-			if(m_spConvUpwind.valid())  UpwindMomentum = upwind.upwind_momentum(ip, u, m_imDensitySCV.values(),Vel_ip);
-			//else if (m_spConvStab.valid()) VecScale(UpwindVel,convStab.stab_vel(ip),m_imDensitySCVF);
+			if(m_spConvUpwind.valid())  UpwindVel = upwind.upwind_vel(ip, u, Vel_ip);
+            else if (m_spConvStab.valid()) UpwindVel = convStab.stab_vel(ip);
 			else UG_THROW("Cannot find upwind for convective term.");
 	
 		//	Peclet Blend
 			if(m_bPecletBlend)
-				peclet_blend(UpwindMomentum, geo, ip, Vel_ip[ip], m_imKinViscosity[ip],m_imDensitySCVF[ip]);
+				peclet_blend(UpwindVel, geo, ip, StdVel[ip], m_imKinViscosity[ip]);
             
             
 	
 		//	compute product of standard velocity and normal
-			const number prod = VecProd(Vel_ip[ip], scvf.normal()) ;
+            const number prod = VecProd(Vel_ip[ip], scvf.normal()) * m_imDensitySCVF[ip]; ;
 	
 		//	Add contributions to local velocity components
 			for(int d1 = 0; d1 < dim; ++d1)
 			{
-				d(d1, scvf.from()) += UpwindMomentum[d1] * prod;
-				d(d1, scvf.to()  ) -= UpwindMomentum[d1] * prod;
+				d(d1, scvf.from()) += UpwindVel[d1] * prod;
+				d(d1, scvf.to()  ) -= UpwindVel[d1] * prod;
 			}
 		}
 
@@ -1606,7 +1606,7 @@ inline
 number
 NavierStokesFV1<TDomain>::
 peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip,
-             const MathVector<dim>& StdVel, number kinVisco, number densitySCVF)
+             const MathVector<dim>& StdVel, number kinVisco)
 {
 	const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
 //	compute peclet number
@@ -1618,7 +1618,7 @@ peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip,
 	const number w = Pe2 / (5.0 + Pe2);
 
 //	compute upwind vel
-	VecScaleAdd(UpwindMomentum, w, UpwindMomentum, (1.0-w)*densitySCVF, StdVel);
+	VecScaleAdd(UpwindMomentum, w, UpwindMomentum, (1.0-w), StdVel);
 
 	return w;
 }
@@ -1665,8 +1665,8 @@ PropertiesJump(const TFVGeom& geo, number** SCVFinterShape, const DataImport<num
     number mu_2 = 0.0, mu_1 = 0.0;
     number rho_2 = 0.0, rho_1 = 0.0;
     
-    number visc1 = -10000000, visc2 = -10000000;
-    number rho1 = -10000000, rho2 = -10000000;
+    number visc1 = 0.0, visc2 = 0.0;
+    number rho1 = 0.0, rho2 = 0.0;
 
     for(size_t sh = 0; sh < numSh; ++sh)
     {
@@ -1679,16 +1679,16 @@ PropertiesJump(const TFVGeom& geo, number** SCVFinterShape, const DataImport<num
         }
         else
         {
-            visc1 = fmax( visc1, -DensitySCV[sh] * KinViscSCV[sh]);
-            rho1 = fmax( rho1, -DensitySCV[sh] );
+            visc1 = fmax( visc1, DensitySCV[sh] * KinViscSCV[sh]);
+            rho1 = fmax( rho1, DensitySCV[sh] );
             Cmin = fmax(Cmin, -VolFraction[sh]);
         }
         
     }
     mu_2 = visc2;
-    mu_1 = -visc1;
+    mu_1 = visc1;
     rho_2 = rho2;
-    rho_1 = -rho1;
+    rho_1 = rho1;
     //Cmax = Cmax;
     Cmin = -Cmin;
     
