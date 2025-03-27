@@ -198,10 +198,10 @@ update(const FV1Geometry<TElem, dim>* geo,
     MathVector<refDim> vLocIP_inter;
     VecSet(vLocIP_inter,0.0);
     number interN[numSh];
+    number VolFrac[numSh];
     size_t NumSCVF = geo->num_scvf();
     
     number theta_to, theta_from, c_to, c_from, DC;
-    number theta_to_2, theta_from_2, c_to_2, c_from_2, DC_2;
     
     
     number Inv_DiffLenSq = 0.0;
@@ -215,6 +215,10 @@ update(const FV1Geometry<TElem, dim>* geo,
     {
         VecSet(x_interface[ip],0.0);
         interN[ip]=0.0;
+        
+
+        //VolFrac[ip] = vol_fraction[ip];                      //Bug here, the import parameter vol_fraciotn is not importing the correct value
+        VolFrac[ip] = fmin(1.0, fmax(vCornerValue(_C_,ip),0));
 
     }
     for(size_t ip = 0; ip < NumSCVF; ++ip)
@@ -227,20 +231,15 @@ update(const FV1Geometry<TElem, dim>* geo,
         if (jump_shape[from]*jump_shape[to] < 0.0)
         {
             diff_length_sq_inv(ip);
-            c_from = vol_fraction[from];
-            c_to = vol_fraction[to];
-            
-            c_from_2 = fmin(1.0, fmax(vCornerValue(_C_,from),0));
-            c_to_2 = fmin(1.0, fmax(vCornerValue(_C_,to),0));
+            c_from = VolFrac[from];
+            c_to = VolFrac[to];
             
             DC=c_to-c_from;
-            DC_2=c_to_2-c_from_2;
-            printf("DC = %f\n",DC);
-            printf("DC_2 = %f\n",DC_2);
+            
             VecSubtract(DX,geo->scv_global_ips()[to],geo->scv_global_ips()[from]);
             
-            theta_to=  (c_to   - interface_value)/DC_2;
-            theta_from=(c_from - interface_value)/DC_2;
+            theta_to=  (c_to   - interface_value)/DC;
+            theta_from=(c_from - interface_value)/DC;
             
             VecScaleAppend(x_interface[to], theta_to,   DX);
             VecScaleAppend(x_interface[from],   theta_from, DX);
@@ -302,7 +301,8 @@ update(const FV1Geometry<TElem, dim>* geo,
     const number Cvel = Inv_DiffLenSq*rho_g * rho_l * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2) / RhoDiag;
     const number Cvel_rel = Inv_DiffLenSq * rho_g * rho_l / RhoDiag;
 
-    
+    bool pressure_deriv = true;
+    bool slipVel_deriv = true;
     LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
 
 //    storage for shape function at ip
@@ -335,7 +335,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         for(size_t d1 = 0; d1 < dim; ++d1)
         {
             Tang[d1] += vCornerValue(d1, ip) * vol;
-            C_grad[d1] += scv.global_grad(ip)[d1] * vol_fraction[ip];
+            C_grad[d1] += scv.global_grad(ip)[d1] * VolFrac[ip];
         }
     }
     VecScale(Tang, Tang, 1.0 / VOL_t);
@@ -365,7 +365,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     for(size_t sh = 0; sh < numSh; ++sh)
     {
         number Nl = ( jump_shape[sh]>0) ? 1.0 : 0.0;
-        Visc_eff -= (mu_l - mu_g) * (vol_fraction[sh] - interface_value) * Nl * VecProd(scv.global_grad(sh), n[0]) / C_grad_magnitud;
+        Visc_eff -= (mu_l - mu_g) * (VolFrac[sh] - interface_value) * Nl * VecProd(scv.global_grad(sh), n[0]) / C_grad_magnitud;
         
     }
     
@@ -387,7 +387,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 for(size_t ip = 0; ip < numSh; ++ip)
                 {
                     number VelSum =  -VecProd(n[ip],x_interface[ip]) * (mu_l - mu_g) * Deriv * Tang[d] / Visc_eff;
-                    tang_vel_shape_vel(ip, d, d1, k) = VelSum;
+                    tang_vel_shape_vel(ip, d, d1, k) = (slipVel_deriv)? VelSum : 0.0;
                     tang_vel(ip)[d] += VelSum * vCornerValue(d1, k);
                 }
                 
@@ -492,9 +492,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
                     number sumVel =  inv(ip, ip2) * 2.0*(mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] )  ;
-                    //if (isnan(sumVel))
-                        //printf("SumVel1\n");
-                    pressure_shape_vel(ip, d1, k) += sumVel;
+                    if(pressure_deriv) pressure_shape_vel(ip, d1, k) += sumVel;
 
                     
                     P_jump[ip] += sumVel * vCornerValue(d1, k);
@@ -507,9 +505,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 
 
                     number sumVel2 =  inv(ip, ip2) * x_interface[ip2][d1] *  vLocShape[k] * Cvel;
-                    //if (isnan(sumVel2))
-                      //  printf("SumVel2\n");
-                    pressure_shape_vel(ip, d1, k) += sumVel2;
+                    if(pressure_deriv) pressure_shape_vel(ip, d1, k) += sumVel2;
                     
                     P_jump[ip] += sumVel2 * vCornerValue(d1, k);
                     
@@ -522,7 +518,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                         
                         {
                             number sumVel3 =  mat(ip, ip2) * x_interface[ip2][d1] *  vLocShape[k] * Cvel_rel * tang_vel_shape_vel(k, d1, d2, ip3) * (Ng * (mu_l/rho_l)*diag1 + Nl* (mu_g/rho_g)*diag2);
-                            pressure_shape_vel(ip, d2, ip3) += sumVel3 ;
+                            if(pressure_deriv) pressure_shape_vel(ip, d2, ip3) += sumVel3 ;
                             P_jump[ip] += sumVel3 * vCornerValue(d2, ip3);
                         }
                     }
@@ -541,7 +537,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 sumP += inv(ip, ip2) * VecProd(x_interface[ip2],scv.global_grad(k)) * JumpRhoMu ;
             }
             
-            pressure_shape_p(ip, k) = sumP ;
+            if(pressure_deriv) pressure_shape_p(ip, k) = sumP ;
 
             
             P_jump[ip] += sumP * vCornerValue(_P_, k);
@@ -594,7 +590,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             //printf("yy = %f\n", yy/N);
             printf("Pressure[%zu] = %f\n",ip, P_jump[ip]);
             printf("JumpShape[%zu] = %f\n",ip, jump_shape[ip]);
-            printf("VolFrac[%zu] = %f\n",ip, vol_fraction[ip]);
+            printf("vol_fraction[%zu] = %f\n",ip, vol_fraction[ip]);
+            printf("VolFrac[%zu] = %f\n",ip, VolFrac[ip]);
 
             printf("SumInv2[%zu] = %f\n",ip, SumInv[ip]);
             

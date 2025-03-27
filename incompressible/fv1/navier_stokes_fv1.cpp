@@ -450,7 +450,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	//	compute upwind shapes
 		if(m_spConvUpwind.valid())
 			if(m_spStab->upwind() != m_spConvUpwind)
-				m_spConvUpwind->update(&geo, Vel_ip);
+				m_spConvUpwind->update(&geo, StdVel);
 	}
 
 
@@ -524,7 +524,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 MathVector<dim> UpwindVel;
                 
                 //	switch PAC
-                if(m_spConvUpwind.valid())  UpwindVel = upwind.upwind_vel(ip, u, Vel_ip);
+                if(m_spConvUpwind.valid())  UpwindVel = upwind.upwind_vel(ip, u, StdVel);
                 else if (m_spConvStab.valid()) UpwindVel = convStab.stab_vel(ip);
                 else UG_THROW("Cannot find upwind for convective term.");
                 
@@ -619,7 +619,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 if(m_bFullNewtonFactor)
                 {
                     //	Stabilization used as upwind
-                    if(m_spConvStab.valid())
+                    /*if(m_spConvStab.valid())
                     {
                         //	loop defect components
                         for(int d1 = 0; d1 < dim; ++d1)
@@ -669,16 +669,63 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                             for(int d2 = 0; d2 < dim; ++d2)
                             {
                                 //	derivatives w.r.t. velocity
-                                number prod_vel = w * upwind.upwind_shape_sh(ip,sh)
+                                number prod_vel = upwind.upwind_shape_sh(ip,sh)
                                 * scvf.normal()[d2] * m_imDensitySCVF[ip];
                                 
                                 J(d1, scvf.from(), d2, sh) += prod_vel * UpwindVel[d1];
                                 J(d1, scvf.to()  , d2, sh) -= prod_vel * UpwindVel[d1];
                             }
+                    }*/
+                    
+                    //    Add derivative of stabilized flux w.r.t velocity comp to local matrix
+                    if(stab.vel_comp_connected())
+                    {
+
+                        for(int d1 = 0; d1 < dim; ++d1)
+                        {
+                            number contFlux_vel = 0.0;
+                            for(int d2 = 0; d2 < dim; ++d2)
+                                contFlux_vel += stab.stab_shape_vel(ip, d2, d1, sh)
+                                * scvf.normal()[d2] * m_imDensitySCVF[ip];
+                            
+                            for(int d = 0; d < dim; ++d)
+                            {
+                                J(d, scvf.from(), d1, sh) += contFlux_vel * UpwindVel[d];
+                                J(d, scvf.to()  , d1, sh) -= contFlux_vel * UpwindVel[d];
+                            }
+                        }
+                    }
+                    else
+                    {
+                        
+                        for(int d1 = 0; d1 < dim; ++d1)
+                        {
+                            const number contFlux_vel = stab.stab_shape_vel(ip, d1, d1, sh)
+                            * scvf.normal()[d1] * m_imDensitySCVF[ip];
+                            
+                            for(int d = 0; d < dim; ++d)
+                            {
+                                J(d, scvf.from(), d1, sh) += contFlux_vel * UpwindVel[d];
+                                J(d, scvf.to()  , d1, sh) -= contFlux_vel * UpwindVel[d];
+                            }
+                        }
+                        
+                    }
+                    
+                
+                    //    Add derivative of stabilized flux w.r.t pressure to local matrix
+
+                    number contFlux_p = 0.0;
+                    for(int d1 = 0; d1 < dim; ++d1)
+                        contFlux_p += stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1] * m_imDensitySCVF[ip];
+                    for(int d = 0; d < dim; ++d)
+                    {
+                        J(d, scvf.from(), _P_, sh) += contFlux_p * UpwindVel[d];
+                        J(d, scvf.to()  , _P_, sh) -= contFlux_p * UpwindVel[d];
                     }
                     
                     //	derivative due to peclet blending
-                    if(m_bPecletBlend)
+                    /*if(m_bPecletBlend)
                     {
                         for(int d1 = 0; d1 < dim; ++d1)
                             for(int d2 = 0; d2 < dim; ++d2)
@@ -690,7 +737,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                                 J(d1, scvf.from(), d2, sh) += convFluxPe;
                                 J(d1, scvf.to()  , d2, sh) -= convFluxPe;
                             }
-                    }
+                    }*/
                 } // end exact jacobian part
                 
             } // end of if (! m_bStokes) for the convective terms
@@ -1153,7 +1200,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         //	compute stabilized velocities and shapes for convection upwind
         if(m_spConvStab.valid())
             if(m_spConvStab != m_spStab)
-                m_spConvStab->update(&geo, *pSol, Vel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, NULL, NULL, NULL, NULL, pSource, pOldSol, dt, m_density_ref, false, NULL, 0.0, NULL);
+                m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, NULL, NULL, NULL, NULL, pSource, pOldSol, dt, m_density_ref, false, NULL, 0.0, NULL);
     }
     
     //    get a const (!!) reference to the stabilization
@@ -1170,7 +1217,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	//	compute upwind shapes
 		if(m_spConvUpwind.valid())
 			if(m_spStab->upwind() != m_spConvUpwind)
-				m_spConvUpwind->update(&geo, Vel_ip);
+				m_spConvUpwind->update(&geo, StdVel);
 	}
 
 
@@ -1240,7 +1287,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			MathVector<dim> UpwindVel;
 	
 		//	switch PAC
-			if(m_spConvUpwind.valid())  UpwindVel = upwind.upwind_vel(ip, u, Vel_ip);
+			if(m_spConvUpwind.valid())  UpwindVel = upwind.upwind_vel(ip, u, StdVel);
             else if (m_spConvStab.valid()) UpwindVel = convStab.stab_vel(ip);
 			else UG_THROW("Cannot find upwind for convective term.");
 	
@@ -1605,7 +1652,7 @@ template<typename TFVGeom>
 inline
 number
 NavierStokesFV1<TDomain>::
-peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip,
+peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
              const MathVector<dim>& StdVel, number kinVisco)
 {
 	const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
@@ -1618,7 +1665,7 @@ peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip,
 	const number w = Pe2 / (5.0 + Pe2);
 
 //	compute upwind vel
-	VecScaleAdd(UpwindMomentum, w, UpwindMomentum, (1.0-w), StdVel);
+	VecScaleAdd(UpwindVel, w, UpwindVel, (1.0-w), StdVel);
 
 	return w;
 }
@@ -2437,7 +2484,7 @@ ex_div_velocity(MathVector<dim> vValue[],
             //    compute stabilized velocities and shapes for convection upwind
             if(m_spConvStab.valid())
                 if(m_spConvStab != m_spStab)
-                    m_spConvStab->update(&geo, *pSol, Vel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, NULL, NULL, NULL, NULL, pSource, pOldSol, dt, m_density_ref, false, NULL, 0.0, NULL);
+                    m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, NULL, NULL, NULL, NULL, pSource, pOldSol, dt, m_density_ref, false, NULL, 0.0, NULL);
         }
         
         //    get a const (!!) reference to the stabilization

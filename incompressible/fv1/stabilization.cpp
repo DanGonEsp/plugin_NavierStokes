@@ -943,13 +943,14 @@ update(const FV1Geometry<TElem, dim>* geo,
     bool interface_change[numIp];
     
     number vNormStdVelPerConvLen[numIp];
-    //number vNormStdVelPerDownLen[numIp];
+    number w_pe[numIp];
     
     for(size_t ip = 0; ip < numIp; ++ip)
     {
+        const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
         if (multiphase)
         {
-            const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+            
             if(jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0)
             {
                 interface_change[ip] = true;
@@ -984,7 +985,15 @@ update(const FV1Geometry<TElem, dim>* geo,
         {
             const number norm = VecTwoNorm(vStdVel[ip]);
             vNormStdVelPerConvLen[ip] = norm / upwind_conv_length(ip);
-            //vNormStdVelPerDownLen[ip] = norm / (downwind_conv_length(ip) + upwind_conv_length(ip));
+            
+            
+        //    compute peclet number
+            number Pe = VecProd(vStdVel[ip], scvf.normal())/VecTwoNormSq(scvf.normal())
+             * VecDistance(geo->corners() [scvf.to()], geo->corners() [scvf.from()]) / kinVisco[ip];
+
+        //    compute weight
+            const number Pe2 = Pe * Pe;
+            w_pe[ip] = Pe2 / (5.0 + Pe2);
             
         }
 
@@ -1061,7 +1070,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)
                     {
-                        sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+                        sumVel += vNormStdVelPerConvLen[ip] * (w_pe[ip]*upwind_shape_sh(ip, k)+(1.0-w_pe[ip])*scvf.shape(k)   );
                         
                     }
                     
