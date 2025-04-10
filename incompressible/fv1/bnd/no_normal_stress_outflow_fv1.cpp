@@ -435,9 +435,17 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             //pressure_flux_Jac<BF> (ip, *bf, J, u);
 			
 		//	B. The continuity equation
+            
+            const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+            number scale = 1.0 / (m_imDensity[ip] * (VecLength(stdVel)/D + m_imKinViscosity[ip]/pow(D,2)));
+
 			for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
-				for (size_t d2 = 0; d2 < (size_t)dim; ++d2)
+            {
+                for (size_t d2 = 0; d2 < (size_t)dim; ++d2)
                     J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]; //* m_imDensity [ip];
+                
+                J(_P_, bf->node_id (), _P_, sh) += scale*VecProd(bf->global_grad(sh) , bf->normal());
+            }
 		}
 	}
 }
@@ -475,6 +483,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			MathVector<dim> stdVel(0.0);
             MathVector<dim> PressureGrad(0.0);
             number pressure = 0;
+            
             for(size_t sh = 0; sh < bf->num_sh(); ++sh)
             {
                 for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
@@ -493,7 +502,11 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             //pressure_flux_defect<BF> (ip, *bf, d, u, pressure , PressureGrad);
 		
 		// c. Continuity equation:
+            
+            const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+            number scale = 1.0 / (m_imDensity[ip] * (VecLength(stdVel)/D + m_imKinViscosity[ip]/pow(D,2)));
             d(_P_, bf->node_id()) += VecDot (stdVel, bf->normal());// * m_imDensity[ip];
+            d(_P_, bf->node_id()) += scale*VecDot (PressureGrad, bf->normal());
 		}
 	}
 }

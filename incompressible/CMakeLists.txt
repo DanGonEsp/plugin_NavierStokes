@@ -62,6 +62,8 @@ set(SOURCES	../navier_stokes_base.cpp
 
 			fvcr/bnd/symmetric_boundary_fvcr.cpp
 			fv1/bnd/symmetric_boundary_fv1.cpp
+   
+            fv1/bnd/inflow_stress_fv1.cpp
 	
 			fv1/bnd/wall_sliding_fv1.cpp
 

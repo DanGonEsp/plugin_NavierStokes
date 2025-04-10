@@ -288,11 +288,11 @@ update(const FV1Geometry<TElem, dim>* geo,
         diag2 += 1.0/dt;
         diag1 += 1.0/dt;
     }*/
-    /*if(!bStokes)
+    if(!bStokes)
     {
         diag2 += vNormStdVelPerConvLen;
         diag1 += vNormStdVelPerConvLen;
-    }*/
+    }
     const number alpha1= 1.0;
     const number alpha2= 1.0;
     const number RhoDiag = alpha1 * rho_l * diag2  +  alpha2 * rho_g * diag1;
@@ -522,6 +522,15 @@ update(const FV1Geometry<TElem, dim>* geo,
                             P_jump[ip] += sumVel3 * vCornerValue(d2, ip3);
                         }
                     }
+            // Pressure Gradient Jump respect Velocity
+            
+
+
+                    /*number sumVel4 =  inv(ip, ip2) * x_interface[ip2][d1] * upwind_shape_sh(ip, k ) * vNormStdVelPerConvLen * RhoMu;
+                    if(pressure_deriv) pressure_shape_vel(ip, d1, k) += sumVel4;
+                    
+                    P_jump[ip] += sumVel4 * vCornerValue(d1, k);*/
+                    
                 }
                 
                 

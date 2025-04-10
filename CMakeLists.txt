@@ -64,6 +64,7 @@ set(SOURCES	navier_stokes_base.cpp
 			incompressible/fv1/bnd/wall_sliding_fv1.cpp
 			incompressible/fvcr/bnd/symmetric_boundary_fvcr.cpp
 			incompressible/fv1/bnd/symmetric_boundary_fv1.cpp
+            incompressible/fv1/bnd/inflow_stress_fv1.cpp
 
 			incompressible/fvcr/cr_reorder.cpp
 

@@ -898,6 +898,20 @@ update(const FV1Geometry<TElem, dim>* geo,
     //    compute diffusion length
     this->compute_diff_length(*geo);
     
+    MathVector<dim> DenGrad; VecSet(DenGrad,0.0);
+    number DenMomentum[numIp];
+    for(size_t sh = 0; sh < numSh; ++sh)
+    {
+        //     get current SCV
+        const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(sh);
+        VecScaleAppend(DenGrad, densitySCV[sh], scv.global_grad(sh));
+    }
+    for(size_t ip = 0; ip < numIp; ++ip)
+    {
+        DenMomentum[ip]=VecProd(DenGrad,vStdVel[ip])/density[ip];
+        
+    }
+
     number mu_2 = 0.0, mu_1 = 0.0;
     number rho_2 = 0.0, rho_1 = 0.0;
     
@@ -1065,7 +1079,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
                 {
                     //    Diffusion part
-                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+                    number sumVel = (vViscoPerDiffLenSq[ip] - DenMomentum[ip])* scvf.shape(k);
                     
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)

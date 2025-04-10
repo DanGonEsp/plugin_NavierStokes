@@ -333,6 +333,13 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 					for(int d1 = 0; d1 < dim; ++d1)
 						J(d1, bf->node_id(), d1, sh) += (-1.0) * normalizedParallelVel[d1] * m_imSlidingLimit[ip];
 			}
+            
+            //    pressure term
+            for(size_t sh = 0; sh < bf->num_sh(); ++sh)
+                for(int d1 = 0; d1 < dim; ++d1)
+                {
+                    J(d1, bf->node_id(), _P_, sh) += bf->shape(sh) * bf->normal()[d1];
+                }
 		}
 	}
 }
@@ -421,8 +428,17 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			{
 				VecNormalize(parallelVel, parallelVel);
 				for(int d1 = 0; d1 < dim; ++d1)
-					d(d1, bf->node_id()) += (-1.0) * parallelVel[d1] * m_imSlidingLimit[ip];
+					d(d1, bf->node_id()) += (1.0) * parallelVel[d1] * m_imSlidingLimit[ip];
 			}
+            
+            
+            // pressure term
+            number pressure = 0.0;
+            for(size_t sh = 0; sh < bf->num_sh(); ++sh)
+                pressure += bf->shape(sh) * u(_P_, sh);
+                
+            for(int d1 = 0; d1 < dim; ++d1)
+                d(d1, bf->node_id()) += pressure * bf->normal()[d1];
 		}
 	}
 }

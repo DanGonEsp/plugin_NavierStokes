@@ -33,7 +33,7 @@
 #include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
 #include "lib_disc/spatial_disc/disc_util/geom_provider.h"
 
-#include "symmetric_boundary_fv1.h"
+#include "inflow_stress_fv1.h"
 #ifdef UG_FOR_LUA
 #include "bindings/lua/lua_user_data.h"
 #endif
@@ -42,7 +42,7 @@ namespace ug{
 namespace NavierStokes{
 
 template<typename TDomain>
-void NavierStokesSymBCFV1<TDomain>::
+void NavierStokesInflowStressFV1<TDomain>::
 prepare_setting(const std::vector<LFEID>& vLfeID, bool bNonRegularGrid)
 {
 	if(bNonRegularGrid)
@@ -63,7 +63,7 @@ prepare_setting(const std::vector<LFEID>& vLfeID, bool bNonRegularGrid)
  */
 template<typename TDomain>
 void
-NavierStokesSymBCFV1<TDomain>::
+NavierStokesInflowStressFV1<TDomain>::
 extract_scheduled_data()
 {
 //	clear all extracted data
@@ -78,7 +78,7 @@ extract_scheduled_data()
 	//	convert strings
 		try{
 			subsetGroup = this->approx_space()->subset_grp_by_name(m_vScheduledBndSubSets[i].c_str());
-		}UG_CATCH_THROW("'NavierStokesSymBCFV1:extract_scheduled_data':"
+		}UG_CATCH_THROW("'NavierStokesInflowStressFV1:extract_scheduled_data':"
 						" Subsets '" <<m_vScheduledBndSubSets[i].c_str() <<"' not"
 						" all contained in ApproximationSpace.");
 
@@ -94,7 +94,7 @@ extract_scheduled_data()
 		//	check that subsetIndex is valid
 			if(subsetIndex < 0 || subsetIndex >= rSH.num_subsets())
 			{
-				UG_LOG("ERROR in 'NavierStokesSymBCFV1:extract_scheduled_data':"
+				UG_LOG("ERROR in 'NavierStokesInflowStressFV1:extract_scheduled_data':"
 						" Invalid subset Index " << subsetIndex <<
 						". (Valid is 0, .. , " << rSH.num_subsets() <<").\n");
 				return;
@@ -111,7 +111,7 @@ extract_scheduled_data()
  */
 template<typename TDomain>
 void
-NavierStokesSymBCFV1<TDomain>::
+NavierStokesInflowStressFV1<TDomain>::
 add
 (
 	const char* subsets // string with the ','-separated names of the subsets
@@ -126,7 +126,7 @@ add
  */
 template<typename TDomain>
 template<typename TElem, template <class Elem, int WorldDim> class TFVGeom>
-void NavierStokesSymBCFV1<TDomain>::
+void NavierStokesInflowStressFV1<TDomain>::
 prep_elem_loop(const ReferenceObjectID roid, const int si)
 {
 //	register subsetIndex at Geometry
@@ -139,12 +139,12 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 
 //	check if kinematic Viscosity has been set
 	if(!m_imKinViscosity.data_given())
-		UG_THROW("NavierStokesSymBCFV1::prep_elem_loop:"
+		UG_THROW("NavierStokesInflowStressFV1::prep_elem_loop:"
 						" Kinematic Viscosity has not been set, but is required.\n");
 
 //	check if Density has been set
 	if(!m_imDensity.data_given())
-		UG_THROW("NavierStokesSymBCFV1::prep_elem_loop:"
+		UG_THROW("NavierStokesInflowStressFV1::prep_elem_loop:"
 						" Density has not been set, but is required.\n");
 
 //	extract indices of boundary
@@ -163,7 +163,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
  */
 template<typename TDomain>
 template<typename TElem, template <class Elem, int WorldDim> class TFVGeom>
-void NavierStokesSymBCFV1<TDomain>::
+void NavierStokesInflowStressFV1<TDomain>::
 fsh_elem_loop()
 {
 	static TFVGeom<TElem, dim>& geo = GeomProvider<TFVGeom<TElem,dim> >::get();
@@ -181,7 +181,7 @@ fsh_elem_loop()
  */
 template<typename TDomain>
 template<typename TElem, template <class Elem, int WorldDim> class TFVGeom>
-void NavierStokesSymBCFV1<TDomain>::
+void NavierStokesInflowStressFV1<TDomain>::
 prep_elem(const LocalVector& u, GridObject* elem, const ReferenceObjectID roid, const MathVector<dim> vCornerCoords[])
 {
 // 	Update Geometry for this element
@@ -189,7 +189,7 @@ prep_elem(const LocalVector& u, GridObject* elem, const ReferenceObjectID roid, 
 	try{
 		geo.update(elem, vCornerCoords, &(this->subset_handler()));
 	}
-	UG_CATCH_THROW("NavierStokesSymBCFV1::prep_elem:"
+	UG_CATCH_THROW("NavierStokesInflowStressFV1::prep_elem:"
 						" Cannot update Finite Volume Geometry.");
 
 //	find and set the local and the global positions of the IPs for imports
@@ -223,7 +223,7 @@ prep_elem(const LocalVector& u, GridObject* elem, const ReferenceObjectID roid, 
 
 template<typename TDomain>
 template<typename TElem, template <class Elem, int WorldDim> class TFVGeom>
-void NavierStokesSymBCFV1<TDomain>::
+void NavierStokesInflowStressFV1<TDomain>::
 add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[])
 {
 	// 	Only first order implementation
@@ -325,7 +325,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 
 template<typename TDomain>
 template<typename TElem, template <class Elem, int WorldDim> class TFVGeom>
-void NavierStokesSymBCFV1<TDomain>::
+void NavierStokesInflowStressFV1<TDomain>::
 add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[])
 {
 // 	Only first order implemented
@@ -366,16 +366,13 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 
 		//	2. Compute flux
 			MathVector<dim> diffFlux;
-            MathVector<dim> normal;
-            VecNormalize(normal, bf->normal());
 		//	Add (\nabla u) \cdot \vec{n}
 			MatVecMult(diffFlux, gradVel, bf->normal());
 
 		//	Add (\nabla u)^T \cdot \vec{n}
 			if(!m_spMaster->laplace())
 				TransposedMatVecMultAdd(diffFlux, gradVel, bf->normal());
-            
-            //VecScaleAppend (diffFlux, - VecDot (diffFlux, normal), normal);
+    
 
 		//	scale by viscosity
 			VecScale(diffFlux, diffFlux, (-1.0) * m_imKinViscosity[ip] * m_imDensity[ip]);
@@ -403,8 +400,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 ////////////////////////////////////////////////////////////////////////////////
 
 template<typename TDomain>
-NavierStokesSymBCFV1<TDomain>::
-NavierStokesSymBCFV1(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaster)
+NavierStokesInflowStressFV1<TDomain>::
+NavierStokesInflowStressFV1(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaster)
 : IElemDisc<TDomain>(spMaster->symb_fcts(), spMaster->symb_subsets()), m_spMaster (spMaster)
 {
 //	check number of functions
@@ -438,7 +435,7 @@ NavierStokesSymBCFV1(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaste
 // register for 1D
 template<typename TDomain>
 void
-NavierStokesSymBCFV1<TDomain>::
+NavierStokesInflowStressFV1<TDomain>::
 register_all_funcs(bool bHang)
 {
 //	get all grid element types in this dimension and below
@@ -454,7 +451,7 @@ register_all_funcs(bool bHang)
 template<typename TDomain>
 template<typename TElem, template <class Elem, int WorldDim> class TFVGeom>
 void
-NavierStokesSymBCFV1<TDomain>::
+NavierStokesInflowStressFV1<TDomain>::
 register_func()
 {
 	ReferenceObjectID id = geometry_traits<TElem>::REFERENCE_OBJECT_ID;
@@ -476,13 +473,13 @@ register_func()
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifdef UG_DIM_1
-template class NavierStokesSymBCFV1<Domain1d>;
+template class NavierStokesInflowStressFV1<Domain1d>;
 #endif
 #ifdef UG_DIM_2
-template class NavierStokesSymBCFV1<Domain2d>;
+template class NavierStokesInflowStressFV1<Domain2d>;
 #endif
 #ifdef UG_DIM_3
-template class NavierStokesSymBCFV1<Domain3d>;
+template class NavierStokesInflowStressFV1<Domain3d>;
 #endif
 
 } // namespace NavierStokes
