@@ -1079,13 +1079,13 @@ update(const FV1Geometry<TElem, dim>* geo,
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
                 {
                     //    Diffusion part
-                    number sumVel = (vViscoPerDiffLenSq[ip] - DenMomentum[ip])* scvf.shape(k);
+                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
                     
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)
                     {
-                        sumVel += vNormStdVelPerConvLen[ip] * (w_pe[ip]*upwind_shape_sh(ip, k)+(1.0-w_pe[ip])*scvf.shape(k)   );
-                        
+                        sumVel += vNormStdVelPerConvLen[ip] * (w_pe[ip]*upwind_shape_sh(ip, k)+(1.0-w_pe[ip])*scvf.shape(k));
+                        sumVel +=- DenMomentum[ip]*scvf.shape(k)
                     }
                     
                     
