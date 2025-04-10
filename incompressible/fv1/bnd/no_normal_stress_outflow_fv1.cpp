@@ -232,7 +232,7 @@ diffusive_flux_Jac
 	//	4. Add flux to local Jacobian
 		for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
 			for(size_t d2 = 0; d2 < (size_t)dim; ++d2)
-				J(d1, bf.node_id(), d2, sh) += diffFlux (d1, d2);
+				J(d1, bf.node_id(), d2, sh) += tang_diffFlux (d1, d2);
 	}
 }
 
@@ -250,7 +250,6 @@ diffusive_flux_defect
 {
 	MathMatrix<dim, dim> gradVel;
 	MathVector<dim> diffFlux;
-    MathVector<dim> diffFlux_normal;
 
 // 	1. Get the gradient of the velocity at ip
 	for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
@@ -272,12 +271,10 @@ diffusive_flux_defect
 		TransposedMatVecMultAdd(diffFlux, gradVel, bf.normal());
 
 //	3. Subtract the normal part:
-    VecScale(diffFlux_normal,bf.normal(),VecDot (diffFlux, bf.normal()));
 	VecScaleAppend (diffFlux, - VecDot (diffFlux, bf.normal()), bf.normal());
 
 //	A4. Scale by viscosity
 	diffFlux *= - m_imKinViscosity[ip] * m_imDensity [ip];
-    diffFlux_normal *= -m_imKinViscosity[ip] * m_imDensity [ip];
     
 //	5. Add flux to local defect
 	for(size_t d1 = 0; d1 < (size_t)dim; ++d1)

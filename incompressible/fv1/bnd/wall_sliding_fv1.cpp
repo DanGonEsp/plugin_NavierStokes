@@ -428,7 +428,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			{
 				VecNormalize(parallelVel, parallelVel);
 				for(int d1 = 0; d1 < dim; ++d1)
-					d(d1, bf->node_id()) += (1.0) * parallelVel[d1] * m_imSlidingLimit[ip];
+					d(d1, bf->node_id()) += (-1.0) * parallelVel[d1] * m_imSlidingLimit[ip];
 			}
             
             
