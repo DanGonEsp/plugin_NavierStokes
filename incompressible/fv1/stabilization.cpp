@@ -1047,7 +1047,10 @@ update(const FV1Geometry<TElem, dim>* geo,
             
             //    Convective Term  (no convective terms in the Stokes eq.)
             if (! bStokes)
+            {
                 diag += vNormStdVelPerConvLen[ip];
+                diag += DenMomentum[ip];
+            }
             
             
             //     Loop components of velocity
@@ -1085,7 +1088,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     if (! bStokes)
                     {
                         sumVel += vNormStdVelPerConvLen[ip] * (w_pe[ip]*upwind_shape_sh(ip, k)+(1.0-w_pe[ip])*scvf.shape(k));
-                        sumVel +=- DenMomentum[ip]*scvf.shape(k)
+                        //sumVel += DenMomentum[ip]*scvf.shape(k);
                     }
                     
                     

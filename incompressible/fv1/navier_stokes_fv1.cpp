@@ -397,6 +397,22 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             for(int d1 = 0; d1 < dim; ++d1)
                 StdVel[ip][d1] += u(d1, sh) * scvf.shape(sh);
     }
+    MathVector<dim> DenGrad; VecSet(DenGrad,0.0);
+    number DenMomentum[numSCVF];
+    if (! m_bStokes && !this->is_time_dependent())
+    {
+        for(size_t sh = 0; sh < numSh; ++sh)
+        {
+            //     get current SCV
+            const typename FV1Geometry<TElem, dim>::SCV& scv = geo.scv(sh);
+            VecScaleAppend(DenGrad, m_imDensitySCV[sh], scv.global_grad(sh));
+        }
+        for(size_t ip = 0; ip < numSCVF; ++ip)
+        {
+            DenMomentum[ip]=VecProd(DenGrad,StdVel[ip]);
+            
+        }
+    }
     
     bool interface = false;
     bool Phase2[numSCVF];
@@ -739,6 +755,52 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                             }
                     }*/
                 } // end exact jacobian part
+                
+                
+                if (! this->is_time_dependent()) // momentum trasfer due to change of mass, only present in stationary state
+                {
+                    
+                    
+                //     get current SCV
+                    const typename TFVGeom::SCV& scv_to = geo.scv(scvf.to());
+                    const typename TFVGeom::SCV& scv_from = geo.scv(scvf.from());
+                    
+                    if(stab.vel_comp_connected())
+                    {
+                        for(int d1 = 0; d1 < dim; ++d1)
+                        {
+                            for(int d2 = 0; d2 < dim; ++d2)
+                            {
+                                const number contFlux_vel = 0.5*DenMomentum[ip] * stab.stab_shape_vel(ip, d1, d2, sh);
+                                
+                                J(d1, scvf.from(), d2, sh) += contFlux_vel * scv_from.volume();
+                                J(d1, scvf.to()  , d2, sh) += contFlux_vel * scv_to.volume();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for(int d1 = 0; d1 < dim; ++d1)
+                        {
+                            const number contFlux_vel = 0.5*DenMomentum[ip] * stab.stab_shape_vel(ip, d1, d1, sh);
+                            
+                            J(d1, scvf.from(), d1, sh) += contFlux_vel * scv_from.volume();
+                            J(d1, scvf.to()  , d1, sh) += contFlux_vel * scv_to.volume();
+                        }
+                    }
+                    
+                
+                    //    Add derivative of stabilized flux w.r.t pressure to local matrix
+
+                    for(int d1 = 0; d1 < dim; ++d1)
+                    {
+                        const number contFlux_p = 0.5*DenMomentum[ip] * stab.stab_shape_p(ip, d1, sh); //* m_imDensitySCVF[ip];
+                        
+                        J(d1, scvf.from(), _P_, sh) += contFlux_p * scv_from.volume();
+                        J(d1, scvf.to()  , _P_, sh) += contFlux_p * scv_to.volume();
+                    }
+
+                }
                 
             } // end of if (! m_bStokes) for the convective terms
             
@@ -1161,6 +1223,22 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			for(int d1 = 0; d1 < dim; ++d1)
 				StdVel[ip][d1] += u(d1, sh) * scvf.shape(sh);
 	}
+    MathVector<dim> DenGrad; VecSet(DenGrad,0.0);
+    number DenMomentum[numSCVF];
+    if (! m_bStokes && !this->is_time_dependent())
+    {
+        for(size_t sh = 0; sh < numSh; ++sh)
+        {
+            //     get current SCV
+            const typename FV1Geometry<TElem, dim>::SCV& scv = geo.scv(sh);
+            VecScaleAppend(DenGrad, m_imDensitySCV[sh], scv.global_grad(sh));
+        }
+        for(size_t ip = 0; ip < numSCVF; ++ip)
+        {
+            DenMomentum[ip]=VecProd(DenGrad,StdVel[ip]);
+            
+        }
+    }
     
 //	compute stabilized velocities and shapes for continuity equation
 	// \todo: (optional) Here we can skip the computation of shapes, implement?
@@ -1306,6 +1384,26 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 				d(d1, scvf.from()) += UpwindVel[d1] * prod;
 				d(d1, scvf.to()  ) -= UpwindVel[d1] * prod;
 			}
+            
+            if (! this->is_time_dependent()) // momentum trasfer due to change of mass, only present in stationary state
+            {
+                MathVector<dim> RhoVel; VecScale(RhoVel,Vel_ip[ip], DenMomentum[ip]);
+                
+            //     get current SCV
+                const typename TFVGeom::SCV& scv_to = geo.scv(scvf.to());
+                const typename TFVGeom::SCV& scv_from = geo.scv(scvf.from());
+
+
+                for(int d1 = 0; d1 < dim; ++d1)
+                {
+                    d(d1, scvf.from()) += 0.5*RhoVel[d1] * scv_from.volume();
+                    d(d1, scvf.to()  ) += 0.5*RhoVel[d1] * scv_to.volume();
+                }
+
+
+            }
+            
+            
 		}
 
 		////////////////////////////////////////////////////
