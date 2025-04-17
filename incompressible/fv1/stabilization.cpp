@@ -1007,7 +1007,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 
         //    compute weight
             const number Pe2 = Pe * Pe;
-            w_pe[ip] = Pe2 / (5.0 + Pe2);
+            w_pe[ip] = 1.0;//Pe2 / (5.0 + Pe2);
             
         }
 
@@ -1049,7 +1049,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             if (! bStokes)
             {
                 diag += vNormStdVelPerConvLen[ip];
-                diag += DenMomentum[ip];
+                //diag += DenMomentum[ip];
             }
             
             
@@ -1087,8 +1087,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)
                     {
-                        sumVel += vNormStdVelPerConvLen[ip] * (w_pe[ip]*upwind_shape_sh(ip, k)+(1.0-w_pe[ip])*scvf.shape(k));
-                        //sumVel += DenMomentum[ip]*scvf.shape(k);
+                        sumVel += vNormStdVelPerConvLen[ip] * densitySCV[k] * upwind_shape_sh(ip, k) / density[ip];
+                        //sumVel += -DenMomentum[ip]*scvf.shape(k);
                     }
                     
                     

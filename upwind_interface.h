@@ -377,15 +377,17 @@ upwind_momentum(const size_t scvf,
         for(int d = 0; d < dim; ++d)
             momentum[d] += upwind_shape_sh(scvf, sh) * CornerVel(d, sh) * DensitySCV[sh];
 
-/*//    done if only depending on shapes
-    if(!non_zero_shape_ip()) return vel;
+//    done if only depending on shapes
+    if(!non_zero_shape_ip()) return momentum;
+    else
+        UG_THROW("Error in upwind method");
 
 //    compute ip vel
-    for(size_t scvf2 = 0; scvf2 < num_scvf(); ++scvf2)
-        VecScaleAppend(vel, upwind_shape_ip(scvf, scvf2), vStdVel[scvf2]);*/
+   /* for(size_t scvf2 = 0; scvf2 < num_scvf(); ++scvf2)
+        VecScaleAppend(vel, upwind_shape_ip(scvf, scvf2), vStdVel[scvf2]);
 
 //    return value
-    return momentum;
+    return momentum;*/
 }
 
 ///    upwind velocity

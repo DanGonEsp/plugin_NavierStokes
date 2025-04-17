@@ -535,7 +535,7 @@ class NavierStokesFV1
 	 */
 		template <typename TFVGeom>
 		inline number peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
-		                           const MathVector<dim>& StdVel, number kinVisco);
+                                   const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
     
         template <typename TElem, typename TFVGeom>
         inline void PropertiesJump(const TFVGeom& geo, number** interShape, const DataImport<number, dim>& VolFraction,const DataImport<number, dim>& JumpShape,const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscositySCV,  size_t numSh, bool& interface, bool* Phase1, number& theta, number& mu_l, number& mu_g, number& rho_l, number& rho_g);

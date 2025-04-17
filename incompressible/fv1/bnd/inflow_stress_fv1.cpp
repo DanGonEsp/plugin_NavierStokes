@@ -293,7 +293,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				////////////////////////////////////////////////////
 
 			// 	Compute flux derivative at IP
-				const number flux_sh =  -1.0 * m_imKinViscosity[ip]  * m_imDensity[ip]
+				/*const number flux_sh =  -1.0 * m_imKinViscosity[ip]  * m_imDensity[ip]
 										* VecDot(bf->global_grad(sh), bf->normal());
 
 			// 	Add flux derivative  to local matrix
@@ -315,18 +315,18 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				for(int d1 = 0; d1 < dim; ++d1)
 				{
 					J(d1, bf->node_id(), _P_, sh) += bf->shape(sh) * bf->normal()[d1];
-				}
+				}*/
 				// do nothing for continuity equation because un = 0
                 const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
                 number scale = 1.0 / (m_imDensity[ip] * (VecLength(StdVel[ip])/D + m_imKinViscosity[ip]/pow(D,2)));
 
-                for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
+                /*for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
                 {
                     for (size_t d2 = 0; d2 < (size_t)dim; ++d2)
                         J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]; //* m_imDensity [ip];
                     
                     //J(_P_, bf->node_id (), _P_, sh) += scale*VecProd(bf->global_grad(sh) , bf->normal());
-                }
+                }*/
 			}// end of loop shape functions
 			
 		}
@@ -373,7 +373,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 						gradVel(d1, d2) += bf->global_grad(sh)[d2]
 			                 * u(d1, sh);
 				}
-
+/*
 		//	2. Compute flux
 			MathVector<dim> diffFlux;
 		//	Add (\nabla u) \cdot \vec{n}
@@ -397,7 +397,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 				pressure += bf->shape(sh) * u(_P_, sh);
 				
 			for(int d1 = 0; d1 < dim; ++d1)
-				d(d1, bf->node_id()) += pressure * bf->normal()[d1];
+				d(d1, bf->node_id()) += pressure * bf->normal()[d1];*/
             
             
         // A. Compute Velocity at ip
@@ -416,7 +416,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			// do nothing for continuity equation because un = 0
             const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
             number scale = 1.0 / (m_imDensity[ip] * (VecLength(stdVel)/D + m_imKinViscosity[ip]/pow(D,2)));
-            d(_P_, bf->node_id()) += VecDot (stdVel, bf->normal());// * m_imDensity[ip];
+            d(_P_, bf->node_id()) -= VecDot (stdVel, bf->normal());// * m_imDensity[ip];
+            //printf("Defect error = %f\n",d(_P_, bf->node_id()));
             //d(_P_, bf->node_id()) += scale*VecDot (PressureGrad, bf->normal());
 		}
 	}
