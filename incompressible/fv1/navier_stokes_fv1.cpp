@@ -699,7 +699,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     {
                         for(int d1 = 0; d1 < dim; ++d1)
                         {
-                            number contFlux_vel = m_imDensitySCV[sh] * scvf.shape(sh) * scvf.normal()[d1] / m_imDensitySCV[ip];
+                            number contFlux_vel = m_imDensitySCV[sh] * scvf.shape(sh) * scvf.normal()[d1] / m_imDensitySCVF[ip];
                             J(d, scvf.from(), d1, sh) += contFlux_vel * UpwindMomentum[d];
                             J(d, scvf.to()  , d1, sh) -= contFlux_vel * UpwindMomentum[d];
                         }
