@@ -899,15 +899,18 @@ update(const FV1Geometry<TElem, dim>* geo,
     this->compute_diff_length(*geo);
     
     MathVector<dim> RhoGrad[numIp];
+    MathVector<dim> ViscGrad[numIp];
     number DenMomentum[numIp];
     for(size_t ip = 0; ip < numIp; ++ip)
     {
         const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
         VecSet(RhoGrad[ip], 0.0);
+        VecSet(ViscGrad[ip], 0.0);
 
         for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
         {
             VecScaleAppend(RhoGrad[ip], densitySCV[sh], scvf.global_grad(sh));
+            VecScaleAppend(ViscGrad[ip], kinViscoSCV[sh]*densitySCV[sh], scvf.global_grad(sh));
         }
         
         DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip])/density[ip];
@@ -1087,11 +1090,12 @@ update(const FV1Geometry<TElem, dim>* geo,
                     number sumVel = vViscoPerDiffLenSq[ip] * densitySCV[k] * scvf.shape(k);
                     
                     sumVel += -2.0 * kinVisco[ip] * VecProd( RhoGrad[ip], scvf.global_grad(k));
+                    sumVel +=  VecProd( ViscGrad[ip], scvf.global_grad(k));
                     
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)
                     {
-                        sumVel += vNormStdVelPerConvLen[ip] * densitySCV[k] * upwind_shape_sh(ip, k) / density[ip];
+                        sumVel += vNormStdVelPerConvLen[ip] * densitySCV[k] * upwind_shape_sh(ip, k);
                         //sumVel += -DenMomentum[ip]*scvf.shape(k);
                     }
                     
