@@ -898,18 +898,19 @@ update(const FV1Geometry<TElem, dim>* geo,
     //    compute diffusion length
     this->compute_diff_length(*geo);
     
-    MathVector<dim> DenGrad; VecSet(DenGrad,0.0);
+    MathVector<dim> RhoGrad[numIp];
     number DenMomentum[numIp];
-    for(size_t sh = 0; sh < numSh; ++sh)
-    {
-        //     get current SCV
-        const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(sh);
-        VecScaleAppend(DenGrad, densitySCV[sh], scv.global_grad(sh));
-    }
     for(size_t ip = 0; ip < numIp; ++ip)
     {
-        DenMomentum[ip]=VecProd(DenGrad,vStdVel[ip])/density[ip];
+        const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+        VecSet(RhoGrad[ip], 0.0);
+
+        for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+        {
+            VecScaleAppend(RhoGrad[ip], densitySCV[sh], scvf.global_grad(sh));
+        }
         
+        DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip])/density[ip];
     }
 
     number mu_2 = 0.0, mu_1 = 0.0;
@@ -1052,7 +1053,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 //diag += DenMomentum[ip];
             }
             
-            
+            diag *= density[ip];
             //     Loop components of velocity
             for(int d = 0; d < dim; d++)
             {
@@ -1082,7 +1083,10 @@ update(const FV1Geometry<TElem, dim>* geo,
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
                 {
                     //    Diffusion part
-                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+                    //number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+                    number sumVel = vViscoPerDiffLenSq[ip] * densitySCV[k] * scvf.shape(k);
+                    
+                    sumVel += -2.0 * kinVisco[ip] * VecProd( RhoGrad[ip], scvf.global_grad(k));
                     
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)
@@ -1122,7 +1126,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     }
                     else
                     {
-                        sumP = -1.0 * alpha1 * (scvf.global_grad(k))[d]  / density[ip];
+                        sumP = -1.0 * alpha1 * scvf.global_grad(k)[d];
                     }
                     
                     
