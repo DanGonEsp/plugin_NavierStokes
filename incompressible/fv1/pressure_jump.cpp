@@ -132,13 +132,14 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
        const DataImport<number, dim>& jump_shape,
        const DataImport<number, dim>& vol_fraction,
-       const DataImport<MathVector<dim>, dim>* pSource,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
        const number mu_l,
        const number rho_l,
+       const MathVector<dim> Source_l,
        const number mu_g,
        const number rho_g,
+       const MathVector<dim> Source_g,
        const number interface_value)
 {
     
@@ -275,6 +276,19 @@ update(const FV1Geometry<TElem, dim>* geo,
     Inv_DiffLenSq *= 1.0/count_interface;
     VecScale(vLocIP_inter,vLocIP_inter,1.0/count_interface);
     
+    LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+
+//    storage for shape function at ip
+    number vLocShape[numSh];
+
+//    Reference Mapping
+
+    ReferenceMapping<ref_elem_type, dim> mapping(geo->scv_global_ips());
+    
+    rTrialSpace.shapes(vLocShape, vLocIP_inter);
+    
+    
+    
     if(!bStokes)
         vNormStdVelPerConvLen *= 1.0/count_interface;
     
@@ -296,26 +310,54 @@ update(const FV1Geometry<TElem, dim>* geo,
     diag2 *= rho_l;
     diag1 *= rho_g;
 
+    //     loop Sub Control Volumes (SCV)
+    number RHO=0.0;
+    number Vol=0.0;
+    
     const number alpha1= 1.0;
     const number alpha2= 1.0;
-    const number Diag = alpha1 * diag2  +  alpha2 * diag1;
-    const number PressureCoef = (alpha1 * diag2 - alpha2 * diag1) / Diag;
     
+    
+    
+    number PressureCoef[numSh];
+    number VicscousCoef[numSh];
+    number SourceCoef_1[numSh];
+    number SourceCoef_2[numSh];
     //const number ConvectiveCoef = rho_g * rho_l * (diag1 - diag2) / RhoDiag;
-    const number VicscousCoef = Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2) / Diag;
     //const number Cvel_rel = Inv_DiffLenSq * rho_g * rho_l / RhoDiag;
-    const number SourceCoef =   ((rho_l-density_ref)*diag1 - (rho_g-density_ref)*diag2) / Diag;
-
-    LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
-
-//    storage for shape function at ip
-    number vLocShape[numSh];
-
-//    Reference Mapping
-
-    ReferenceMapping<ref_elem_type, dim> mapping(geo->scv_global_ips());
     
-    rTrialSpace.shapes(vLocShape, vLocIP_inter);
+    for(size_t ip = 0; ip < geo->num_scv(); ++ip)
+    {
+        //     get current SCV
+        const typename FV1Geometry<TElem, dim>::SCV scv = geo->scv(ip);
+        RHO += scv.volume() * densitySCV[ip];
+        Vol += scv.volume();
+        if(jump_shape[ip]>0.0)
+        {
+            const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);                                         //(rho_l-rho_g) / (rho_g)
+            PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_g;                       //Factor
+            VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
+            //SourceCoef[ip]   = 1.0 * Factor * ( (rho_l-density_ref) * diag1 - (rho_g - density_ref) * diag2);
+            SourceCoef_2[ip]   = 1.0 * Factor * (0*diag2+diag1) ;
+            SourceCoef_1[ip]   = -1.0 * Factor * ( (rho_l/rho_g)*0.0   + 1.0 ) * diag2 ;
+
+        }
+        else
+        {
+            const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);                                         // (rho_l-rho_g) / (rho_l );
+            PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_l;                      // Factor  ;
+            VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
+            //SourceCoef[ip]   = 1.0 * Factor * ( (rho_l-density_ref) * diag1 - (rho_g - density_ref) * diag2);
+            SourceCoef_2[ip]   = 1.0 * Factor * ( 0*rho_g / rho_l  + 1.0  ) * diag1 ;
+            SourceCoef_1[ip]   = -1.0 * Factor * (diag2+diag1*0)  ;
+
+            
+        }
+        
+        
+    }
+    RHO *= 1.0 / Vol;
+    
     
         
     /////////////////////////////////////////////////////////////////////////////
@@ -424,8 +466,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             const number Ng = ( jump_shape[ip2] <0.0)? 1.0 : 0.0;
             const number Nl = ( jump_shape[ip2] >0.0)? 1.0 : 0.0;
-
-            mat(ip, ip2) += -VecProd(scv.global_grad(ip2),x_interface[ip])*(alpha1*Ng*diag2 + alpha2*Nl*diag1) / Diag ;
+            const number N_s = ( jump_shape[ip] >0.0)? -Nl : Ng;
+            mat(ip, ip2) += -VecProd(scv.global_grad(ip2),x_interface[ip]) * N_s * PressureCoef[ip] ;
             
         }
         
@@ -476,17 +518,22 @@ update(const FV1Geometry<TElem, dim>* geo,
         }
     }*/
     // Gradient Jump respect source terms
-    if(pSource != NULL)
+    if(true)
     {
+        MathVector<dim> SourceTotal;
+        
         for(size_t ip = 0; ip < N; ++ip)
         {
+            
+            
             number SumSource = 0.0;
             for(size_t ip2 = 0; ip2 < N; ++ip2)
             {
-                SumSource += inv(ip, ip2) * VecProd(x_interface[ip2],(*pSource)[ip]) ;
+                VecScaleAdd(SourceTotal,  SourceCoef_2[ip2],Source_l, SourceCoef_1[ip2], Source_g);
+                SumSource += inv(ip, ip2) * VecProd(x_interface[ip2], SourceTotal )  ;
                 
             }
-            P_jump[ip] += SourceCoef*SumSource;
+            P_jump[ip] += SumSource;
         }
     }
     
@@ -506,7 +553,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             {
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
-                    number sumVel =  inv(ip, ip2) * 2.0*(mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] )  ;
+                    number sumVel =  inv(ip, ip2) * 2.0*(mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] ) ;
                     pressure_shape_vel(ip, d1, k) += sumVel;
 
                     
@@ -519,7 +566,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             
 
 
-                    number sumVel2 =  inv(ip, ip2) * x_interface[ip2][d1] * densitySCV[k] *vLocShape[k] * VicscousCoef;
+                    number sumVel2 =  inv(ip, ip2) * x_interface[ip2][d1] * densitySCV[k] *vLocShape[k] * VicscousCoef[ip2];
                     pressure_shape_vel(ip, d1, k) += sumVel2;
                     
                     P_jump[ip] += sumVel2 * vCornerValue(d1, k);
@@ -559,7 +606,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             number sumP = 0.0;
             for(size_t ip2 = 0; ip2 < N; ++ip2)
             {
-                sumP += inv(ip, ip2) * VecProd(x_interface[ip2],scv.global_grad(k)) * PressureCoef ;
+                sumP += inv(ip, ip2) * VecProd(x_interface[ip2],scv.global_grad(k)) * PressureCoef[ip2] ;
             }
             
             pressure_shape_p(ip, k) = sumP ;
@@ -573,7 +620,6 @@ update(const FV1Geometry<TElem, dim>* geo,
         }
     }
     bool f= true;
-    number yy = 0.0;
     for(size_t ip = 0; ip < N; ++ip)
     {
     
@@ -582,7 +628,6 @@ update(const FV1Geometry<TElem, dim>* geo,
             f = f && false;
             
         }
-        yy += geo->scv_global_ips()[ip][1];
     }
 
     
@@ -590,40 +635,78 @@ update(const FV1Geometry<TElem, dim>* geo,
     {
         pressure_jump(ip) = P_jump[ip];
         //if (isnan(P_jump[ip]))
-        if (f)
+        if (false)
         {
             //const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             if(ip==0)
             {
                 printf("Pressure jump at model------------------------------------------\n" );
-                printf("mu_l  = %f\n",mu_l);
-                printf("mu_g  = %f\n",mu_g);
-                printf("dt  = %f\n",dt);
-                printf("Inv_DiffLenSq  = %f\n",Inv_DiffLenSq);
+                //printf("rho_l  = %f\n",rho_l);
+                //printf("rho_g  = %f\n",rho_g);
+                //printf("mu_l  = %f\n",mu_l);
+                //printf("mu_g  = %f\n",mu_g);
+                //printf("dt  = %f\n",dt);
+                //printf("Inv_DiffLenSq  = %f\n",Inv_DiffLenSq);
                 
-                printf("diag1  = %f\n",diag1);
-                printf("diag2  = %f\n",diag2);
-                printf("VicscousCoef  = %f\n",VicscousCoef);
-                printf("PressureCoef  = %f\n",PressureCoef);
-                printf("SourceCoef  = %f\n",SourceCoef);
+                //printf("diag1  = %f\n",diag1);
+                //printf("diag2  = %f\n",diag2);
                 
             
-                
-                printf("Diag  = %f\n",Diag);
+            
                 //printf("RhoMu  = %f\n",RhoMu);
                 //printf("Cvel  = %f\n",Cvel);
                 
-                printf("Inv  = %f\n",Diag);
-                printf("   %f     %f    %f\n", inv(0, 0),inv(0, 1),inv(0, 1));
-                printf("   %f     %f    %f\n", inv(1, 0),inv(1, 1),inv(1, 1));
-                printf("   %f     %f    %f\n", inv(2, 0),inv(2, 1),inv(2, 1));
+                /*printf("Inv  = \n");
+                printf("   %f     %f    %f\n", inv(0, 0),inv(0, 1),inv(0, 2));
+                printf("   %f     %f    %f\n", inv(1, 0),inv(1, 1),inv(1, 2));
+                printf("   %f     %f    %f\n", inv(2, 0),inv(2, 1),inv(2, 2));
+                
+                printf("mat  = \n");
+                printf("   %f     %f    %f\n", mat(0, 0),mat(0, 1),mat(0, 2));
+                printf("   %f     %f    %f\n", mat(1, 0),mat(1, 1),mat(1, 2));
+                printf("   %f     %f    %f\n", mat(2, 0),mat(2, 1),mat(2, 2));*/
+                
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                    printf("VicscousCoef  = %f\n",VicscousCoef[ip2]);
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                    printf("PressureCoef  = %f\n",PressureCoef[ip2]);
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                    printf("SourceCoef  = %f\n",SourceCoef_1[ip2]);
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                    printf("SourceCoef  = %f\n",SourceCoef_2[ip2]);
+
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                {
+                    printf("PressureJump[%zu] = %f\n",ip2, P_jump[ip2]);
+                }
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                {
+                    printf("Pressure[%zu] = %f\n",ip2, vCornerValue(_P_, ip2));
+                }
+                /*for(size_t ip2 = 0; ip2 < N; ++ip2)
+                {
+                    printf("vLocShape[%zu] = %f\n",ip2, vLocShape[ip2]);
+                }*/
+                
+                /*for(size_t ip2 = 0; ip2 < N; ++ip2)
+                {
+                    printf("JumpShape[%zu] = %f\n",ip2, jump_shape[ip2]);
+                    printf("vol_fraction[%zu] = %f\n",ip2, vol_fraction[ip2]);
+                }*/
+
+                
                 
                 
             }
-            //printf("yy = %f\n", yy/N);
-            printf("Pressure[%zu] = %f\n",ip, P_jump[ip]);
-            printf("JumpShape[%zu] = %f\n",ip, jump_shape[ip]);
-            printf("vol_fraction[%zu] = %f\n",ip, vol_fraction[ip]);
+            
+
+            
+            
+            
+            
+            
+            
+
             //printf("VolFrac[%zu] = %f\n",ip, VolFrac[ip]);
 
             
@@ -633,7 +716,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             
             //printf("Coor[%zu] =   %f      %f\n",ip, geo->scv_global_ips()[ip][0], geo->scv_global_ips()[ip][1]);
             
-            printf("Xinter[%zu] = %f        %f\n",ip, x_interface[ip][0], x_interface[ip][1]);
+            //printf("Xinter[%zu] = %f        %f\n",ip, x_interface[ip][0], x_interface[ip][1]);
             
             //printf("vLocIP_inter[0] = %f\n", vLocIP_inter[0]);
             //printf("vLocIP_inter[0] = %f\n", vLocIP_inter[1]);

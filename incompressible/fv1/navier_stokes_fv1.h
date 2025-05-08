@@ -46,6 +46,7 @@
 #include "../../upwind_interface.h"
 #include "stabilization.h"
 #include "pressure_jump.h"
+#include "properties_interface.h"
 
 namespace ug{
 namespace NavierStokes{
@@ -186,8 +187,7 @@ class NavierStokesFV1
         void set_jump_shape(SmartPtr<CplUserData<number, dim> > user, const std::string& diffLength);
         void set_source_surface(SmartPtr<CplUserData<number, dim> > user);
         void set_interface_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
-	/// returns scvf source
-		DataImport<MathVector<dim>, dim> sourceSCVF(){ return m_imSourceSCVF;}
+
 
 	///	sets the stabilization used to compute the stabilized velocities
 		void set_stabilization(SmartPtr<INavierStokesFV1Stabilization<dim> > spStab)
@@ -536,9 +536,6 @@ class NavierStokesFV1
 		template <typename TFVGeom>
 		inline number peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
                                    const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
-    
-        template <typename TElem, typename TFVGeom>
-        inline void PropertiesJump(const TFVGeom& geo, number** interShape, const DataImport<number, dim>& VolFraction,const DataImport<number, dim>& JumpShape,const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscositySCV,  size_t numSh, bool& interface, bool* Phase1, number& theta, number& mu_l, number& mu_g, number& rho_l, number& rho_g);
 
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>
@@ -627,7 +624,8 @@ class NavierStokesFV1
         DataImport<MathVector<dim>, dim> m_imSurfaceNormal;
         DataImport<number, dim> m_imVolumeFraction;
         number m_interface_vol_fraction = 0.5;
-    
+        Interface<dim>* Inter;
+
 	///	Stabilization for velocity in continuity equation
 		SmartPtr<INavierStokesFV1Stabilization<dim> > m_spStab;
     

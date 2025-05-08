@@ -139,13 +139,12 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
-       const DataImport<MathVector<dim>, dim>* pSource,
+       const DataImport<MathVector<dim>, dim>& Source,
+       const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
        const bool multiphase,
-       const bool phase_2[],
-       const number theta,
-       number** SCVFinterShape)
+       const bool phase_2[])
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for FIELDS stabilization.");
@@ -212,8 +211,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //	Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                if(Source.data_given())
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                 
                 //	Time
                 if(pvCornerValueOldTime != NULL)
@@ -378,8 +377,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //	Source
                 f[ip] = 0.0;
-                if(pSource != NULL)
-                    f[ip] = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                if(Source.data_given())
+                    f[ip] = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                 
                 //	Time
                 if(pvCornerValueOldTime != NULL)
@@ -467,13 +466,12 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
-       const DataImport<MathVector<dim>, dim>* pSource,
+       const DataImport<MathVector<dim>, dim>& Source,
+       const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
        const bool multiphase,
-       const bool phase_2[],
-       const number theta,
-       number** SCVFinterShape)
+       const bool phase_2[])
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for FLOW stabilization.");
@@ -548,8 +546,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //	Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                if(Source.data_given())
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                 
                 //	Time
                 if(pvCornerValueOldTime != NULL)
@@ -769,8 +767,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
                 
                 //	Source
-                if(pSource != NULL)
-                    f[ip] += (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                if(Source.data_given())
+                    f[ip] += (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                 
                 //	Time
                 if(pvCornerValueOldTime != NULL)
@@ -848,13 +846,12 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
-       const DataImport<MathVector<dim>, dim>* pSource,
+       const DataImport<MathVector<dim>, dim>& Source,
+       const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
        const bool multiphase,
-       const bool phase_2[],
-       const number theta,
-       number** SCVFinterShape)
+       const bool phase_2[])
 {
     if( non_zero_shape_ip())
     {
@@ -913,23 +910,36 @@ update(const FV1Geometry<TElem, dim>* geo,
             VecScaleAppend(ViscGrad[ip], kinViscoSCV[sh]*densitySCV[sh], scvf.global_grad(sh));
         }
         
-        DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip])/density[ip];
+        DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip]);
     }
 
-    number mu_2 = 0.0, mu_1 = 0.0;
-    number rho_2 = 0.0, rho_1 = 0.0;
+    number mu_2 = 0.0, mu_1 = 1000000;
+    number rho_2 = 0.0, rho_1 = 1000000;
     
-    number alpha1 = ((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
-    number alpha2 = ((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
+    
+    
+    number alpha1 = 1.0;//((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
+    number alpha2 = 1.0;//((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
     number alpha3 = 1.0;
     
     //printf("Bug1 \n");
     
     //number fase1 = 0.0;
+    bool boolSource = (SourceSCV.data_given()) ? true : false;
     
+
+
+    
+    MathVector<dim> Source_1;
+    MathVector<dim> Source_2;
     if (multiphase)
     {
-
+        VecSet(Source_1,0.0);
+        VecSet(Source_2,0.0);
+        
+        
+        int Count_1 = 0;
+        int Count_2 = 0;
         
         for(size_t sh = 0; sh < numSh; ++sh)
         {
@@ -937,58 +947,71 @@ update(const FV1Geometry<TElem, dim>* geo,
             {
                 mu_2 = fmax( mu_2, densitySCV[sh] * kinViscoSCV[sh]);
                 rho_2 = fmax( rho_2, densitySCV[sh] );
+
+                if(boolSource) VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );
+                Count_2 +=1;
+                
             }
             else
             {
-                mu_1 = fmax( mu_1, densitySCV[sh] * kinViscoSCV[sh]);
-                rho_1 = fmax( rho_1, densitySCV[sh] );
+                mu_1 = fmin( mu_1, densitySCV[sh] * kinViscoSCV[sh]);
+                rho_1 = fmin( rho_1, densitySCV[sh] );
+                if(boolSource) VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );
+                Count_1 +=1;
+                
             }
             
-            //fase1 +=jump_shape[sh];
+        }
+
+        if(boolSource)
+        {
+            VecScale(Source_1,Source_1,1.0/Count_1);
+            VecScale(Source_2,Source_2,1.0/Count_2);
         }
         
-        
-        if ((mu_2 < mu_1)||(mu_2<0.0)||(mu_1<0.0))
+        if ((mu_2 < mu_1)||(mu_2<=0.0)||(mu_1<=0.0))
             UG_THROW("Viscosity in phase 1 is lower that phase 2");
-        if ((rho_2 < rho_1)||(rho_2<0.0)||(rho_1<0.0))
+        if ((rho_2 < rho_1)||(rho_2<=0.0)||(rho_1<=0.0))
             UG_THROW("Density in phase 1 is lower that phase 2");
+        
+
     }
     
 
     //    cache values
     number vViscoPerDiffLenSq[numIp];
     number RHO[numIp];
+    MathVector<dim> SOURCE[numIp];
     bool interface_change[numIp];
     
     number vNormStdVelPerConvLen[numIp];
-    number w_pe[numIp];
     
     for(size_t ip = 0; ip < numIp; ++ip)
     {
         const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+        const typename FV1Geometry<TElem, dim>::SCV& scvFrom = geo->scv(scvf.from());
+        const typename FV1Geometry<TElem, dim>::SCV& scvTo   = geo->scv(scvf.to());
+        
+        const int from = scvFrom.node_id();
+        const int to = scvTo.node_id();
+        
         if (multiphase)
         {
             
-            if(jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0)
-            {
-                interface_change[ip] = true;
-            }
-                
-            else
-            {
-                interface_change[ip] = false;
-
-            }
+            interface_change[ip] = (jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0) ? true : false;
+ 
             
             if(phase_2[ip])
             {
                 vViscoPerDiffLenSq[ip] = (mu_2/rho_2) * diff_length_sq_inv(ip);
                 RHO[ip]=rho_2;
+                if(boolSource) SOURCE[ip] = Source_2;
             }
             else
             {
                 vViscoPerDiffLenSq[ip] = (mu_1/rho_1) * diff_length_sq_inv(ip);
                 RHO[ip]=rho_1;
+                if(boolSource) SOURCE[ip] = Source_1;
             }
 
             
@@ -996,22 +1019,14 @@ update(const FV1Geometry<TElem, dim>* geo,
         else
         {
             vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
-            RHO[ip]=density[ip];
+            RHO[ip]=density[ip];//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
+            if(boolSource) SOURCE[ip] = Source[ip];
         }
         
         if(!bStokes)
         {
             const number norm = VecTwoNorm(vStdVel[ip]);
             vNormStdVelPerConvLen[ip] = norm / upwind_conv_length(ip);
-            
-            
-        //    compute peclet number
-            number Pe = VecProd(vStdVel[ip], scvf.normal())/VecTwoNormSq(scvf.normal())
-             * VecDistance(geo->corners() [scvf.to()], geo->corners() [scvf.from()]) / kinVisco[ip];
-
-        //    compute weight
-            const number Pe2 = Pe * Pe;
-            w_pe[ip] = 1.0;//Pe2 / (5.0 + Pe2);
             
         }
 
@@ -1056,7 +1071,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 //diag += DenMomentum[ip];
             }
             
-            diag *= density[ip];
+            diag *= RHO[ip];
+            //diag += DenMomentum[ip];
             //     Loop components of velocity
             for(int d = 0; d < dim; d++)
             {
@@ -1067,8 +1083,11 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs = (  ( RHO[ip]-density_ref) / RHO[ip]) * (*pSource)[ip][d];
+                if(boolSource)
+                {
+                    rhs =  SOURCE[ip][d];
+                }
+
                 
                 //    Time
                 /*if(pvCornerValueOldTime != NULL)
@@ -1089,8 +1108,10 @@ update(const FV1Geometry<TElem, dim>* geo,
                     //number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
                     number sumVel = vViscoPerDiffLenSq[ip] * densitySCV[k] * scvf.shape(k);
                     
-                    sumVel += -2.0 * kinVisco[ip] * VecProd( RhoGrad[ip], scvf.global_grad(k));
-                    sumVel +=  VecProd( ViscGrad[ip], scvf.global_grad(k));
+                    //sumVel += -2.0 * kinVisco[ip] * (densitySCV[k]/density[ip]) * VecProd( RhoGrad[ip], scvf.global_grad(k));
+                    //sumVel +=  (densitySCV[k]/density[ip]) * VecProd( ViscGrad[ip], scvf.global_grad(k));
+                    //sumVel +=  (densitySCV[k]/pow(density[ip],2)) * scvf.shape(k) * kinVisco[ip]*VecLengthSq(RhoGrad[ip]);
+                    //sumVel +=  -(densitySCV[k]/pow(density[ip],2)) * scvf.shape(k) * VecProd(RhoGrad[ip],ViscGrad[ip]);
                     
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)
@@ -1113,14 +1134,14 @@ update(const FV1Geometry<TElem, dim>* geo,
                     {
                         if( (interface_change[ip]))
                         {
-                            sumP = -1.0 * alpha3 * (scvf.global_grad(k))[d]  / RHO[ip];
+                            sumP = -1.0 * alpha3 * (scvf.global_grad(k))[d] ;
                             //sumP += -1.0 * alpha3 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                             //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / RHO[ip];
                             
                         }
                         else
                         {
-                            sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d]  / RHO[ip];
+                            sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d] ;
                             //sumP += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                         }
                         
@@ -1160,7 +1181,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                             if( interface_change[ip])
                             {
                                 
-                                sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
+                                sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) ;
                                 //sumPJump +=  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / RHO[ip];
                                 //sumPJump +=  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                                 
@@ -1168,7 +1189,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                             else
                             {
                                 
-                                sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
+                                sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) ;
                                 //sumPJump +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                             }
 
@@ -1182,10 +1203,10 @@ update(const FV1Geometry<TElem, dim>* geo,
                         rhs += sumPJump *(pressure_jump[k]);
                         
                 
-                        if (  ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )   )
+                        /*if (  ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )   )
                             sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
                         
-                        rhs += sumSlipVel * SlipVel[k][d];
+                        rhs += sumSlipVel * SlipVel[k][d];*/
             
                     }
 
@@ -1204,7 +1225,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 //printf("Bug7 \n");
                 
             }
-            if(multiphase && (interface_change[ip]))
+            //if(multiphase && (interface_change[ip]))
+            if(false)
             {
 
                 
@@ -1370,8 +1392,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                if(Source.data_given())
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                 
                 //    Time
                 if(pvCornerValueOldTime != NULL)
@@ -1521,10 +1543,10 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     //    Source
                     number rhs = 0.0;
-                    if(pSource != NULL)
+                    if(Source.data_given())
                     {
 
-                        rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                        rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                     }
                     
                     //    Time
@@ -1810,8 +1832,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                      
                      //    Source
                      number rhs = 0.0;
-                     if(pSource != NULL)
-                         rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                     if(Source.data_given())
+                         rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                      
                      //    Time
                      if(pvCornerValueOldTime != NULL)
@@ -1958,8 +1980,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                      {
                          //    Source
                          number rhs = 0.0;
-                         if(pSource != NULL)
-                             rhs =   - ( 1.0/rho_2-1.0/rho1 ) * density_ref * (*pSource)[ip][d];
+                         if(Source.data_given())
+                             rhs =   - ( 1.0/rho_2-1.0/rho1 ) * density_ref * Source[ip][d];
                          
                          
                          //    loop shape functions
@@ -2011,8 +2033,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                              
                          
                          number rhs = 0.0;
-                         if(pSource != NULL)
-                             rhs = (  ( rho-density_ref) / rho) * (*pSource)[ip][d];
+                         if(Source.data_given())
+                             rhs = (  ( rho-density_ref) / rho) * Source[ip][d];
                          
                          //    Time
                          if(pvCornerValueOldTime != NULL)
@@ -2178,8 +2200,8 @@ update(const FV1Geometry<TElem, dim>* geo,
 
              //    Source
                  number rhs = 0.0;
-                 if(pSource != NULL)
-                     rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                 if(Source.data_given())
+                     rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
 
              //    Time
                  if(pvCornerValueOldTime != NULL)
@@ -2311,13 +2333,12 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
-       const DataImport<MathVector<dim>, dim>* pSource,
+       const DataImport<MathVector<dim>, dim>& Source,
+       const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
        const bool multiphase,
-       const bool phase_2[],
-       const number theta,
-       number** SCVFinterShape)
+       const bool phase_2[])
 {
     if( non_zero_shape_ip())
     {
@@ -2468,8 +2489,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                if(Source.data_given())
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                 
                 //    Time
                 if(pvCornerValueOldTime != NULL)
@@ -2575,9 +2596,9 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
-                //rhs = (  ( density[ip]-density_ref) / density[ip]) * VecProd((*pSource)[ip], normal[ip]) * normal[ip][d];
+                if(Source.data_given())
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
+                //rhs = (  ( density[ip]-density_ref) / density[ip]) * VecProd(Source[ip], normal[ip]) * normal[ip][d];
                 
                 //    Time
                 if(pvCornerValueOldTime != NULL)
@@ -2928,8 +2949,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                if(Source.data_given())
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                 
                 //    Time
                 if(pvCornerValueOldTime != NULL)
@@ -3033,9 +3054,9 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
-                //rhs = (  ( density[ip]-density_ref) / density[ip]) * VecProd((*pSource)[ip], normal[ip]) * normal[ip][d];
+                if(Source.data_given())
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
+                //rhs = (  ( density[ip]-density_ref) / density[ip]) * VecProd(Source[ip], normal[ip]) * normal[ip][d];
                 
                 //    Time
                 if(pvCornerValueOldTime != NULL)
@@ -3325,8 +3346,8 @@ update(const FV1Geometry<TElem, dim>* geo,
 
             //    Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs =   ( density[ip]-density_ref)  * (*pSource)[ip][d] / density[ip];
+                if(Source.data_given())
+                    rhs =   ( density[ip]-density_ref)  * Source[ip][d] / density[ip];
 
             //    Time
                 if(pvCornerValueOldTime != NULL)
@@ -3479,8 +3500,8 @@ update(const FV1Geometry<TElem, dim>* geo,
 
             //    Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs =   ( 1.0-density_ref/density[ip])  * (*pSource)[ip][d];
+                if(Source.data_given())
+                    rhs =   ( 1.0-density_ref/density[ip])  * Source[ip][d];
 
             //    Time
                 if(pvCornerValueOldTime != NULL)
@@ -3587,13 +3608,12 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
-       const DataImport<MathVector<dim>, dim>* pSource,
+       const DataImport<MathVector<dim>, dim>& Source,
+       const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt, 
        const number density_ref,
        const bool multiphase,
-       const bool phase_2[],
-       const number theta,
-       number** SCVFinterShape)
+       const bool phase_2[])
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for KARIMIAN stabilization.");
@@ -3678,8 +3698,8 @@ update(const FV1Geometry<TElem, dim>* geo,
 
             //    Source
                 number rhs = 0.0;
-                if(pSource != NULL)
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * (*pSource)[ip][d];
+                if(Source.data_given())
+                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
                 
                 
                 if(pvCornerValueOldTime != NULL)
@@ -3813,13 +3833,12 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
-       const DataImport<MathVector<dim>, dim>* pSource,
+       const DataImport<MathVector<dim>, dim>& Source,
+       const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
        const bool multiphase,
-       const bool phase_2[],
-       const number theta,
-       number** SCVFinterShape)
+       const bool phase_2[])
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for NoStabiliation stabilization.");
@@ -3828,7 +3847,6 @@ update(const FV1Geometry<TElem, dim>* geo,
 
 //    Some constants
     static const size_t numIp = FV1Geometry<TElem, dim>::numSCVF;
-    static const size_t numSh = FV1Geometry<TElem, dim>::numSCV;
 
 //    We can solve the systems ip by ip
     for(size_t ip = 0; ip < numIp; ++ip)
@@ -3917,13 +3935,12 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> SlipVel[],
        const number jump_shape[],
        const MathVector<dim> normal[],
-       const DataImport<MathVector<dim>, dim>* pSource,
+       const DataImport<MathVector<dim>, dim>& Source,
+       const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt, 
        const number density_ref,
        const bool multiphase,
-       const bool phase_2[],
-       const number theta,
-       number** SCVFinterShape)
+       const bool phase_2[])
 {
     if(multiphase)
         UG_THROW("Pressure Jump Not implemented for  stabilization.");

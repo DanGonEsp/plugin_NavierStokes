@@ -211,15 +211,16 @@ class INavierStokesPressureJump
                     const DataImport<number, dim>& densitySCV,
                     const DataImport<number, dim>& JumpShape,
                     const DataImport<number, dim>& vol_fraction,
-                    const DataImport<MathVector<dim>, dim>* pSource,
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const number mu_l,
                     const number rho_l,
+                    const MathVector<dim> Source_l,
                     const number mu_g,
                     const number rho_g,
+                    const MathVector<dim> Source_g,
                     const number interface_value)
-    {(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel, bStokes,n, kinViscoSCV, density, densitySCV, JumpShape, vol_fraction, pSource, pvCornerValueOldTime, dt, density_ref, mu_l, rho_l, mu_g, rho_g, interface_value);}
+    {(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel, bStokes,n, kinViscoSCV, density, densitySCV, JumpShape, vol_fraction, pvCornerValueOldTime, dt, density_ref, mu_l, rho_l, Source_l, mu_g, rho_g,Source_g, interface_value);}
 
 
     /////////////////////////////////////////
@@ -398,13 +399,14 @@ class INavierStokesPressureJump
                                               const DataImport<number, dim>& densitySCV,
                                               const DataImport<number, dim>& JumpShape,
                                               const DataImport<number, dim>& vol_fraction,
-                                              const DataImport<MathVector<dim>, dim>* pSource,
                                               const LocalVector* pvCornerValueOldTime, number dt,
                                               const number density_ref,
                                               const number mu_l,
                                               const number rho_l,
+                                              const MathVector<dim> Source_l,
                                               const number mu_g,
                                               const number rho_g,
+                                              const MathVector<dim> Source_g,
                                               const number interface_value);
 
     public:
@@ -495,13 +497,14 @@ class NavierStokesViscousPressureJump
                     const DataImport<number, dim>& densitySCV,
                     const DataImport<number, dim>& JumpShape,
                     const DataImport<number, dim>& vol_fraction,
-                    const DataImport<MathVector<dim>, dim>* pSource,
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const number mu_l,
                     const number rho_l,
+                    const MathVector<dim> Source_l,
                     const number mu_g,
                     const number rho_g,
+                    const MathVector<dim> Source_g,
                     const number interface_value);
     
 
@@ -523,13 +526,14 @@ class NavierStokesViscousPressureJump
                                              const DataImport<number, dim>& densitySCV,
                                              const DataImport<number, dim>& JumpShape,
                                              const DataImport<number, dim>& vol_fraction,
-                                             const DataImport<MathVector<dim>, dim>* pSource,
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const number mu_l,
                                              const number rho_l,
+                                             const MathVector<dim> Source_l,
                                              const number mu_g,
                                              const number rho_g,
+                                             const MathVector<dim> Source_g,
                                              const number interface_value);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
