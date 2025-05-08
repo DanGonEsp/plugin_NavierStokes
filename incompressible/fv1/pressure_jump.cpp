@@ -338,8 +338,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_g;                       //Factor
             VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
             //SourceCoef[ip]   = 1.0 * Factor * ( (rho_l-density_ref) * diag1 - (rho_g - density_ref) * diag2);
-            SourceCoef_2[ip]   = 1.0 * Factor * (0*diag2+diag1) ;
-            SourceCoef_1[ip]   = -1.0 * Factor * ( (rho_l/rho_g)*0.0   + 1.0 ) * diag2 ;
+            SourceCoef_2[ip]   = 1.0 * Factor * (diag2+diag1) ;
+            SourceCoef_1[ip]   = -1.0 * Factor * ( (rho_l/rho_g)   + 1.0 ) * diag2 ;
 
         }
         else
@@ -348,8 +348,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_l;                      // Factor  ;
             VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
             //SourceCoef[ip]   = 1.0 * Factor * ( (rho_l-density_ref) * diag1 - (rho_g - density_ref) * diag2);
-            SourceCoef_2[ip]   = 1.0 * Factor * ( 0*rho_g / rho_l  + 1.0  ) * diag1 ;
-            SourceCoef_1[ip]   = -1.0 * Factor * (diag2+diag1*0)  ;
+            SourceCoef_2[ip]   = 1.0 * Factor * ( rho_g / rho_l  + 1.0  ) * diag1 ;
+            SourceCoef_1[ip]   = -1.0 * Factor * (diag2+diag1)  ;
 
             
         }
