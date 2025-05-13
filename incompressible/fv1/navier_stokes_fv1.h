@@ -648,6 +648,7 @@ class NavierStokesFV1
 		using base_type::m_bLaplace;
         using base_type::m_gradDivFactor;
         number m_density_ref = 0;
+        bool boolGradientPressure = true;
 
 		virtual void init();
 
