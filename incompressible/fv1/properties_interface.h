@@ -429,10 +429,7 @@ class Interface
             number mu_2 = 0.0, mu_1 = 0.0;
             number rho_2 = 0.0, rho_1 = 0.0;
             
-            number visc1 = 1000000, visc2 = 0.0;
-            number rho1 = 1000000, rho2 = 0.0;
 
-            
             MathVector<dim> Source_1;
             MathVector<dim> Source_2;
             
@@ -447,27 +444,29 @@ class Interface
             {
                 if (JumpShape[sh]>0)
                 {
-                    visc2 = fmax( visc2, DensitySCV[sh] * KinViscSCV[sh]);
-                    rho2 = fmax( rho2, DensitySCV[sh] );
+                    mu_2  += DensitySCV[sh] * KinViscSCV[sh];
+                    rho_2 += DensitySCV[sh] ;
 
-                    if(boolSource) VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );
+                    if(boolSource) {VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );}
+                    
                     Count_2 +=1;
                     
                 }
                 else
                 {
-                    visc1 = fmin( visc1, DensitySCV[sh] * KinViscSCV[sh]);
-                    rho1 = fmin( rho1, DensitySCV[sh] );
-                    if(boolSource) VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );
+                    mu_1  += DensitySCV[sh] * KinViscSCV[sh];
+                    rho_1 += DensitySCV[sh] ;
+                    if(boolSource) {VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );}
                     Count_1 +=1;
                     
                 }
                 
             }
-            mu_2 = visc2;
-            mu_1 = visc1;
-            rho_2 = rho2;
-            rho_1 = rho1 ;
+            mu_1 = mu_1 / Count_1;
+            mu_2 = mu_2 / Count_2;
+            rho_1 = rho_1 / Count_1;
+            rho_2 = rho_2 / Count_2;
+            
             if(boolSource)
             {
                 VecScale(Source_1,Source_1,1.0/Count_1);

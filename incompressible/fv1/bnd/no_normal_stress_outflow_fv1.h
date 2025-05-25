@@ -93,6 +93,10 @@ class NavierStokesNoNormalStressOutflowFV1
 	///	sets the density
 		virtual void set_density(SmartPtr<CplUserData<number, dim> > data)
 			{m_imDensity.set_data(data);}
+    
+    ///    sets the density
+        virtual void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+            {m_imSource.set_data(data);}
 
 	public:
 	///	type of trial space for each function used
@@ -231,6 +235,9 @@ class NavierStokesNoNormalStressOutflowFV1
 
 	/// Data import for density
 		DataImport<number, dim> m_imDensity;
+    
+    /// Data import for Source
+        DataImport<MathVector<dim>, dim> m_imSource;
 
 	/// Boundary integration points of the viscosity and the density
 		std::vector<MathVector<dim> > m_vLocIP;

@@ -913,18 +913,19 @@ update(const FV1Geometry<TElem, dim>* geo,
         DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip]);
     }
 
-    number mu_2 = 0.0, mu_1 = 1000000;
-    number rho_2 = 0.0, rho_1 = 1000000;
-    
+    number mu_2 = 0.0, mu_1 = 0.0;
+    number rho_2 = 0.0, rho_1 = 0.0;
+    number rho_ave = 0.0;
+    for(size_t sh = 0; sh < numSh; ++sh)
+        rho_ave += 1.0 * densitySCV[sh];
+    rho_ave = numSh / rho_ave;
     
     
     number alpha1 = 1.0;//((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
     number alpha2 = 1.0;//((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
     number alpha3 = 1.0;
     
-    //printf("Bug1 \n");
-    
-    //number fase1 = 0.0;
+
     bool boolSource = (SourceSCV.data_given()) ? true : false;
     
 
@@ -945,23 +946,28 @@ update(const FV1Geometry<TElem, dim>* geo,
         {
             if (jump_shape[sh]>0)
             {
-                mu_2 = fmax( mu_2, densitySCV[sh] * kinViscoSCV[sh]);
-                rho_2 = fmax( rho_2, densitySCV[sh] );
+                mu_2  += densitySCV[sh] * kinViscoSCV[sh];
+                rho_2 += densitySCV[sh] ;
 
-                if(boolSource) VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );
+                if(boolSource) {VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );}
                 Count_2 +=1;
                 
             }
             else
             {
-                mu_1 = fmin( mu_1, densitySCV[sh] * kinViscoSCV[sh]);
-                rho_1 = fmin( rho_1, densitySCV[sh] );
-                if(boolSource) VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );
+                mu_1  = densitySCV[sh] * kinViscoSCV[sh];
+                rho_1 = densitySCV[sh];
+                if(boolSource) {VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );}
                 Count_1 +=1;
                 
             }
             
+            
         }
+        mu_1 = mu_1 / Count_1;
+        mu_2 = mu_2 / Count_2;
+        rho_1 = rho_1 / Count_1;
+        rho_2 = rho_2 / Count_2;
 
         if(boolSource)
         {
@@ -1017,10 +1023,31 @@ update(const FV1Geometry<TElem, dim>* geo,
             
         }
         else
-        {
+        {   
+
+            /*vViscoPerDiffLenSq[ip] = 0.5 * (kinViscoSCV[to] + kinViscoSCV[from] )* diff_length_sq_inv(ip);
+            RHO[ip]=0.5 * (densitySCV[to] + densitySCV[from]);//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
+            if(boolSource) SOURCE[ip] = SourceSCV[to];*/
+
+            
+            
             vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
-            RHO[ip]=density[ip];//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
+            RHO[ip]=rho_ave;//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
             if(boolSource) SOURCE[ip] = Source[ip];
+            
+            /*if(densitySCV[from]*kinViscoSCV[from] > densitySCV[to]*kinViscoSCV[to])
+            {
+                vViscoPerDiffLenSq[ip] = kinViscoSCV[from] * diff_length_sq_inv(ip);
+                RHO[ip]=densitySCV[from];//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
+                if(boolSource) SOURCE[ip] = Source[ip];
+            }
+            else
+            {
+                vViscoPerDiffLenSq[ip] = kinViscoSCV[to] * diff_length_sq_inv(ip);
+                RHO[ip]=densitySCV[to];//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
+                if(boolSource) SOURCE[ip] = Source[ip];
+                
+            }*/
         }
         
         if(!bStokes)
@@ -1071,7 +1098,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 //diag += DenMomentum[ip];
             }
             
-            diag *= RHO[ip];
+            //diag *= RHO[ip];
             //diag += DenMomentum[ip];
             //     Loop components of velocity
             for(int d = 0; d < dim; d++)
@@ -1095,7 +1122,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     //    interpolate old time step
                     number oldIPVel = 0.0;
                     for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                        oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+                        oldIPVel += densitySCV[sh] * scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
                     
                     //    add to rhs
                     rhs += oldIPVel / dt;
@@ -1105,8 +1132,9 @@ update(const FV1Geometry<TElem, dim>* geo,
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
                 {
                     //    Diffusion part
-                    //number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-                    number sumVel = vViscoPerDiffLenSq[ip] * densitySCV[k] * scvf.shape(k);
+                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+                    //number sumVel = vViscoPerDiffLenSq[ip] * densitySCV[k] * scvf.shape(k);
+                    //number sumVel = vViscoPerDiffLenSq[ip] * RHO[ip] * scvf.shape(k);
                     
                     //sumVel += -2.0 * kinVisco[ip] * (densitySCV[k]/density[ip]) * VecProd( RhoGrad[ip], scvf.global_grad(k));
                     //sumVel +=  (densitySCV[k]/density[ip]) * VecProd( ViscGrad[ip], scvf.global_grad(k));
@@ -1151,7 +1179,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                     }
                     else
                     {
-                        sumP = -1.0 * alpha1 * scvf.global_grad(k)[d];
+                        sumP = -1.0 * alpha1 * scvf.global_grad(k)[d] / RHO[ip];// - 1.0 * scvf.shape(k) * RhoGrad[ip][d] / rho_ave;
+                        //sumP = -1.0 * alpha1 * (RHO[ip] / rho_ave) * scvf.global_grad(k)[d];
                     }
                     
                     
@@ -1203,10 +1232,10 @@ update(const FV1Geometry<TElem, dim>* geo,
                         rhs += sumPJump *(pressure_jump[k]);
                         
                 
-                        /*if (  ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )   )
+                        if (  ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )   )
                             sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
                         
-                        rhs += sumSlipVel * SlipVel[k][d];*/
+                        rhs += sumSlipVel * SlipVel[k][d];
             
                     }
 

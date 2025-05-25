@@ -189,6 +189,15 @@ update(const FV1Geometry<TElem, dim>* geo,
     }
     
     
+    bool SurfTensionJump = false;
+    bool HidroPressJump = false;
+    bool SourceJump = false;
+    bool ViscJump = false;
+    bool GradientJump = false;
+    
+    
+    const number alpha1= 1.0;
+    const number alpha2= 1.0;
     /////////////////////////////////////////////////////////////////////////////
     // Calculation X_interface
     /////////////////////////////////////////////////////////////////////////////
@@ -314,10 +323,6 @@ update(const FV1Geometry<TElem, dim>* geo,
     number RHO=0.0;
     number Vol=0.0;
     
-    const number alpha1= 1.0;
-    const number alpha2= 1.0;
-    
-    
     
     number PressureCoef[numSh];
     number VicscousCoef[numSh];
@@ -334,20 +339,18 @@ update(const FV1Geometry<TElem, dim>* geo,
         Vol += scv.volume();
         if(jump_shape[ip]>0.0)
         {
-            const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);                                         //(rho_l-rho_g) / (rho_g)
-            PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_g;                       //Factor
+            const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2); 
             VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
-            //SourceCoef[ip]   = 1.0 * Factor * ( (rho_l-density_ref) * diag1 - (rho_g - density_ref) * diag2);
-            SourceCoef_2[ip]   = 1.0 * Factor * (diag2+diag1) ;
-            SourceCoef_1[ip]   = -1.0 * Factor * ( (rho_l/rho_g)   + 1.0 ) * diag2 ;
+            PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_g ;
+            SourceCoef_2[ip] =   1.0 * Factor * (diag2+diag1) ;
+            SourceCoef_1[ip] =  -1.0 * Factor * ( (rho_l/rho_g)   + 1.0 ) * diag2 ;
 
         }
         else
         {
-            const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);                                         // (rho_l-rho_g) / (rho_l );
-            PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_l;                      // Factor  ;
+            const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);
+            PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_l;
             VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
-            //SourceCoef[ip]   = 1.0 * Factor * ( (rho_l-density_ref) * diag1 - (rho_g - density_ref) * diag2);
             SourceCoef_2[ip]   = 1.0 * Factor * ( rho_g / rho_l  + 1.0  ) * diag1 ;
             SourceCoef_1[ip]   = -1.0 * Factor * (diag2+diag1)  ;
 
@@ -364,7 +367,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     // SlipVelocity
     /////////////////////////////////////////////////////////////////////////////
     
-    /*MathVector<dim> Tang, normal_vel, VelVel;
+    MathVector<dim> Tang, normal_vel, VelVel;
     VecSet(Tang,0.0);
     number VOL_t = 0.0;
     
@@ -439,7 +442,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             }
             
         }
-    }*/
+    }
     
     
     
@@ -460,16 +463,21 @@ update(const FV1Geometry<TElem, dim>* geo,
         
         
         mat(ip, ip) += 1.0;
-        
-        for(size_t ip2 = 0; ip2 < N; ++ip2)
+        if (GradientJump)
         {
-            const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
-            const number Ng = ( jump_shape[ip2] <0.0)? 1.0 : 0.0;
-            const number Nl = ( jump_shape[ip2] >0.0)? 1.0 : 0.0;
-            const number N_s = ( jump_shape[ip] >0.0)? -Nl : Ng;
-            mat(ip, ip2) += -VecProd(scv.global_grad(ip2),x_interface[ip]) * N_s * PressureCoef[ip] ;
+            for(size_t ip2 = 0; ip2 < N; ++ip2)
+            {
+                const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
+                const number Ng = ( jump_shape[ip2] <0.0)? 1.0 : 0.0;
+                const number Nl = ( jump_shape[ip2] >0.0)? 1.0 : 0.0;
+                const number N_s = ( jump_shape[ip] >0.0)? -Nl : Ng;
+                mat(ip, ip2) += -VecProd(scv.global_grad(ip2),x_interface[ip]) * N_s * PressureCoef[ip] ;
+                
+            }
             
         }
+        
+
         
     }
 
@@ -518,7 +526,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         }
     }*/
     // Gradient Jump respect source terms
-    if(true)
+    if(SourceJump && GradientJump)
     {
         MathVector<dim> SourceTotal;
         
@@ -537,8 +545,37 @@ update(const FV1Geometry<TElem, dim>* geo,
         }
     }
     
-    
+    if (SurfTensionJump)
+    {
         
+        const number sigma = 0.1;
+        const number kappa = -1.0 / 0.2;
+        for(size_t ip = 0; ip < N; ++ip)
+        {
+            for(size_t ip2 = 0; ip2 < N; ++ip2)
+            {
+                P_jump[ip] += inv(ip, ip2) * sigma * kappa  ;
+            }
+        }
+    }
+    if (HidroPressJump)
+    {
+        MathVector<dim> H; VecSet(H,0.0);
+        
+        for(size_t ip = 0; ip < N; ++ip)
+        {
+            VecScaleAppend(H, vLocShape[ip],geo->scv_global_ips()[ip]);
+        }
+
+        for(size_t ip = 0; ip < N; ++ip)
+        {
+            for(size_t ip2 = 0; ip2 < N; ++ip2)
+            {
+                P_jump[ip] += inv(ip, ip2) * (rho_l - rho_g)*H[dim-1]*9.81  ;
+            }
+        }
+    }
+    
     
     
     for(size_t ip = 0; ip < N; ++ip)
@@ -553,46 +590,50 @@ update(const FV1Geometry<TElem, dim>* geo,
             {
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
-                    number sumVel =  inv(ip, ip2) * 2.0*(mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] ) ;
-                    pressure_shape_vel(ip, d1, k) += sumVel;
-
                     
-                    P_jump[ip] += sumVel * vCornerValue(d1, k);
-                
-                
-
-            
-            // Pressure Gradient Jump respect Velocity due viscous terms
-            
-
-
-                    number sumVel2 =  inv(ip, ip2) * x_interface[ip2][d1] * densitySCV[k] *vLocShape[k] * VicscousCoef[ip2];
-                    pressure_shape_vel(ip, d1, k) += sumVel2;
-                    
-                    P_jump[ip] += sumVel2 * vCornerValue(d1, k);
-                    
-            // Pressure Gradient Jump respect Velocity due slip Vel
-                    /*const number Ng = (jump_shape[ip2]>0 )? 1.0 : 0.0;
-                    const number Nl = (jump_shape[ip2]<0 )? 1.0 : 0.0;
-                    
-                    for(size_t ip3 = 0; ip3 < N; ++ip3)
+                    if (ViscJump)
                     {
-                        for(size_t d2 = 0; d2 < dim; ++d2)
-                        
-                        {
-                            number sumVel3 =  mat(ip, ip2) * x_interface[ip2][d1] *  vLocShape[k] * Cvel_rel * tang_vel_shape_vel(k, d1, d2, ip3) * (Ng * (mu_l/rho_l)*diag1 + Nl* (mu_g/rho_g)*diag2);
-                            pressure_shape_vel(ip, d2, ip3) += sumVel3 ;
-                            P_jump[ip] += sumVel3 * vCornerValue(d2, ip3);
-                        }
-                    }*/
-            // Pressure Gradient Jump due to convection
-            
-
-
-                    /*number sumVel4 =  inv(ip, ip2) * x_interface[ip2][d1] * upwind_shape_sh(ip, k ) * vNormStdVelPerConvLen * RhoMu;
-                    pressure_shape_vel(ip, d1, k) += sumVel4;
+                        number sumVel =  inv(ip, ip2) * 2.0 * (mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] ) ;
+                        pressure_shape_vel(ip, d1, k) += sumVel;
+                        P_jump[ip] += sumVel * vCornerValue(d1, k);
+                    }
                     
-                    P_jump[ip] += sumVel4 * vCornerValue(d1, k);*/
+                    
+                    if(GradientJump)
+                    {
+                        
+                        // Pressure Gradient Jump respect Velocity due viscous terms
+                        
+                        
+                        
+                        /*number sumVel2 =  inv(ip, ip2) * x_interface[ip2][d1] * densitySCV[k] *vLocShape[k] * VicscousCoef[ip2];
+                         pressure_shape_vel(ip, d1, k) += sumVel2;
+                         
+                         P_jump[ip] += sumVel2 * vCornerValue(d1, k);*/
+                        
+                        // Pressure Gradient Jump respect Velocity due slip Vel
+                        /*const number Ng = (jump_shape[ip2]>0 )? 1.0 : 0.0;
+                         const number Nl = (jump_shape[ip2]<0 )? 1.0 : 0.0;
+                         
+                         for(size_t ip3 = 0; ip3 < N; ++ip3)
+                         {
+                         for(size_t d2 = 0; d2 < dim; ++d2)
+                         
+                         {
+                         number sumVel3 =  mat(ip, ip2) * x_interface[ip2][d1] *  vLocShape[k] * Cvel_rel * tang_vel_shape_vel(k, d1, d2, ip3) * (Ng * (mu_l/rho_l)*diag1 + Nl* (mu_g/rho_g)*diag2);
+                         pressure_shape_vel(ip, d2, ip3) += sumVel3 ;
+                         P_jump[ip] += sumVel3 * vCornerValue(d2, ip3);
+                         }
+                         }*/
+                        // Pressure Gradient Jump due to convection
+                        
+                        
+                        
+                        /*number sumVel4 =  inv(ip, ip2) * x_interface[ip2][d1] * upwind_shape_sh(ip, k ) * vNormStdVelPerConvLen * RhoMu;
+                         pressure_shape_vel(ip, d1, k) += sumVel4;
+                         
+                         P_jump[ip] += sumVel4 * vCornerValue(d1, k);*/
+                    }
                     
                 }
                 
@@ -601,18 +642,20 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
             
             
-            
-            // Gradient Jump respect Pressure
-            number sumP = 0.0;
-            for(size_t ip2 = 0; ip2 < N; ++ip2)
+            if (GradientJump)
             {
-                sumP += inv(ip, ip2) * VecProd(x_interface[ip2],scv.global_grad(k)) * PressureCoef[ip2] ;
+                // Gradient Jump respect Pressure
+                number sumP = 0.0;
+                 for(size_t ip2 = 0; ip2 < N; ++ip2)
+                 {
+                 sumP += inv(ip, ip2) * VecProd(x_interface[ip2],scv.global_grad(k)) * PressureCoef[ip2] ;
+                 }
+                 
+                 pressure_shape_p(ip, k) = sumP ;
+                 
+                 
+                 P_jump[ip] += sumP * vCornerValue(_P_, k);
             }
-            
-            pressure_shape_p(ip, k) = sumP ;
-
-            
-            P_jump[ip] += sumP * vCornerValue(_P_, k);
             
             
             
@@ -634,8 +677,8 @@ update(const FV1Geometry<TElem, dim>* geo,
     for(size_t ip = 0; ip < N; ++ip)
     {
         pressure_jump(ip) = P_jump[ip];
-        //if (isnan(P_jump[ip]))
-        if (false)
+        if (isnan(P_jump[ip]))
+        //if (true)
         {
             //const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             if(ip==0)
