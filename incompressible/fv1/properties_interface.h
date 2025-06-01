@@ -444,8 +444,8 @@ class Interface
             {
                 if (JumpShape[sh]>0)
                 {
-                    mu_2  += DensitySCV[sh] * KinViscSCV[sh];
-                    rho_2 += DensitySCV[sh] ;
+                    mu_2  += 1.0 / (DensitySCV[sh] * KinViscSCV[sh]);
+                    rho_2 += 1.0 / (DensitySCV[sh]) ;
 
                     if(boolSource) {VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );}
                     
@@ -454,18 +454,18 @@ class Interface
                 }
                 else
                 {
-                    mu_1  += DensitySCV[sh] * KinViscSCV[sh];
-                    rho_1 += DensitySCV[sh] ;
+                    mu_1  += 1.0 / (DensitySCV[sh] * KinViscSCV[sh]);
+                    rho_1 += 1.0 / DensitySCV[sh] ;
                     if(boolSource) {VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );}
                     Count_1 +=1;
                     
                 }
                 
             }
-            mu_1 = mu_1 / Count_1;
-            mu_2 = mu_2 / Count_2;
-            rho_1 = rho_1 / Count_1;
-            rho_2 = rho_2 / Count_2;
+            mu_1 = Count_1 / mu_1 ;
+            mu_2 = Count_2 / mu_2 ;
+            rho_1 = Count_1 / rho_1;
+            rho_2 = Count_2 / rho_2;
             
             if(boolSource)
             {

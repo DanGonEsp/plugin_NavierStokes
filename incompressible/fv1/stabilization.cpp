@@ -917,7 +917,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     number rho_2 = 0.0, rho_1 = 0.0;
     number rho_ave = 0.0;
     for(size_t sh = 0; sh < numSh; ++sh)
-        rho_ave += 1.0 * densitySCV[sh];
+        rho_ave += 1.0 / densitySCV[sh];
     rho_ave = numSh / rho_ave;
     
     
@@ -946,8 +946,8 @@ update(const FV1Geometry<TElem, dim>* geo,
         {
             if (jump_shape[sh]>0)
             {
-                mu_2  += densitySCV[sh] * kinViscoSCV[sh];
-                rho_2 += densitySCV[sh] ;
+                mu_2  += 1.0 / (densitySCV[sh] * kinViscoSCV[sh]);
+                rho_2 += 1.0 / densitySCV[sh] ;
 
                 if(boolSource) {VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );}
                 Count_2 +=1;
@@ -955,8 +955,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             }
             else
             {
-                mu_1  = densitySCV[sh] * kinViscoSCV[sh];
-                rho_1 = densitySCV[sh];
+                mu_1  += 1.0 / (densitySCV[sh] * kinViscoSCV[sh]);
+                rho_1 += 1.0 / densitySCV[sh];
                 if(boolSource) {VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );}
                 Count_1 +=1;
                 
@@ -964,10 +964,10 @@ update(const FV1Geometry<TElem, dim>* geo,
             
             
         }
-        mu_1 = mu_1 / Count_1;
-        mu_2 = mu_2 / Count_2;
-        rho_1 = rho_1 / Count_1;
-        rho_2 = rho_2 / Count_2;
+        mu_1 = Count_1 / mu_1;
+        mu_2 = Count_2 / mu_2 ;
+        rho_1 = Count_1 / rho_1;
+        rho_2 = Count_2 / rho_2;
 
         if(boolSource)
         {
@@ -1030,10 +1030,13 @@ update(const FV1Geometry<TElem, dim>* geo,
             if(boolSource) SOURCE[ip] = SourceSCV[to];*/
 
             
-            
+            RHO[ip]=density[ip];//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
             vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
-            RHO[ip]=rho_ave;//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
             if(boolSource) SOURCE[ip] = Source[ip];
+            
+            /*RHO[ip]=rho_ave;//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
+            vViscoPerDiffLenSq[ip] = (density[ip] / RHO[ip])* kinVisco[ip] * diff_length_sq_inv(ip);
+            if(boolSource) SOURCE[ip] = Source[ip];*/
             
             /*if(densitySCV[from]*kinViscoSCV[from] > densitySCV[to]*kinViscoSCV[to])
             {
@@ -1133,8 +1136,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                 {
                     //    Diffusion part
                     number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-                    //number sumVel = vViscoPerDiffLenSq[ip] * densitySCV[k] * scvf.shape(k);
-                    //number sumVel = vViscoPerDiffLenSq[ip] * RHO[ip] * scvf.shape(k);
+                    //number sumVel = vViscoPerDiffLenSq[ip] * (densitySCV[k] / RHO[ip]) * scvf.shape(k);
+                    //number sumVel = vViscoPerDiffLenSq[ip] *(densitySCV[k])  * scvf.shape(k);
                     
                     //sumVel += -2.0 * kinVisco[ip] * (densitySCV[k]/density[ip]) * VecProd( RhoGrad[ip], scvf.global_grad(k));
                     //sumVel +=  (densitySCV[k]/density[ip]) * VecProd( ViscGrad[ip], scvf.global_grad(k));
@@ -1144,7 +1147,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)
                     {
-                        sumVel += vNormStdVelPerConvLen[ip] * densitySCV[k] * upwind_shape_sh(ip, k);
+                        sumVel += vNormStdVelPerConvLen[ip] * (densitySCV[k] / RHO[ip]) * upwind_shape_sh(ip, k);
                         //sumVel += -DenMomentum[ip]*scvf.shape(k);
                     }
                     
@@ -1162,14 +1165,14 @@ update(const FV1Geometry<TElem, dim>* geo,
                     {
                         if( (interface_change[ip]))
                         {
-                            sumP = -1.0 * alpha3 * (scvf.global_grad(k))[d] ;
+                            sumP = -1.0 * alpha3 * (scvf.global_grad(k))[d] / RHO[ip];
                             //sumP += -1.0 * alpha3 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                             //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / RHO[ip];
                             
                         }
                         else
                         {
-                            sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d] ;
+                            sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d] / RHO[ip];
                             //sumP += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                         }
                         
@@ -1179,7 +1182,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     }
                     else
                     {
-                        sumP = -1.0 * alpha1 * scvf.global_grad(k)[d] / RHO[ip];// - 1.0 * scvf.shape(k) * RhoGrad[ip][d] / rho_ave;
+                        sumP = -1.0 * alpha1 * scvf.global_grad(k)[d]  / RHO[ip];// - 1.0 * scvf.shape(k) * RhoGrad[ip][d] / rho_ave;
                         //sumP = -1.0 * alpha1 * (RHO[ip] / rho_ave) * scvf.global_grad(k)[d];
                     }
                     
@@ -1210,7 +1213,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                             if( interface_change[ip])
                             {
                                 
-                                sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) ;
+                                sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
                                 //sumPJump +=  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / RHO[ip];
                                 //sumPJump +=  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                                 
@@ -1218,7 +1221,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                             else
                             {
                                 
-                                sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) ;
+                                sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / RHO[ip];
                                 //sumPJump +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
                             }
 
