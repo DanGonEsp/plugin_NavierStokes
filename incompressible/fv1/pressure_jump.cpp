@@ -199,6 +199,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     const number alpha1= 1.0;
     const number alpha2= 1.0;
+    
     /////////////////////////////////////////////////////////////////////////////
     // Calculation X_interface
     /////////////////////////////////////////////////////////////////////////////
@@ -213,154 +214,61 @@ update(const FV1Geometry<TElem, dim>* geo,
     number theta_to, theta_from, c_to, c_from, DC;
     
     
-    number Inv_DiffLenSq = 0.0;
-    number vNormStdVelPerConvLen = 0.0;
-    number count_interface=0;
-    
     size_t _C_=vCornerValue.num_all_fct() -1 ;
     //vCornerValue.access_all();
     
-    for(size_t ip = 0; ip < N; ++ip)
+    if(bGradientJump || bSlipVel)
     {
-        VecSet(x_interface[ip],0.0);
-        interN[ip]=0.0;
-        
-        
-        //VolFrac[ip] = vol_fraction[ip];                      //Bug here, the import parameter vol_fraciotn is not importing the correct value
-        VolFrac[ip] = fmin(1.0, fmax(vCornerValue(_C_,ip),0));
-        
-    }
-    for(size_t ip = 0; ip < NumSCVF; ++ip)
-    {
-        const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip);
-        
-        const size_t from=scvf.from();
-        const size_t to=scvf.to();
-        
-        if (jump_shape[from]*jump_shape[to] < 0.0)
+        for(size_t ip = 0; ip < N; ++ip)
         {
-            
-            c_from = VolFrac[from];
-            c_to = VolFrac[to];
-            
-            DC=c_to-c_from;
-            
-            VecSubtract(DX,geo->scv_global_ips()[to],geo->scv_global_ips()[from]);
-            
-            theta_to=  (c_to   - interface_value)/DC;
-            theta_from=(c_from - interface_value)/DC;
-            
-            VecScaleAppend(x_interface[to], theta_to,   DX);
-            VecScaleAppend(x_interface[from],   theta_from, DX);
-            
-            interN[from] += 1.0;
-            interN[to] += 1.0;
+            VecSet(x_interface[ip],0.0);
+            interN[ip]=0.0;
             
             
+            //VolFrac[ip] = vol_fraction[ip];                      //Bug here, the import parameter vol_fraciotn is not importing the correct value
+            VolFrac[ip] = fmin(1.0, fmax(vCornerValue(_C_,ip),0));
             
-            Inv_DiffLenSq += diff_length_sq_inv(ip);
-            count_interface += 1.0;
+        }
+        for(size_t ip = 0; ip < NumSCVF; ++ip)
+        {
+            const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip);
             
-            VecScaleAppend(vLocIP_inter, 1.0  ,geo->scv_local_ips()[to],-1.0 * theta_to, geo->scv_local_ips()[to],theta_to,geo->scv_local_ips()[from]);
+            const size_t from=scvf.from();
+            const size_t to=scvf.to();
             
-            
-            if(!bStokes)
+            if (jump_shape[from]*jump_shape[to] < 0.0)
             {
-                const number norm = VecTwoNorm(vStdVel[ip]);
-                vNormStdVelPerConvLen += norm / upwind_conv_length(ip);
-                //vNormStdVelPerDownLen[ip] = norm / (downwind_conv_length(ip) + upwind_conv_length(ip));
+                
+                c_from = VolFrac[from];
+                c_to = VolFrac[to];
+                
+                DC=c_to-c_from;
+                
+                VecSubtract(DX,geo->scv_global_ips()[to],geo->scv_global_ips()[from]);
+                
+                theta_to=  (c_to   - interface_value)/DC;
+                theta_from=(c_from - interface_value)/DC;
+                
+                VecScaleAppend(x_interface[to], theta_to,   DX);
+                VecScaleAppend(x_interface[from],   theta_from, DX);
+                
+                interN[from] += 1.0;
+                interN[to] += 1.0;
+                
+                
+                VecScaleAppend(vLocIP_inter, 1.0  ,geo->scv_local_ips()[to],-1.0 * theta_to, geo->scv_local_ips()[to],theta_to,geo->scv_local_ips()[from]);
                 
             }
             
-            
         }
-        
-    }
-    for(size_t sh = 0; sh < N; ++sh)
-    {
-        
-        VecScale(x_interface[sh], x_interface[sh], 1.0 / interN[sh] );
-        VecScale(x_interface[sh], n[sh], VecProd(x_interface[sh],n[sh]) );
-        
-    }
-    Inv_DiffLenSq *= 1.0/count_interface;
-    VecScale(vLocIP_inter,vLocIP_inter,1.0/count_interface);
-    
-    LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
-    
-    //    storage for shape function at ip
-    number vLocShape[numSh];
-    
-    //    Reference Mapping
-    
-    ReferenceMapping<ref_elem_type, dim> mapping(geo->scv_global_ips());
-    
-    rTrialSpace.shapes(vLocShape, vLocIP_inter);
-    
-    
-    
-    if(!bStokes)
-        vNormStdVelPerConvLen *= 1.0/count_interface;
-    
-    number diag2 = Inv_DiffLenSq * mu_l/rho_l;
-    number diag1 = Inv_DiffLenSq * mu_g/rho_g;
-    
-    
-    /*if(pvCornerValueOldTime != NULL)
-     {
-     diag2 += 1.0/dt;
-     diag1 += 1.0/dt;
-     }*/
-    /*if(!bStokes)
-     {
-     diag2 += vNormStdVelPerConvLen;
-     diag1 += vNormStdVelPerConvLen;
-     }*/
-    
-    diag2 *= rho_l;
-    diag1 *= rho_g;
-    
-    //     loop Sub Control Volumes (SCV)
-    number RHO=0.0;
-    number Vol=0.0;
-    
-    
-    number PressureCoef[numSh];
-    number VicscousCoef[numSh];
-    number SourceCoef_1[numSh];
-    number SourceCoef_2[numSh];
-    //const number ConvectiveCoef = rho_g * rho_l * (diag1 - diag2) / RhoDiag;
-    //const number Cvel_rel = Inv_DiffLenSq * rho_g * rho_l / RhoDiag;
-    
-    for(size_t ip = 0; ip < geo->num_scv(); ++ip)
-    {
-        //     get current SCV
-        const typename FV1Geometry<TElem, dim>::SCV scv = geo->scv(ip);
-        RHO += scv.volume() * densitySCV[ip];
-        Vol += scv.volume();
-        if(jump_shape[ip]>0.0)
+        for(size_t sh = 0; sh < N; ++sh)
         {
-            const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);
-            VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
-            PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_g ;
-            SourceCoef_2[ip] =   1.0 * Factor * (diag2+diag1) ;
-            SourceCoef_1[ip] =  -1.0 * Factor * ( (rho_l/rho_g)   + 1.0 ) * diag2 ;
+            
+            VecScale(x_interface[sh], x_interface[sh], 1.0 / interN[sh] );
+            VecScale(x_interface[sh], n[sh], VecProd(x_interface[sh],n[sh]) );
             
         }
-        else
-        {
-            const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);
-            PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_l;
-            VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
-            SourceCoef_2[ip]   = 1.0 * Factor * ( rho_g / rho_l  + 1.0  ) * diag1 ;
-            SourceCoef_1[ip]   = -1.0 * Factor * (diag2+diag1)  ;
-            
-            
-        }
-        
-        
     }
-    RHO *= 1.0 / Vol;
     
     
     
@@ -448,6 +356,116 @@ update(const FV1Geometry<TElem, dim>* geo,
         }
     }
     
+    /////////////////////////////////////////////////////////////////////////////
+    // Parameters for Pressure gradient jump
+    /////////////////////////////////////////////////////////////////////////////
+
+    number Inv_DiffLenSq = 0.0;
+    number vNormStdVelPerConvLen = 0.0;
+    number count_interface=0;
+    //    storage for shape function at ip
+    number vLocShape[numSh];
+    
+    number diag2;
+    number diag1;
+    
+    number PressureCoef[numSh];
+    number VicscousCoef[numSh];
+    number SourceCoef_1[numSh];
+    number SourceCoef_2[numSh];
+    //const number ConvectiveCoef = rho_g * rho_l * (diag1 - diag2) / RhoDiag;
+    //const number Cvel_rel = Inv_DiffLenSq * rho_g * rho_l / RhoDiag;
+    
+    //vCornerValue.access_all();
+    
+    if(bGradientJump)
+    {
+
+        for(size_t ip = 0; ip < NumSCVF; ++ip)
+        {
+            const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip);
+            
+            const size_t from=scvf.from();
+            const size_t to=scvf.to();
+            
+            if (jump_shape[from]*jump_shape[to] < 0.0)
+            {
+                Inv_DiffLenSq += diff_length_sq_inv(ip);
+                count_interface += 1.0;
+                
+                if(!bStokes)
+                {
+                    const number norm = VecTwoNorm(vStdVel[ip]);
+                    vNormStdVelPerConvLen += norm / upwind_conv_length(ip);
+                    //vNormStdVelPerDownLen[ip] = norm / (downwind_conv_length(ip) + upwind_conv_length(ip));
+                    
+                }
+                
+            }
+            
+        }
+        Inv_DiffLenSq *= 1.0/count_interface;
+        VecScale(vLocIP_inter,vLocIP_inter,1.0/count_interface);
+        
+        LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+        
+        //    Reference Mapping
+        
+        ReferenceMapping<ref_elem_type, dim> mapping(geo->scv_global_ips());
+        
+        rTrialSpace.shapes(vLocShape, vLocIP_inter);
+
+        
+        if(!bStokes)
+            vNormStdVelPerConvLen *= 1.0/count_interface;
+        
+        diag2 = Inv_DiffLenSq * mu_l/rho_l;
+        diag1 = Inv_DiffLenSq * mu_g/rho_g;
+        
+        
+        /*if(pvCornerValueOldTime != NULL)
+         {
+         diag2 += 1.0/dt;
+         diag1 += 1.0/dt;
+         }*/
+        /*if(!bStokes)
+         {
+         diag2 += vNormStdVelPerConvLen;
+         diag1 += vNormStdVelPerConvLen;
+         }*/
+        
+        diag2 *= rho_l;
+        diag1 *= rho_g;
+        
+        
+        for(size_t ip = 0; ip < geo->num_scv(); ++ip)
+        {
+            //     get current SCV
+            const typename FV1Geometry<TElem, dim>::SCV scv = geo->scv(ip);
+            if(jump_shape[ip]>0.0)
+            {
+                const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);
+                VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
+                PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_g ;
+                SourceCoef_2[ip] =   1.0 * Factor * (diag2+diag1) ;
+                SourceCoef_1[ip] =  -1.0 * Factor * ( (rho_l/rho_g)   + 1.0 ) * diag2 ;
+                
+            }
+            else
+            {
+                const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);
+                PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_l;
+                VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
+                SourceCoef_2[ip]   = 1.0 * Factor * ( rho_g / rho_l  + 1.0  ) * diag1 ;
+                SourceCoef_1[ip]   = -1.0 * Factor * (diag2+diag1)  ;
+                
+                
+            }
+            
+            
+        }
+
+    }
     
     
     
