@@ -253,6 +253,7 @@ class IncompressibleNavierStokesBase
 
 	///	factor for exact jacobian, (1 for exact jacobian, 0 for fix point)
 		using base_type::m_bFullNewtonFactor;
+        using base_type:: m_boolFullNewton;
 
 	/// factor for div grad stabilization
 		number m_gradDivFactor;

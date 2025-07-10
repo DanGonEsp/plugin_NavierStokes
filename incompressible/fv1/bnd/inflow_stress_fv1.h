@@ -96,6 +96,14 @@ class NavierStokesInflowStressFV1
 	 */
 		void set_density(SmartPtr<CplUserData<number, dim> > data)
 			{m_imDensity.set_data(data);}
+    ///    sets the VelocityBC
+    /**
+     * This method sets the density parameter.
+     *
+     * \param[in]    data        Density
+     */
+        void set_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+            {m_imVelocity.set_data(data);}
 
 	public:
 	///	type of trial space for each function used
@@ -146,6 +154,8 @@ class NavierStokesInflowStressFV1
 		DataImport<number, dim> m_imKinViscosity;
 	/// Data import for density
 		DataImport<number, dim> m_imDensity;
+    /// Data import for Velocity
+        DataImport<MathVector<dim>, dim> m_imVelocity;
 	/// Boundary integration points of the viscosity and the density
 		std::vector<MathVector<dim> > m_vLocIP;
 		std::vector<MathVector<dim> > m_vGloIP;

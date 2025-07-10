@@ -146,6 +146,10 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 	if(!m_imDensity.data_given())
 		UG_THROW("NavierStokesInflowStressFV1::prep_elem_loop:"
 						" Density has not been set, but is required.\n");
+//    check if Density has been set
+    if(!m_imVelocity.data_given())
+        UG_THROW("NavierStokesInflowStressFV1::prep_elem_loop:"
+                        " Velocity BC has not been set, but is required.\n");
 
 //	extract indices of boundary
 	extract_scheduled_data();
@@ -219,6 +223,9 @@ prep_elem(const LocalVector& u, GridObject* elem, const ReferenceObjectID roid, 
 
 	m_imDensity.set_local_ips(&m_vLocIP[0], m_vLocIP.size());
 	m_imDensity.set_global_ips(&m_vGloIP[0], m_vGloIP.size());
+    
+    m_imVelocity.set_local_ips(&m_vLocIP[0], m_vLocIP.size());
+    m_imVelocity.set_global_ips(&m_vGloIP[0], m_vGloIP.size());
 }
 
 template<typename TDomain>
@@ -311,20 +318,41 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 							J(d1, bf->node_id(), d2, sh) += flux2_sh;
 						}
 				}
+                // Inertial term
+                /*if(!m_spMaster->stokes ())
+                {
+                // A. Compute Velocity at ip
+                    MathVector<dim> stdVel(0.0);
+                    
+                    for(size_t sh = 0; sh < bf->num_sh(); ++sh)
+                    {
+                        for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
+                        {
+                            stdVel[d1] += u(d1, sh) * bf->shape(sh);
+                        }
+                    }
+                    number prod = m_imDensity[ip] * VecProd(stdVel,bf->normal());
+                    for(int d1 = 0; d1 < dim; ++d1)
+                        J(d1, bf->node_id(),d1,sh) +=  bf->shape(sh) * prod;
+                }*/
 				//	pressure term
 				for(int d1 = 0; d1 < dim; ++d1)
 				{
 					J(d1, bf->node_id(), _P_, sh) += bf->shape(sh) * bf->normal()[d1];
 				}
+                for(int d1 = 0; d1 < dim; ++d1)
+                {
+                    J(d1, bf->node_id(), d1, sh) += 100*(-bf->shape(sh));
+                }
 				// do nothing for continuity equation because un = 0
-                /*const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+                const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
                 //number scale = 1.0 / (m_imDensity[ip] * (VecLength(StdVel[ip])/D + m_imKinViscosity[ip]/pow(D,2)));
                 number scale = 1.0 / (m_imDensity[ip] * ( m_imKinViscosity[ip]/pow(D,2)));
 
-                for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
+                /*for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
                 {
-                    //for (size_t d2 = 0; d2 < (size_t)dim; ++d2)
-                        //J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]; //* m_imDensity [ip];
+                    for (size_t d2 = 0; d2 < (size_t)dim; ++d2)
+                        J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]; //* m_imDensity [ip];
                     
                     //J(_P_, bf->node_id (), _P_, sh) -= scale*VecProd(bf->global_grad(sh) , bf->normal());
                 }*/
@@ -400,7 +428,6 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			for(int d1 = 0; d1 < dim; ++d1)
 				d(d1, bf->node_id()) += pressure * bf->normal()[d1];
             
-            
         // A. Compute Velocity at ip
             MathVector<dim> stdVel(0.0);
             MathVector<dim> PressureGrad(0.0);
@@ -413,14 +440,24 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                     PressureGrad[d1] += u(_P_, sh) * bf->global_grad(sh)[d1];
                 }
             }
-			
+            // Inertial term
+            if(!m_spMaster->stokes ())
+            {
+                number prod = m_imDensity[ip] * VecProd(m_imVelocity[ip],bf->normal());
+                for(int d1 = 0; d1 < dim; ++d1)
+                    d(d1, bf->node_id()) +=  m_imVelocity[ip][d1] * prod;
+            }
+            
+            for(int d1 = 0; d1 < dim; ++d1)
+                d(d1, bf->node_id()) += 100*(m_imVelocity[ip][d1]-stdVel[d1]);
+            
 			// do nothing for continuity equation because un = 0
-            /*const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+            const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
             //number scale = 1.0 / (m_imDensity[ip] * (VecLength(stdVel)/D + m_imKinViscosity[ip]/pow(D,2)));
             number scale = 1.0 / (m_imDensity[ip] * ( m_imKinViscosity[ip]/pow(D,2)));
-            //d(_P_, bf->node_id()) = VecDot (stdVel, bf->normal());// * m_imDensity[ip];
+            d(_P_, bf->node_id()) += VecDot (m_imVelocity[ip], bf->normal());// * m_imDensity[ip];
             //printf("Defect error = %f\n",d(_P_, bf->node_id()));
-            //d(_P_, bf->node_id()) -= scale*VecDot (PressureGrad, bf->normal());*/
+            //d(_P_, bf->node_id()) -= scale*VecDot (PressureGrad, bf->normal());
 		}
 	}
 }
@@ -445,10 +482,12 @@ NavierStokesInflowStressFV1(SmartPtr< IncompressibleNavierStokesBase<TDomain> > 
     
     m_imKinViscosity.set_comp_lin_defect(false);
     m_imDensity.set_comp_lin_defect(false);
+    m_imVelocity.set_comp_lin_defect(false);
 
 //	register imports
 	this->register_import(m_imKinViscosity);
 	this->register_import(m_imDensity);
+    this->register_import(m_imVelocity);
 
 //	initialize the imports from the master discretization
 	m_imKinViscosity.set_data(spMaster->kinematic_viscosity ());

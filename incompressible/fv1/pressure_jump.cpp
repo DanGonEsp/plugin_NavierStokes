@@ -712,6 +712,13 @@ update(const FV1Geometry<TElem, dim>* geo,
                 //printf("mu_g  = %f\n",mu_g);
                 //printf("dt  = %f\n",dt);
                 //printf("Inv_DiffLenSq  = %f\n",Inv_DiffLenSq);
+                printf("upwind_conv_length[0]  = %f\n",upwind_conv_length(0));
+                printf("upwind_conv_length[1]  = %f\n",upwind_conv_length(1));
+                printf("upwind_conv_length[2]  = %f\n",upwind_conv_length(2));
+                
+                printf("diff_length_sq_inv[0]  = %f\n",diff_length_sq_inv(0));
+                printf("diff_length_sq_inv[1]  = %f\n",diff_length_sq_inv(1));
+                printf("diff_length_sq_inv[2]  = %f\n",diff_length_sq_inv(2));
                 
                 //printf("diag1  = %f\n",diag1);
                 //printf("diag2  = %f\n",diag2);

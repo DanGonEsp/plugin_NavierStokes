@@ -38,6 +38,7 @@
 #define UG_NSSTAB_ASSERT(cond, exp) UG_ASSERT((cond), (exp))
 
 #include "../../upwind_interface.h"
+#include "pressure_jump.h"
 #include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
 #include "lib_disc/spatial_disc/user_data/data_import.h"
 
@@ -99,6 +100,18 @@ class INavierStokesFV1Stabilization
 		
 	/// returns if the upwind pointer is valid
 		bool upwind_valid() const {return m_spConstUpwind.valid();}
+    
+    ///    sets the pressure jump method
+        void set_pressure_jump(SmartPtr<INavierStokesPressureJump<dim> >  spPressureJump)
+        {
+            m_spPressureJump = spPressureJump;
+            m_spConstPressureJump = spPressureJump;
+        }
+    ///    returns the upwind
+        const ConstSmartPtr<INavierStokesPressureJump<dim> >& pressure_jump() const {return m_spConstPressureJump;}
+    
+    /// returns if the upwind pointer is valid
+        bool pressure_jump_valid() const {return m_spConstPressureJump.valid();}
 
 	///	set the FV1 Geometry type to use for next updates
 		template <typename TFVGeom>
@@ -186,22 +199,6 @@ class INavierStokesFV1Stabilization
 			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
 			return m_vvvStabShapePressure[scvf][compOut][sh];
 		}
-    ///    computed stab shape for pressure.
-        number stab_shape_p_jump(size_t scvf, size_t compOut, size_t sh) const
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvStabShapePressureJump[scvf][compOut][sh];
-        }
-        number stab_shape_slip_vel(size_t scvf, size_t compOut, size_t compIn, size_t sh) const
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvvStabShapeSlipVel[scvf][compOut][compIn][sh];
-        }
     
 
 
@@ -214,8 +211,6 @@ class INavierStokesFV1Stabilization
                     const DataImport<number, dim>& kinViscoSCV,
 		            const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number pressure_jump[],
-                    const MathVector<dim> SlipVel[],
                     const number jump_shape[],
                     const MathVector<dim> normal[],
                     const DataImport<MathVector<dim>, dim>& Source,
@@ -223,10 +218,11 @@ class INavierStokesFV1Stabilization
 		            const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[])
+                    const bool phase_2[],
+                    const number inertia[])
 			{(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel,
-											bStokes, kinVisco, kinViscoSCV, density, densitySCV, pressure_jump, SlipVel, jump_shape, normal, Source, SourceSCV,
-											pvCornerValueOldTime, dt, density_ref, multiphase, phase_2);}
+											bStokes, kinVisco, kinViscoSCV, density, densitySCV, jump_shape, normal, Source, SourceSCV,
+											pvCornerValueOldTime, dt, density_ref, multiphase, phase_2, inertia);}
 
 	/////////////////////////////////////////
 	// the data interface (for the implementation)
@@ -263,22 +259,6 @@ class INavierStokesFV1Stabilization
 			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
 			return m_vvvStabShapePressure[scvf][compOut][sh];
 		}
-    ///    computed stab shape for pressure jump.
-        number& stab_shape_p_jump(size_t scvf, size_t compOut, size_t sh)
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvStabShapePressureJump[scvf][compOut][sh];
-        }
-        number& stab_shape_slip_vel(size_t scvf, size_t compOut, size_t compIn, size_t sh)
-        {
-            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
-            UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
-            UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
-            return m_vvvvStabShapeSlipVel[scvf][compOut][compIn][sh];
-        }
 
 
 	/////////////////////////////////////////
@@ -305,11 +285,6 @@ class INavierStokesFV1Stabilization
 	///	stab shapes w.r.t pressure
 		number m_vvvStabShapePressure[maxNumSCVF][dim][maxNumSH];
     
-    ///    stab shapes w.r.t pressure jump
-        number m_vvvStabShapePressureJump[maxNumSCVF][dim][maxNumSH];
-    
-    ///    stab shapes w.r.t Slip vel
-        number m_vvvvStabShapeSlipVel[maxNumSCVF][dim][dim][maxNumSH];
     
 
 	///	id of current geometry type
@@ -319,6 +294,11 @@ class INavierStokesFV1Stabilization
 		SmartPtr<INavierStokesUpwind<dim> > m_spUpwind;
 	///	Upwind object (if set), the same as m_spUpwind, but as a const
 		ConstSmartPtr<INavierStokesUpwind<dim> > m_spConstUpwind;
+    
+    ///    Pressure jump object (if set)
+        SmartPtr<INavierStokesPressureJump<dim> > m_spPressureJump;
+    ///    Pressure jump object (if set), the same as m_spPressureJump, but as a const
+        ConstSmartPtr<INavierStokesPressureJump<dim> > m_spConstPressureJump;
 	
 	//////////////////////////
 	// registering mechanism
@@ -334,8 +314,6 @@ class INavierStokesFV1Stabilization
                                                 const DataImport<number, dim>& kinViscoSCV,
 												const DataImport<number, dim>& density,
                                                 const DataImport<number, dim>& densitySCV,
-                                                const number pressure_jump[],
-                                                const MathVector<dim> SlipVel[],
                                                 const number jump_shape[],
                                                 const MathVector<dim> normal[],
                                                 const DataImport<MathVector<dim>, dim>& Source,
@@ -343,7 +321,8 @@ class INavierStokesFV1Stabilization
 												const LocalVector* pvCornerValueOldTime, number dt,
                                                 const number density_ref,
                                                 const bool multiphase,
-                                                const bool phase_2[]);
+                                                const bool phase_2[],
+                                                const number inertia[]);
 
 	public:
 	///	register a update function for a Geometry
@@ -450,6 +429,41 @@ class INavierStokesSRFV1Stabilization
 			UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
 			return this_type::upwind()->downwind_shape_ip(scvf, scvf2);
 		}
+    
+    /////////////////////////////////////////
+    // forward methods of Pressure Jump
+    /////////////////////////////////////////
+
+    ///    corner tang vel
+        number tang_vel(size_t sh, size_t d1) const
+        {
+            UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+            return this_type::pressure_jump()->tang_vel(sh)[d1];
+        }
+    ///    tang vel shape for corner vel
+        number tang_vel_shape_vel(size_t sh, size_t d1, size_t d2, size_t sh2) const
+        {
+            UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+            return this_type::pressure_jump()->tang_vel_shape_vel(sh,d1,d2,sh2);
+        }
+    ///    corner pressure jump
+        number pressure_jump_value(size_t sh) const
+        {
+            UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+            return this_type::pressure_jump()->pressure_jump(sh);
+        }
+    ///    pressure jump shape for corner p
+        number pressure_jump_shape_p(size_t sh, size_t sh2) const
+        {
+            UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+            return this_type::pressure_jump()->pressure_shape_p(sh,sh2);
+        }
+    ///    pressure jump shape for corner vel
+        number pressure_jump_shape_vel(size_t sh, size_t d1, size_t sh2) const
+        {
+            UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+            return this_type::pressure_jump()->pressure_shape_vel(sh,d1,sh2);
+        }
 
 	//////////////////////////
 	// internal handling
@@ -537,8 +551,6 @@ class NavierStokesFIELDSStabilization
                     const DataImport<number, dim>& kinViscoSCV,
 					const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number pressure_jump[],
-                    const MathVector<dim> SlipVel[],
                     const number jump_shape[],
                     const MathVector<dim> normal[],
                     const DataImport<MathVector<dim>, dim>& Source,
@@ -546,7 +558,8 @@ class NavierStokesFIELDSStabilization
 		            const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[]);
+                    const bool phase_2[],
+                    const number inertia[]);
 
 	private:
 		void register_func();
@@ -563,8 +576,6 @@ class NavierStokesFIELDSStabilization
                                              const DataImport<number, dim>& kinViscoSCV,
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number pressure_jump[],
-                                             const MathVector<dim> SlipVel[],
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
                                              const DataImport<MathVector<dim>, dim>& Source,
@@ -572,7 +583,8 @@ class NavierStokesFIELDSStabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[]);
+                                             const bool phase_2[],
+                                             const number inertia[]);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}
@@ -639,8 +651,6 @@ class NavierStokesFLOWStabilization
                     const DataImport<number, dim>& kinViscoSCV,
 					const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number pressure_jump[],
-                    const MathVector<dim> SlipVel[],
                     const number jump_shape[],
                     const MathVector<dim> normal[],
                     const DataImport<MathVector<dim>, dim>& Source,
@@ -648,7 +658,8 @@ class NavierStokesFLOWStabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[]);
+                    const bool phase_2[],
+                    const number inertia[]);
 
 	private:
 		void register_func();
@@ -665,8 +676,6 @@ class NavierStokesFLOWStabilization
                                              const DataImport<number, dim>& kinViscoSCV,
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number pressure_jump[],
-                                             const MathVector<dim> SlipVel[],
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
                                              const DataImport<MathVector<dim>, dim>& Source,
@@ -674,7 +683,8 @@ class NavierStokesFLOWStabilization
 											 const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[]);
+                                             const bool phase_2[],
+                                             const number inertia[]);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}
@@ -710,9 +720,6 @@ class NavierStokesFIELDS_2_Stabilization
         using base_type::stab_vel;
         using base_type::set_vel_comp_connected;
     
-        using base_type::stab_shape_p_jump;
-        using base_type::stab_shape_slip_vel;
-
     //    functions from upwind
         using base_type::upwind_conv_length;
         using base_type::downwind_conv_length;
@@ -721,6 +728,13 @@ class NavierStokesFIELDS_2_Stabilization
         using base_type::non_zero_shape_ip;
         using base_type::upwind_shape_ip;
         using base_type::downwind_shape_ip;
+    
+    //    functions from pressure jump
+        using base_type::tang_vel;
+        using base_type::tang_vel_shape_vel;
+        using base_type::pressure_jump_value;
+        using base_type::pressure_jump_shape_p;
+        using base_type::pressure_jump_shape_vel;
 
     public:
     ///    constructor
@@ -743,8 +757,6 @@ class NavierStokesFIELDS_2_Stabilization
                     const DataImport<number, dim>& kinViscoSCV,
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number pressure_jump[],
-                    const MathVector<dim> SlipVel[],
                     const number jump_shape[],
                     const MathVector<dim> normal[],
                     const DataImport<MathVector<dim>, dim>& Source,
@@ -752,7 +764,8 @@ class NavierStokesFIELDS_2_Stabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[]);
+                    const bool phase_2[],
+                    const number inertia[]);
     
 
     private:
@@ -770,8 +783,6 @@ class NavierStokesFIELDS_2_Stabilization
                                              const DataImport<number, dim>& kinViscoSCV,
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number pressure_jump[],
-                                             const MathVector<dim> SlipVel[],
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
                                              const DataImport<MathVector<dim>, dim>& Source,
@@ -779,7 +790,8 @@ class NavierStokesFIELDS_2_Stabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[]);
+                                             const bool phase_2[],
+                                             const number inertia[]);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -815,9 +827,6 @@ class NavierStokesVISCOSITY_Stabilization
         using base_type::stab_vel;
         using base_type::set_vel_comp_connected;
     
-        using base_type::stab_shape_p_jump;
-        using base_type::stab_shape_slip_vel;
-
     //    functions from upwind
         using base_type::upwind_conv_length;
         using base_type::downwind_conv_length;
@@ -848,8 +857,6 @@ class NavierStokesVISCOSITY_Stabilization
                     const DataImport<number, dim>& kinViscoSCV,
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number pressure_jump[],
-                    const MathVector<dim> SlipVel[],
                     const number jump_shape[],
                     const MathVector<dim> normal[],
                     const DataImport<MathVector<dim>, dim>& Source,
@@ -857,7 +864,8 @@ class NavierStokesVISCOSITY_Stabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[]);
+                    const bool phase_2[],
+                    const number inertia[]);
 
     private:
         void register_func();
@@ -874,8 +882,6 @@ class NavierStokesVISCOSITY_Stabilization
                                              const DataImport<number, dim>& kinViscoSCV,
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number pressure_jump[],
-                                             const MathVector<dim> SlipVel[],
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
                                              const DataImport<MathVector<dim>, dim>& Source,
@@ -883,7 +889,8 @@ class NavierStokesVISCOSITY_Stabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[]);
+                                             const bool phase_2[],
+                                             const number inertia[]);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -951,8 +958,6 @@ class NavierStokesKARIMIANStabilization
                     const DataImport<number, dim>& kinViscoSCV,
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number pressure_jump[],
-                    const MathVector<dim> SlipVel[],
                     const number jump_shape[],
                     const MathVector<dim> normal[],
                     const DataImport<MathVector<dim>, dim>& Source,
@@ -960,7 +965,8 @@ class NavierStokesKARIMIANStabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[]);
+                    const bool phase_2[],
+                    const number inertia[]);
 
     private:
         void register_func();
@@ -977,8 +983,6 @@ class NavierStokesKARIMIANStabilization
                                              const DataImport<number, dim>& kinViscoSCV,
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number pressure_jump[],
-                                             const MathVector<dim> SlipVel[],
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
                                              const DataImport<MathVector<dim>, dim>& Source,
@@ -986,7 +990,8 @@ class NavierStokesKARIMIANStabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[]);
+                                             const bool phase_2[],
+                                             const number inertia[]);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -1051,8 +1056,6 @@ class NavierStokesNOStabilization
                     const DataImport<number, dim>& kinViscoSCV,
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number pressure_jump[],
-                    const MathVector<dim> SlipVel[],
                     const number jump_shape[],
                     const MathVector<dim> normal[],
                     const DataImport<MathVector<dim>, dim>& Source,
@@ -1060,7 +1063,8 @@ class NavierStokesNOStabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[]);
+                    const bool phase_2[],
+                    const number inertia[]);
 
     private:
         void register_func();
@@ -1077,8 +1081,6 @@ class NavierStokesNOStabilization
                                              const DataImport<number, dim>& kinViscoSCV,
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number pressure_jump[],
-                                             const MathVector<dim> SlipVel[],
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
                                              const DataImport<MathVector<dim>, dim>& Source,
@@ -1086,7 +1088,8 @@ class NavierStokesNOStabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[]);
+                                             const bool phase_2[],
+                                             const number inertia[]);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -1139,8 +1142,6 @@ class NavierStokesFV1WithoutStabilization
                     const DataImport<number, dim>& kinViscoSCV,
 					const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number pressure_jump[],
-                    const MathVector<dim> SlipVel[],
                     const number jump_shape[],
                     const MathVector<dim> normal[],
                     const DataImport<MathVector<dim>, dim>& Source,
@@ -1148,7 +1149,8 @@ class NavierStokesFV1WithoutStabilization
 					const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[]);
+                    const bool phase_2[],
+                    const number inertia[]);
 
 	private:
 		void register_func();
@@ -1166,8 +1168,6 @@ class NavierStokesFV1WithoutStabilization
                                              const DataImport<number, dim>& kinViscoSCV,
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number pressure_jump[],
-                                             const MathVector<dim> SlipVel[],
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
                                              const DataImport<MathVector<dim>, dim>& Source,
@@ -1176,7 +1176,8 @@ class NavierStokesFV1WithoutStabilization
  
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[]);
+                                             const bool phase_2[],
+                                             const number inertia[]);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}

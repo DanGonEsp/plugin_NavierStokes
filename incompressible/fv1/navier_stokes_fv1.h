@@ -536,6 +536,8 @@ class NavierStokesFV1
 		template <typename TFVGeom>
 		inline number peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
                                    const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
+        template <typename TFVGeom>
+        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, const DataImport<number, dim>& densitySCV, number* inertia);
 
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>
@@ -644,6 +646,7 @@ class NavierStokesFV1
 
 		using base_type::m_bPecletBlend;
 		using base_type::m_bFullNewtonFactor;
+        using base_type:: m_boolFullNewton;
 		using base_type::m_bStokes;
 		using base_type::m_bLaplace;
         using base_type::m_gradDivFactor;

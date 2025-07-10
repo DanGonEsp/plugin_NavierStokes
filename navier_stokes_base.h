@@ -191,9 +191,20 @@ class NavierStokesBase
 	///	\}
 
     ///	sets if the exact jacobian is computed (fixpoint approximation else)
-        void set_exact_jacobian(bool bExactJacobian) { if (bExactJacobian) m_bFullNewtonFactor=1;
-        												else m_bFullNewtonFactor=0;}
-        void set_exact_jacobian(number fullNewtonFactor){ m_bFullNewtonFactor=fullNewtonFactor; };
+        void set_exact_jacobian(bool bExactJacobian)
+        {
+            if (bExactJacobian) 
+            {
+                m_boolFullNewton = true;
+                m_bFullNewtonFactor=1.0;
+            }
+            else m_bFullNewtonFactor=0;
+        }
+        void set_exact_jacobian(number fullNewtonFactor)
+        {
+            m_bFullNewtonFactor=fullNewtonFactor;
+            m_boolFullNewton = true;
+        };
 
   	public:
 	///	returns if local time series is needed
@@ -205,6 +216,7 @@ class NavierStokesBase
 	protected:
 	///	factor for exact jacobian, (1 for exact jacobian, 0 for fix point)
 		number m_bFullNewtonFactor;
+        bool m_boolFullNewton;
 };
 
 /// @}

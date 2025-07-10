@@ -243,6 +243,7 @@ static void Domain(Registry& reg, string grp)
         reg.add_class_<T, TBase>(name, grp)
             .template add_constructor<void (*)(SmartPtr< IncompressibleNavierStokesBase<TDomain> >)>("MasterDisc")
             .add_method("add", &T::add, "", "Subset(s)")
+            .add_method("set_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_velocity), "", "VelocityBC")
             .set_construct_as_smart_pointer(true);
         reg.add_class_to_group(name, "NavierStokesInflowStressFV1", tag);
     }

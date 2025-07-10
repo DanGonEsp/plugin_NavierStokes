@@ -338,18 +338,19 @@ class Interface
 
 
         }
+    
         template <typename TElem, typename TFVGeom>
         inline
-        void PropertiesJump(const TFVGeom& geo, const DataImport<number, dim>& VolFraction, const DataImport<number, dim>& JumpShape, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, DataImport<MathVector<dim>, dim>& SourceSCV,size_t numSh, bool& interface, bool* Phase2, number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& Source_l, MathVector<dim>& Source_g, const number m_interface_vol_fraction)
+        void PropertiesJump(const TFVGeom& geo, const DataImport<number, dim>& VolFraction, const DataImport<number, dim>& JumpShape, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, DataImport<MathVector<dim>, dim>& SourceSCV,size_t numSh, bool& interface, bool* Phase2, number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& Source_l, MathVector<dim>& Source_g, const number m_interface_vol_fraction, number* inertia)
         {
             
             UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
             
-            size_t numSCVF = geo.num_scvf();
-            
             interface = cut_interface(JumpShape, numSh);
             
-            if(!interface) return;
+            bool changeStokes = true;
+
+            this->template phase<TFVGeom>(geo,JumpShape.values(), Phase2, inertia, changeStokes, interface);
             
             RhoMuSource(mu_l,  mu_g,  rho_l, rho_g, Source_l, Source_g, DensitySCV, KinViscSCV, SourceSCV, JumpShape, numSh);
 
@@ -371,33 +372,8 @@ class Interface
             }
             Cval *= 1.0/vol;*/
             
-            bool Fluid2 = false;
-            for(size_t ip = 0; ip < numSCVF; ++ip)
-            {
-                //     get current SCV
-                const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-                if(JumpShape[scvf.to()]*JumpShape[scvf.from()]<0.0)
-                {
-                    if (Fluid2)
-                        Phase2[ip]=true;
-                    else
-                        Phase2[ip]=true;
-                    
-                }
-                else
-                {
-
-                    if(JumpShape[scvf.to()]>0.0)
-                        Phase2[ip]=true;
-                    else
-                        Phase2[ip]=false;
-                }
-                
-            }
-            
             
         }
-    
         bool cut_interface(const DataImport<number, dim>& JumpShape, const size_t numSh)
         {
             
@@ -416,6 +392,105 @@ class Interface
                 interface=true;
                 
             }
+            return interface;
+
+
+        }
+    
+        template <typename TElem, typename TFVGeom>
+        inline
+        void phase(const TFVGeom& geo, const number JumpShape[], bool* Phase2, number* inertia, bool changeStokes, bool interface)
+        {
+            
+            if(!interface)
+            {
+                for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+                    inertia[ip] = (JumpShape[0] < 0 )? 1.0 : 0.0;
+            
+                
+            }
+            else
+            {
+                
+                
+                for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+                {
+                    //     get current SCV
+                    const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+                    if(JumpShape[scvf.to()]*JumpShape[scvf.from()]<0.0)
+                    {
+                        
+                        Phase2[ip]=true;
+                        if (changeStokes) inertia[ip] = 0.0;
+                        
+                    }
+                    else
+                    {
+                        
+                        if(JumpShape[scvf.to()]>0.0)
+                        {
+                            Phase2[ip]=true;
+                            if (changeStokes) inertia[ip] = 0.0;
+                        }
+                        else
+                        {
+                            Phase2[ip]=false;
+                            if (changeStokes) inertia[ip] = 0.0;
+                        }
+                    }
+                    
+                }
+            }
+
+
+        }
+        template <typename TElem, typename TFVGeom>
+        inline
+        bool cut_interface_concentration( const TFVGeom& geo, const LocalVector& u, const size_t _C_, const size_t numSh, number interface_value, size_t& num_inside, size_t& num_outside, number& value_in, number& value_out, number* JumpShape)
+        {
+            bool interface = false;
+
+            size_t inside=0;
+            size_t outside=0;
+            value_in = 0.0;
+            value_out = 0.0;
+            
+            for(size_t sh = 0; sh < numSh; ++sh)
+            {
+
+                if (u(_C_, sh)>interface_value)
+                {
+                    inside += 1;
+                    JumpShape[sh] = 1;
+                    value_in += u(_C_, sh);
+                }
+                else
+                {
+                    outside +=1;
+                    JumpShape[sh] = -1;
+                    value_out += u(_C_, sh);
+                }
+            }
+            
+            if (inside==numSh || outside == numSh)
+            {
+                interface = false;
+                value_in = (value_in + value_out) / (inside+outside);
+                value_out = value_in;
+                inside = inside+outside;
+                outside = inside;
+            }
+            else
+            {
+                interface = true;
+                value_in = value_in / inside;
+                value_out = value_out / outside;
+            }
+            
+            num_inside = inside;
+            num_outside = outside;
+            
+            
             return interface;
 
 
@@ -474,7 +549,21 @@ class Interface
             }
             
             if ((mu_2 < mu_1)||(mu_2<=0.0)||(mu_1<=0.0))
+            {
+                printf("Mu2 = %f    Mu1 = %f\n",mu_2,mu_1);
+                printf("Rho2 = %f    Rho1 = %f\n",rho_2,rho_1);
+                
+                /*for(size_t sh = 0; sh < numSh; ++sh)
+                    printf("mu[%zu] = %f\n", sh, DensitySCV[sh] * KinViscSCV[sh]);
+                for(size_t sh = 0; sh < numSh; ++sh)
+                    printf("rho[%zu] = %f\n", sh, DensitySCV[sh] );
+                for(size_t sh = 0; sh < numSh; ++sh)
+                    printf("JumpShape[%zu] = %f\n", sh, JumpShape[sh] );*/
+                
+                
+                
                 UG_THROW("Viscosity in phase 1 is lower that phase 2");
+            }
             if ((rho_2 < rho_1)||(rho_2<=0.0)||(rho_1<=0.0))
                 UG_THROW("Density in phase 1 is lower that phase 2");
             
