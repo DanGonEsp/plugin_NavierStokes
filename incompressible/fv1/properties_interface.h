@@ -348,9 +348,41 @@ class Interface
             
             interface = cut_interface(JumpShape, numSh);
             
+            
+            
+            
             bool changeStokes = true;
+            
+            
+            for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+            {
+                inertia[ip] = 0.0;
+            }
+            
+            if(!interface)
+            {
+                if (changeStokes && JumpShape[0] < 0)
+                {
+                    for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+                    {
+                        inertia[ip] = 1.0;
+                    }
+                }
+                return;
+            }
+            
+            /*if (true)
+            {
+                
+                for(size_t sh = 0; sh < geo.num_scvf(); ++sh)
+                    printf("Vol[%zu] = %f\n", sh, VolFraction[sh]);
+                
+                printf("Pos[0] = %f     %f\n", geo.scv_global_ips()[0][0],geo.scv_global_ips()[0][1]);
+                printf("Pos[1] = %f     %f\n", geo.scv_global_ips()[1][0],geo.scv_global_ips()[1][1]);
+                printf("Pos[2] = %f     %f\n", geo.scv_global_ips()[2][0],geo.scv_global_ips()[2][1]);
+                
 
-            this->template phase<TFVGeom>(geo,JumpShape.values(), Phase2, inertia, changeStokes, interface);
+            }*/
             
             RhoMuSource(mu_l,  mu_g,  rho_l, rho_g, Source_l, Source_g, DensitySCV, KinViscSCV, SourceSCV, JumpShape, numSh);
 
@@ -371,7 +403,7 @@ class Interface
 
             }
             Cval *= 1.0/vol;*/
-            
+            this->template phase<TFVGeom>(geo,JumpShape.values(), Phase2, inertia, changeStokes);
             
         }
         bool cut_interface(const DataImport<number, dim>& JumpShape, const size_t numSh)
@@ -399,47 +431,35 @@ class Interface
     
         template <typename TElem, typename TFVGeom>
         inline
-        void phase(const TFVGeom& geo, const number JumpShape[], bool* Phase2, number* inertia, bool changeStokes, bool interface)
+        void phase(const TFVGeom& geo, const number JumpShape[], bool* Phase2, number* inertia, bool changeStokes)
         {
             
-            if(!interface)
+            for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
             {
-                for(size_t ip = 0; ip < geo.num_scv(); ++ip)
-                    inertia[ip] = (JumpShape[0] < 0 )? 1.0 : 0.0;
-            
-                
-            }
-            else
-            {
-                
-                
-                for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+                //     get current SCV
+                const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+                if(JumpShape[scvf.to()]*JumpShape[scvf.from()]<0.0)
                 {
-                    //     get current SCV
-                    const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-                    if(JumpShape[scvf.to()]*JumpShape[scvf.from()]<0.0)
+
+                    Phase2[ip]=true;
+                    if (changeStokes) inertia[ip] = 0.0;
+                    
+                }
+                else
+                {
+
+                    if(JumpShape[scvf.to()]>0.0)
                     {
-                        
                         Phase2[ip]=true;
                         if (changeStokes) inertia[ip] = 0.0;
-                        
                     }
                     else
                     {
-                        
-                        if(JumpShape[scvf.to()]>0.0)
-                        {
-                            Phase2[ip]=true;
-                            if (changeStokes) inertia[ip] = 0.0;
-                        }
-                        else
-                        {
-                            Phase2[ip]=false;
-                            if (changeStokes) inertia[ip] = 0.0;
-                        }
+                        Phase2[ip]=false;
+                        if (changeStokes) inertia[ip] = 0.0;
                     }
-                    
                 }
+                
             }
 
 

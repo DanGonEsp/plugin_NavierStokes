@@ -883,7 +883,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     if (! bStokes)
     {
         this->compute_upwind(geo, vStdVel);
-        this->compute_downwind(geo, vStdVel);
+        //this->compute_downwind(geo, vStdVel);
     }
     
     //    compute diffusion length
@@ -893,7 +893,6 @@ update(const FV1Geometry<TElem, dim>* geo,
     MathVector<dim> ViscGrad[numIp];
     number DenMomentum[numIp];
     number RHO_up[numIp];
-    number RHO_d[numIp];
     for(size_t ip = 0; ip < numIp; ++ip)
     {
         const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
@@ -901,7 +900,6 @@ update(const FV1Geometry<TElem, dim>* geo,
         VecSet(ViscGrad[ip], 0.0);
         DenMomentum[ip] = 0.0;
         RHO_up[ip] = 0.0;
-        RHO_d[ip] = 0.0;
         const number Val = +VecTwoNorm(vStdVel[ip]) / (downwind_conv_length(ip) + upwind_conv_length(ip));
         for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
         {
@@ -909,10 +907,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             VecScaleAppend(ViscGrad[ip], kinViscoSCV[sh]*densitySCV[sh], scvf.global_grad(sh));
             DenMomentum[ip] += Val * (downwind_shape_sh(ip, sh) - upwind_shape_sh(ip, sh)) * densitySCV[sh];
             if (! bStokes)
-            {
                 RHO_up[ip] += upwind_shape_sh(ip, sh) * densitySCV[sh];
-                RHO_d[ip] += downwind_shape_sh(ip, sh) * densitySCV[sh];
-            }
         }
         
         //DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip]);
@@ -1061,7 +1056,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         if(!bStokes)
         {
             const number norm = inertia[ip] * VecTwoNorm(vStdVel[ip]);
-            vNormStdVelPerConvLen[ip] = norm * RHO_up[ip] * RHO_d[ip] / (RHO_up[ip] * downwind_conv_length(ip) + RHO_d[ip] * upwind_conv_length(ip));
+            vNormStdVelPerConvLen[ip] = norm * RHO_up[ip] / upwind_conv_length(ip);
             
         }
 
@@ -1100,11 +1095,11 @@ update(const FV1Geometry<TElem, dim>* geo,
                 diag += 1./dt;*/
             
             //    Convective Term  (no convective terms in the Stokes eq.)
-            /*if (! bStokes)
+            if (! bStokes)
             {
                 diag += vNormStdVelPerConvLen[ip];
                 //diag += DenMomentum[ip];
-            }*/
+            }
             
             //diag *= RHO[ip];
             //diag += DenMomentum[ip];
@@ -1152,7 +1147,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)
                     {
-                        sumVel += vNormStdVelPerConvLen[ip] * (upwind_shape_sh(ip, k) - downwind_shape_sh(ip, k));
+                        sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
                         //sumVel += vNormStdVelPerConvLen[ip] * densitySCV[k]  * upwind_shape_sh(ip, k);
                         
                         //sumVel += -DenMomentum[ip]*scvf.shape(k) * ;
