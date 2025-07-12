@@ -361,13 +361,14 @@ class Interface
             
             if(!interface)
             {
-                if (changeStokes && JumpShape[0] < 0)
+                if (changeStokes )
                 {
                     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
                     {
-                        inertia[ip] = 1.0;
+                        inertia[ip] = (JumpShape[0] < 0) ? 1.0 : 0.0;
                     }
                 }
+
                 return;
             }
             
@@ -456,7 +457,7 @@ class Interface
                     else
                     {
                         Phase2[ip]=false;
-                        if (changeStokes) inertia[ip] = 0.0;
+                        if (changeStokes) inertia[ip] = 1.0;
                     }
                 }
                 

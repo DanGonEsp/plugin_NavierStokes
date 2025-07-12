@@ -883,7 +883,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     if (! bStokes)
     {
         this->compute_upwind(geo, vStdVel);
-        //this->compute_downwind(geo, vStdVel);
+        this->compute_downwind(geo, vStdVel);
     }
     
     //    compute diffusion length
@@ -893,6 +893,9 @@ update(const FV1Geometry<TElem, dim>* geo,
     MathVector<dim> ViscGrad[numIp];
     number DenMomentum[numIp];
     number RHO_up[numIp];
+    number RHO_do[numIp];
+    number Ratio_rho_up[numIp];
+    number Ratio_rho_do[numIp];
     for(size_t ip = 0; ip < numIp; ++ip)
     {
         const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
@@ -900,6 +903,8 @@ update(const FV1Geometry<TElem, dim>* geo,
         VecSet(ViscGrad[ip], 0.0);
         DenMomentum[ip] = 0.0;
         RHO_up[ip] = 0.0;
+        RHO_do[ip] = 0.0;
+        Ratio_rho_up[ip] = 0.0;
         const number Val = +VecTwoNorm(vStdVel[ip]) / (downwind_conv_length(ip) + upwind_conv_length(ip));
         for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
         {
@@ -907,9 +912,13 @@ update(const FV1Geometry<TElem, dim>* geo,
             VecScaleAppend(ViscGrad[ip], kinViscoSCV[sh]*densitySCV[sh], scvf.global_grad(sh));
             DenMomentum[ip] += Val * (downwind_shape_sh(ip, sh) - upwind_shape_sh(ip, sh)) * densitySCV[sh];
             if (! bStokes)
+            {
                 RHO_up[ip] += upwind_shape_sh(ip, sh) * densitySCV[sh];
+                RHO_do[ip] += downwind_shape_sh(ip, sh) * densitySCV[sh];
+            }
         }
-        
+        Ratio_rho_up[ip] = RHO_up[ip] * downwind_conv_length(ip) / ( RHO_up[ip] * downwind_conv_length(ip) + RHO_do[ip] * upwind_conv_length(ip));
+        Ratio_rho_do[ip] = 1.0 - Ratio_rho_up[ip];
         //DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip]);
     }
 
@@ -1147,7 +1156,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                     //    Convective term (no convective terms in the Stokes eq.)
                     if (! bStokes)
                     {
-                        sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+                        //sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+                        sumVel += vNormStdVelPerConvLen[ip] * (Ratio_rho_up[ip] * upwind_shape_sh(ip, k) + Ratio_rho_do[ip] * downwind_shape_sh(ip, k));
                         //sumVel += vNormStdVelPerConvLen[ip] * densitySCV[k]  * upwind_shape_sh(ip, k);
                         
                         //sumVel += -DenMomentum[ip]*scvf.shape(k) * ;
@@ -1200,13 +1210,11 @@ update(const FV1Geometry<TElem, dim>* geo,
                         
                     stab_shape_p(ip, d, k) += sumP / diag;
                     
-                    number sumPJump =0.0;
-                    number sumSlipVel = 0.0;
+                    
                     
                     if(multiphase)
                     {
-                        
-                        
+                        number sumPJump =0.0;
 
                         if ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )
                             
@@ -1248,7 +1256,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                             }
                         }
                         
-                
+                        number sumSlipVel = 0.0;
+                        
                         if (  ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )   )
                         {
                             sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
