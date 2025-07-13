@@ -537,7 +537,7 @@ class NavierStokesFV1
 		inline number peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
                                    const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
         template <typename TFVGeom>
-        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, const DataImport<number, dim>& densitySCV, number* inertia);
+        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, const DataImport<number, dim>& densitySCV);
 
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>

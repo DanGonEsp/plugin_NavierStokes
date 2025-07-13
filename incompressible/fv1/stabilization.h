@@ -218,11 +218,10 @@ class INavierStokesFV1Stabilization
 		            const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[],
-                    const number inertia[])
+                    const bool phase_2[])
 			{(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel,
 											bStokes, kinVisco, kinViscoSCV, density, densitySCV, jump_shape, normal, Source, SourceSCV,
-											pvCornerValueOldTime, dt, density_ref, multiphase, phase_2, inertia);}
+											pvCornerValueOldTime, dt, density_ref, multiphase, phase_2);}
 
 	/////////////////////////////////////////
 	// the data interface (for the implementation)
@@ -321,8 +320,7 @@ class INavierStokesFV1Stabilization
 												const LocalVector* pvCornerValueOldTime, number dt,
                                                 const number density_ref,
                                                 const bool multiphase,
-                                                const bool phase_2[],
-                                                const number inertia[]);
+                                                const bool phase_2[]);
 
 	public:
 	///	register a update function for a Geometry
@@ -558,8 +556,7 @@ class NavierStokesFIELDSStabilization
 		            const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[],
-                    const number inertia[]);
+                    const bool phase_2[]);
 
 	private:
 		void register_func();
@@ -583,8 +580,7 @@ class NavierStokesFIELDSStabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[],
-                                             const number inertia[]);
+                                             const bool phase_2[]);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}
@@ -658,8 +654,7 @@ class NavierStokesFLOWStabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[],
-                    const number inertia[]);
+                    const bool phase_2[]);
 
 	private:
 		void register_func();
@@ -683,8 +678,7 @@ class NavierStokesFLOWStabilization
 											 const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[],
-                                             const number inertia[]);
+                                             const bool phase_2[]);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}
@@ -764,8 +758,7 @@ class NavierStokesFIELDS_2_Stabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[],
-                    const number inertia[]);
+                    const bool phase_2[]);
     
 
     private:
@@ -790,8 +783,7 @@ class NavierStokesFIELDS_2_Stabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[],
-                                             const number inertia[]);
+                                             const bool phase_2[]);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -864,8 +856,7 @@ class NavierStokesVISCOSITY_Stabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[],
-                    const number inertia[]);
+                    const bool phase_2[]);
 
     private:
         void register_func();
@@ -889,8 +880,7 @@ class NavierStokesVISCOSITY_Stabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[],
-                                             const number inertia[]);
+                                             const bool phase_2[]);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -965,8 +955,7 @@ class NavierStokesKARIMIANStabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[],
-                    const number inertia[]);
+                    const bool phase_2[]);
 
     private:
         void register_func();
@@ -990,8 +979,7 @@ class NavierStokesKARIMIANStabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[],
-                                             const number inertia[]);
+                                             const bool phase_2[]);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -1063,8 +1051,7 @@ class NavierStokesNOStabilization
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[],
-                    const number inertia[]);
+                    const bool phase_2[]);
 
     private:
         void register_func();
@@ -1088,8 +1075,7 @@ class NavierStokesNOStabilization
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[],
-                                             const number inertia[]);
+                                             const bool phase_2[]);
 
             this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
         }
@@ -1149,8 +1135,7 @@ class NavierStokesFV1WithoutStabilization
 					const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const bool multiphase,
-                    const bool phase_2[],
-                    const number inertia[]);
+                    const bool phase_2[]);
 
 	private:
 		void register_func();
@@ -1176,8 +1161,7 @@ class NavierStokesFV1WithoutStabilization
  
                                              const number density_ref,
                                              const bool multiphase,
-                                             const bool phase_2[],
-                                             const number inertia[]);
+                                             const bool phase_2[]);
 
 			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
 		}

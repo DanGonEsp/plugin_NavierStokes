@@ -341,7 +341,7 @@ class Interface
     
         template <typename TElem, typename TFVGeom>
         inline
-        void PropertiesJump(const TFVGeom& geo, const DataImport<number, dim>& VolFraction, const DataImport<number, dim>& JumpShape, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, DataImport<MathVector<dim>, dim>& SourceSCV,size_t numSh, bool& interface, bool* Phase2, number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& Source_l, MathVector<dim>& Source_g, const number m_interface_vol_fraction, number* inertia)
+        void PropertiesJump(const TFVGeom& geo, const DataImport<number, dim>& VolFraction, const DataImport<number, dim>& JumpShape, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, DataImport<MathVector<dim>, dim>& SourceSCV,size_t numSh, bool& interface, bool* Phase2, number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& Source_l, MathVector<dim>& Source_g, const number m_interface_vol_fraction)
         {
             
             UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
@@ -350,25 +350,8 @@ class Interface
             
             
             
-            
-            bool changeStokes = false;
-            
-            
-            for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
-            {
-                inertia[ip] = 1.0;
-            }
-            
             if(!interface)
             {
-                if (changeStokes )
-                {
-                    for(size_t ip = 0; ip < geo.num_scv(); ++ip)
-                    {
-                        inertia[ip] = (JumpShape[0] < 0) ? 1.0 : 0.0;
-                    }
-                }
-
                 return;
             }
             
@@ -404,7 +387,7 @@ class Interface
 
             }
             Cval *= 1.0/vol;*/
-            this->template phase<TFVGeom>(geo,JumpShape.values(), Phase2, inertia, changeStokes);
+            this->template phase<TFVGeom>(geo,JumpShape.values(), Phase2);
             
         }
         bool cut_interface(const DataImport<number, dim>& JumpShape, const size_t numSh)
@@ -432,7 +415,7 @@ class Interface
     
         template <typename TElem, typename TFVGeom>
         inline
-        void phase(const TFVGeom& geo, const number JumpShape[], bool* Phase2, number* inertia, bool changeStokes)
+        void phase(const TFVGeom& geo, const number JumpShape[], bool* Phase2)
         {
             
             for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -443,7 +426,6 @@ class Interface
                 {
 
                     Phase2[ip]=true;
-                    if (changeStokes) inertia[ip] = 0.0;
                     
                 }
                 else
@@ -452,12 +434,10 @@ class Interface
                     if(JumpShape[scvf.to()]>0.0)
                     {
                         Phase2[ip]=true;
-                        if (changeStokes) inertia[ip] = 0.0;
                     }
                     else
                     {
                         Phase2[ip]=false;
-                        if (changeStokes) inertia[ip] = 1.0;
                     }
                 }
                 
