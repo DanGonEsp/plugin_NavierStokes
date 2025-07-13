@@ -2927,15 +2927,6 @@ ex_div_velocity(MathVector<dim> vValue[],
                         //    Add derivative of stabilized flux w.r.t pressure to local matrix
                         vvvDeriv[ip][_P_][sh][d1] +=  stab.stab_shape_p(ip, d1, sh);
                         
-                        /*if(interface)
-                        {
-                            number PJumpSum = stab.stab_shape_p_jump(ip, d1, sh);
-                            
-                            for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
-                            {
-                                vvvDeriv[ip][_P_][sh2][d1] +=  PJumpSum * press_jump.pressure_shape_p(sh,sh2);
-                            }
-                        }*/
                         
 
                     }

@@ -1065,7 +1065,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         if(!bStokes)
         {
             const number norm = inertia[ip] * VecTwoNorm(vStdVel[ip]);
-            vNormStdVelPerConvLen[ip] = norm * RHO_up[ip] / upwind_conv_length(ip);
+            vNormStdVelPerConvLen[ip] = norm * density[ip] / upwind_conv_length(ip);
             
         }
 

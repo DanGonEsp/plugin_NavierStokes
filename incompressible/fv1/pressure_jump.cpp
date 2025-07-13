@@ -194,7 +194,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     bool bSourceJump = false;
     bool bViscJump = true;
     bool bGradientJump = false;
-    bool bSlipVel = true;
+    bool bSlipVel = false;
     
     
     const number alpha1= 1.0;

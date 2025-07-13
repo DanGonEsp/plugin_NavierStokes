@@ -351,12 +351,12 @@ class Interface
             
             
             
-            bool changeStokes = true;
+            bool changeStokes = false;
             
             
             for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
             {
-                inertia[ip] = 0.0;
+                inertia[ip] = 1.0;
             }
             
             if(!interface)
