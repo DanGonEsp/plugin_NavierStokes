@@ -214,7 +214,6 @@ update(const FV1Geometry<TElem, dim>* geo,
     number theta_to, theta_from, c_to, c_from, DC;
     
     
-    size_t _C_=vCornerValue.num_all_fct() -1 ;
     //vCornerValue.access_all();
     
     if(bGradientJump || bSlipVel)
@@ -225,8 +224,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             interN[ip]=0.0;
             
             
-            //VolFrac[ip] = vol_fraction[ip];                      //Bug here, the import parameter vol_fraciotn is not importing the correct value
-            VolFrac[ip] = fmin(1.0, fmax(vCornerValue(_C_,ip),0));
+            VolFrac[ip] = vol_fraction[ip];                      //Bug here, the import parameter vol_fraciotn is not importing the correct value
+            //VolFrac[ip] = fmin(1.0, fmax(vCornerValue(_C_,ip),0));
             
         }
         for(size_t ip = 0; ip < NumSCVF; ++ip)
@@ -289,11 +288,11 @@ update(const FV1Geometry<TElem, dim>* geo,
         {
             const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             const number vol = scv.volume();
-            VOL_t += vol;
+            if(jump_shape[ip]<0) VOL_t += vol;
             
             for(size_t d1 = 0; d1 < dim; ++d1)
             {
-                Tang[d1] += vCornerValue(d1, ip) * vol;
+                if(jump_shape[ip]<0) Tang[d1] += vCornerValue(d1, ip) * vol;
                 C_grad[d1] += scv.global_grad(ip)[d1] * VolFrac[ip];
             }
         }
@@ -346,7 +345,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     for(size_t ip = 0; ip < numSh; ++ip)
                     {
                         number VelSum =  -VecProd(n[ip],x_interface[ip]) * (mu_l - mu_g) * Deriv * Tang[d] / Visc_eff;
-                        tang_vel_shape_vel(ip, d, d1, k) =  VelSum ;
+                        tang_vel_shape_vel(ip, d, d1, k) +=  VelSum ;
                         tang_vel(ip)[d] += VelSum * vCornerValue(d1, k);
                     }
                     
@@ -688,7 +687,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     for(size_t ip = 0; ip < N; ++ip)
     {
     
-        if (!((geo->scv_global_ips()[ip][0] > 14.561) && (geo->scv_global_ips()[ip][0] < 14.688)))
+        if (!((geo->scv_global_ips()[ip][0] > 24.124) && (geo->scv_global_ips()[ip][0] < 24.376)))
         {
             f = f && false;
             
@@ -705,20 +704,20 @@ update(const FV1Geometry<TElem, dim>* geo,
             //const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             if(ip==0)
             {
-                printf("Pressure jump at model------------------------------------------\n" );
+                printf("Pressure jump at model   %f------------------------------------------\n",interface_value );
                 //printf("rho_l  = %f\n",rho_l);
                 //printf("rho_g  = %f\n",rho_g);
                 //printf("mu_l  = %f\n",mu_l);
                 //printf("mu_g  = %f\n",mu_g);
                 //printf("dt  = %f\n",dt);
                 //printf("Inv_DiffLenSq  = %f\n",Inv_DiffLenSq);
-                printf("upwind_conv_length[0]  = %f\n",upwind_conv_length(0));
+                /*printf("upwind_conv_length[0]  = %f\n",upwind_conv_length(0));
                 printf("upwind_conv_length[1]  = %f\n",upwind_conv_length(1));
                 printf("upwind_conv_length[2]  = %f\n",upwind_conv_length(2));
                 
                 printf("diff_length_sq_inv[0]  = %f\n",diff_length_sq_inv(0));
                 printf("diff_length_sq_inv[1]  = %f\n",diff_length_sq_inv(1));
-                printf("diff_length_sq_inv[2]  = %f\n",diff_length_sq_inv(2));
+                printf("diff_length_sq_inv[2]  = %f\n",diff_length_sq_inv(2));*/
                 
                 //printf("diag1  = %f\n",diag1);
                 //printf("diag2  = %f\n",diag2);
@@ -738,7 +737,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 printf("   %f     %f    %f\n", mat(1, 0),mat(1, 1),mat(1, 2));
                 printf("   %f     %f    %f\n", mat(2, 0),mat(2, 1),mat(2, 2));*/
                 
-                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                /*for(size_t ip2 = 0; ip2 < N; ++ip2)
                     printf("VicscousCoef  = %f\n",VicscousCoef[ip2]);
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                     printf("PressureCoef  = %f\n",PressureCoef[ip2]);
@@ -746,7 +745,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     printf("SourceCoef  = %f\n",SourceCoef_1[ip2]);
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                     printf("SourceCoef  = %f\n",SourceCoef_2[ip2]);
-
+                 */
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
                     printf("PressureJump[%zu] = %f\n",ip2, P_jump[ip2]);
@@ -755,16 +754,24 @@ update(const FV1Geometry<TElem, dim>* geo,
                 {
                     printf("Pressure[%zu] = %f\n",ip2, vCornerValue(_P_, ip2));
                 }
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                {
+                    printf("Velt[%zu] = %lf      %lf\n",ip2, tang_vel(ip2)[0],tang_vel(ip2)[1]);
+                }
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
+                {
+                    printf("U[%zu] = %lf      %lf\n",ip2, vCornerValue(0, ip2),vCornerValue(1, ip2));
+                }
+                
                 /*for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
                     printf("vLocShape[%zu] = %f\n",ip2, vLocShape[ip2]);
                 }*/
                 
-                /*for(size_t ip2 = 0; ip2 < N; ++ip2)
+                for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
-                    printf("JumpShape[%zu] = %f\n",ip2, jump_shape[ip2]);
-                    printf("vol_fraction[%zu] = %f\n",ip2, vol_fraction[ip2]);
-                }*/
+                    printf("vol_fraction[%zu] = %f\n",ip2, vol_fraction[ip2] );
+                }
 
                 
                 
@@ -786,7 +793,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             
 
             
-            //printf("Coor[%zu] =   %f      %f\n",ip, geo->scv_global_ips()[ip][0], geo->scv_global_ips()[ip][1]);
+            printf("Coor[%zu] =   %f      %f\n",ip, geo->scv_global_ips()[ip][0], geo->scv_global_ips()[ip][1]);
             
             //printf("Xinter[%zu] = %f        %f\n",ip, x_interface[ip][0], x_interface[ip][1]);
             

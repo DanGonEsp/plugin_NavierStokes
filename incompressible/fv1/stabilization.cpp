@@ -951,7 +951,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         {
             if (jump_shape[sh]>0)
             {
-                mu_2  += 1.0 / (densitySCV[sh] * kinViscoSCV[sh]);
+                mu_2  +=  (densitySCV[sh] * kinViscoSCV[sh]);
 
                 if(boolSource) {VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );}
                 Count_2 +=1;
@@ -959,7 +959,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             }
             else
             {
-                mu_1  += 1.0 / (densitySCV[sh] * kinViscoSCV[sh]);
+                mu_1  +=  (densitySCV[sh] * kinViscoSCV[sh]);
                 if(boolSource) {VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );}
                 Count_1 +=1;
                 
@@ -967,8 +967,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             
             
         }
-        mu_1 = Count_1 / mu_1;
-        mu_2 = Count_2 / mu_2 ;
+        mu_1 = mu_1 / Count_1 ;
+        mu_2 = mu_2 / Count_2 ;
 
         if(boolSource)
         {
@@ -1237,7 +1237,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                             }
                         }
                         
-                        number sumSlipVel = 0.0;
+                        /*number sumSlipVel = 0.0;
                         
                         if (  ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )   )
                         {
@@ -1255,7 +1255,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                                 stab_shape_vel(ip, d, d1, k2) += sumSlipVel * tang_vel_shape_vel( k,  d,  d1,  k2) / diag;
 
                             }
-                        }
+                        }*/
             
                     }
 

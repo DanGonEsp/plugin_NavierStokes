@@ -520,8 +520,8 @@ class Interface
             {
                 if (JumpShape[sh]>0)
                 {
-                    mu_2  += 1.0 / (DensitySCV[sh] * KinViscSCV[sh]);
-                    rho_2 += 1.0 / (DensitySCV[sh]) ;
+                    mu_2  +=  (DensitySCV[sh] * KinViscSCV[sh]);
+                    rho_2 +=  (DensitySCV[sh]) ;
 
                     if(boolSource) {VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );}
                     
@@ -530,18 +530,18 @@ class Interface
                 }
                 else
                 {
-                    mu_1  += 1.0 / (DensitySCV[sh] * KinViscSCV[sh]);
-                    rho_1 += 1.0 / DensitySCV[sh] ;
+                    mu_1  +=  (DensitySCV[sh] * KinViscSCV[sh]);
+                    rho_1 +=  DensitySCV[sh] ;
                     if(boolSource) {VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );}
                     Count_1 +=1;
                     
                 }
                 
             }
-            mu_1 = Count_1 / mu_1 ;
-            mu_2 = Count_2 / mu_2 ;
-            rho_1 = Count_1 / rho_1;
-            rho_2 = Count_2 / rho_2;
+            mu_1 =  mu_1 / Count_1 ;
+            mu_2 =  mu_2 / Count_2 ;
+            rho_1 = rho_1 / Count_1;
+            rho_2 = rho_2 / Count_2;
             
             if(boolSource)
             {
@@ -554,12 +554,12 @@ class Interface
                 printf("Mu2 = %f    Mu1 = %f\n",mu_2,mu_1);
                 printf("Rho2 = %f    Rho1 = %f\n",rho_2,rho_1);
                 
-                /*for(size_t sh = 0; sh < numSh; ++sh)
+                for(size_t sh = 0; sh < numSh; ++sh)
                     printf("mu[%zu] = %f\n", sh, DensitySCV[sh] * KinViscSCV[sh]);
                 for(size_t sh = 0; sh < numSh; ++sh)
                     printf("rho[%zu] = %f\n", sh, DensitySCV[sh] );
                 for(size_t sh = 0; sh < numSh; ++sh)
-                    printf("JumpShape[%zu] = %f\n", sh, JumpShape[sh] );*/
+                    printf("JumpShape[%zu] = %f\n", sh, JumpShape[sh] );
                 
                 
                 
