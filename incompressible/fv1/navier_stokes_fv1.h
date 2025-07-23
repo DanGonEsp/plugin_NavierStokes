@@ -46,7 +46,7 @@
 #include "../../upwind_interface.h"
 #include "stabilization.h"
 #include "pressure_jump.h"
-#include "properties_interface.h"
+#include "../../../MultiphaseFlow/properties_interface.h"
 
 namespace ug{
 namespace NavierStokes{
