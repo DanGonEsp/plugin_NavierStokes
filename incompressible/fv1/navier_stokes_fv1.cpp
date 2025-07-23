@@ -958,7 +958,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 
                 //     Compute flux derivative at IP
                 
-                /*number flux_sh_jump = 0.0;
+                number flux_sh_jump = 0.0;
                 const number flux_sh_aux = -1.0 * ( MU ) * VecDot(scvf.global_grad(sh), dA1);
                 const number flux_sh =  -1.0 * ( - m_imKinViscosity[ip] * m_imDensitySCVF[ip]) * VecDot(scvf.global_grad(sh), scvf.normal());
                 
@@ -1004,7 +1004,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                             }
                             
                         }
-                }*/
+                }
                 
                 
                 ////////////////////////////////////////////////////
@@ -1589,7 +1589,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             ////////////////////////////////////////////////////
 
         //     1. Interpolate Functional Matrix of velocity at ip
-            /*MathMatrix<dim, dim> gradVel_jump;
+            MathMatrix<dim, dim> gradVel_jump;
             MathMatrix<dim, dim> gradVel;
             number MU = (Phase2[ip]) ? mu_l : mu_g;
 
@@ -1638,7 +1638,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             {
                 d(d1, scvf.from()) += diffFlux_jump[d1]+diffFlux[d1];
                 d(d1, scvf.to()  ) -= diffFlux_jump[d1]+diffFlux[d1];
-            }*/
+            }
             
             ////////////////////////////////////////////////////
             // Pressure Term Term (Momentum Equation)
@@ -1752,18 +1752,15 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 // 	get finite volume geometry
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
     
-    number Rho = 0.0;
     number Vol = 0.0;
+    number fac = 1.0;
     
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
     {
     //     get current SCV
         const typename TFVGeom::SCV& scv = geo.scv(ip);
-
-        Rho += m_imDensitySCV[ip] * scv.volume();
         Vol += scv.volume();
     }
-    Rho *= 1.0/Vol;
 
 // 	loop Sub Control Volumes (SCV)
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1779,8 +1776,15 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 		{
 		// 	Add to local matrix
             //J(d1, sh, d1, sh) += scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
-            J(d1, sh, d1, sh) += scv.volume() * (0.5 * m_imDensitySCV[ip] + 0.5 * Rho);//printf("Change the lin_def");
+            J(d1, sh, d1, sh) += scv.volume() * (fac * m_imDensitySCV[ip]);//printf("Change the lin_def");
             //J(d1, sh, d1, sh) += scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho);
+            for(size_t ip2 = 0; ip2 < geo.num_scv(); ++ip2)
+            {
+                const typename TFVGeom::SCV& scv2 = geo.scv(ip2);
+                const int sh2 = scv2.node_id();
+                J(d1, sh, d1, sh2) += (1.0-fac) * scv.volume() * (m_imDensitySCV[ip] * scv2.volume()/Vol);
+                
+            }
 		}
     }
     /*for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -1821,19 +1825,20 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 // 	get finite volume geometry
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
     
-    number Rho = 0.0;
+    MathVector<dim> VRho; VecSet(VRho,0.0);
     number Vol = 0.0;
-    
+    number fac = 1.0;
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
     {
     //     get current SCV
         const typename TFVGeom::SCV& scv = geo.scv(ip);
-
-        Rho += m_imDensitySCV[ip] * scv.volume();
+        const int sh = scv.node_id();
         Vol += scv.volume();
+        for(int d1 = 0; d1 < dim; ++d1)
+            VRho[d1] += u(d1, sh) * m_imDensitySCV[ip] * scv.volume();
         
     }
-    Rho *= 1.0/Vol;
+    VRho *= 1.0/Vol;
 
 // 	loop Sub Control Volumes (SCV)
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1849,7 +1854,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		{
 		// 	Add to local matrix
             //d(d1, sh) += u(d1, sh) * scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
-            d(d1, sh) += u(d1, sh) * scv.volume() * (0.5 * m_imDensitySCV[ip] + 0.5 * Rho); //printf("Change the lin_def");
+            d(d1, sh) +=  scv.volume() * (fac * u(d1, sh) * m_imDensitySCV[ip] + (1-fac) * VRho[d1]); //printf("Change the lin_def");
             //d(d1, sh) += u(d1, sh) * scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho); //printf("Change the lin_def");
 		}
         
@@ -2184,8 +2189,14 @@ lin_def_densitySCV(const LocalVector& u,
         for(size_t c = 0; c < vvvLinDef[ip].size(); ++c)
             for(size_t sh = 0; sh < vvvLinDef[ip][c].size(); ++sh)
                 vvvLinDef[ip][c][sh] = 0.0;
-    
-
+    number Vol = 0.0;
+    if(this->is_time_dependent())
+        for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+        {
+            const typename TFVGeom::SCV& scv = geo.scv(ip);
+            Vol += scv.volume();
+            
+        }
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
     {
         
@@ -2200,7 +2211,12 @@ lin_def_densitySCV(const LocalVector& u,
         {
             for(size_t c = 0; c < dim; ++c)
             {
-                vvvLinDef[ip][c][co] += u(c, co) * scv.volume();
+                vvvLinDef[ip][c][co] += u(c, co) * scv.volume() * 0.5;
+                for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+                {
+                    const int co2 = scv.node_id();
+                    vvvLinDef[ip][c][co2] += u(c, co) *  0.5 * scv.volume()/Vol;
+                }
             }
         }
         
