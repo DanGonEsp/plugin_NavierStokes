@@ -190,7 +190,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     
     bool bSurfTensionJump = false;
-    bool bHidroPressJump= false;
+    bool bHidroPressJump= true;
     bool bSourceJump = false;
     bool bViscJump = true;
     bool bGradientJump = false;
@@ -216,7 +216,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     //vCornerValue.access_all();
     
-    if(bGradientJump || bSlipVel)
+    if(bGradientJump || bSlipVel || bHidroPressJump)
     {
         for(size_t ip = 0; ip < N; ++ip)
         {
@@ -377,9 +377,9 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     //vCornerValue.access_all();
     
-    if(bGradientJump)
+    if(bGradientJump || bHidroPressJump)
     {
-
+        
         for(size_t ip = 0; ip < NumSCVF; ++ip)
         {
             const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip);
@@ -413,55 +413,58 @@ update(const FV1Geometry<TElem, dim>* geo,
         ReferenceMapping<ref_elem_type, dim> mapping(geo->scv_global_ips());
         
         rTrialSpace.shapes(vLocShape, vLocIP_inter);
-
         
-        if(!bStokes)
-            vNormStdVelPerConvLen *= 1.0/count_interface;
-        
-        diag2 = Inv_DiffLenSq * mu_l/rho_l;
-        diag1 = Inv_DiffLenSq * mu_g/rho_g;
-        
-        
-        /*if(pvCornerValueOldTime != NULL)
-         {
-         diag2 += 1.0/dt;
-         diag1 += 1.0/dt;
-         }*/
-        /*if(!bStokes)
-         {
-         diag2 += vNormStdVelPerConvLen;
-         diag1 += vNormStdVelPerConvLen;
-         }*/
-        
-        diag2 *= rho_l;
-        diag1 *= rho_g;
-        
-        
-        for(size_t ip = 0; ip < geo->num_scv(); ++ip)
+        if (bGradientJump)
         {
-            //     get current SCV
-            const typename FV1Geometry<TElem, dim>::SCV scv = geo->scv(ip);
-            if(jump_shape[ip]>0.0)
-            {
-                const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);
-                VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
-                PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_g ;
-                SourceCoef_2[ip] =   1.0 * Factor * (diag2+diag1) ;
-                SourceCoef_1[ip] =  -1.0 * Factor * ( (rho_l/rho_g)   + 1.0 ) * diag2 ;
                 
-            }
-            else
-            {
-                const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);
-                PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_l;
-                VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
-                SourceCoef_2[ip]   = 1.0 * Factor * ( rho_g / rho_l  + 1.0  ) * diag1 ;
-                SourceCoef_1[ip]   = -1.0 * Factor * (diag2+diag1)  ;
-                
-                
-            }
+            if(!bStokes)
+                vNormStdVelPerConvLen *= 1.0/count_interface;
+            
+            diag2 = Inv_DiffLenSq * mu_l/rho_l;
+            diag1 = Inv_DiffLenSq * mu_g/rho_g;
             
             
+            /*if(pvCornerValueOldTime != NULL)
+             {
+             diag2 += 1.0/dt;
+             diag1 += 1.0/dt;
+             }*/
+            /*if(!bStokes)
+             {
+             diag2 += vNormStdVelPerConvLen;
+             diag1 += vNormStdVelPerConvLen;
+             }*/
+            
+            diag2 *= rho_l;
+            diag1 *= rho_g;
+            
+            
+            for(size_t ip = 0; ip < geo->num_scv(); ++ip)
+            {
+                //     get current SCV
+                const typename FV1Geometry<TElem, dim>::SCV scv = geo->scv(ip);
+                if(jump_shape[ip]>0.0)
+                {
+                    const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);
+                    VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
+                    PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_g ;
+                    SourceCoef_2[ip] =   1.0 * Factor * (diag2+diag1) ;
+                    SourceCoef_1[ip] =  -1.0 * Factor * ( (rho_l/rho_g)   + 1.0 ) * diag2 ;
+                    
+                }
+                else
+                {
+                    const number Factor = 1.0 / ( alpha2 * diag1 + alpha1 * diag2);
+                    PressureCoef[ip] = Factor * (rho_l*alpha1 * diag2 - rho_g*alpha2 * diag1) / rho_l;
+                    VicscousCoef[ip] = 1.0 * Factor * Inv_DiffLenSq * ((mu_l/rho_l)*diag1 - (mu_g/rho_g)*diag2);
+                    SourceCoef_2[ip]   = 1.0 * Factor * ( rho_g / rho_l  + 1.0  ) * diag1 ;
+                    SourceCoef_1[ip]   = -1.0 * Factor * (diag2+diag1)  ;
+                    
+                    
+                }
+                
+                
+            }
         }
 
     }
@@ -698,15 +701,15 @@ update(const FV1Geometry<TElem, dim>* geo,
     for(size_t ip = 0; ip < N; ++ip)
     {
         pressure_jump(ip) = P_jump[ip];
-        //if (isnan(P_jump[ip]))
-        if (false)
+        if (isnan(P_jump[ip]))
+        //if (false)
         {
             //const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             if(ip==0)
             {
                 printf("Pressure jump at model   %f------------------------------------------\n",interface_value );
-                //printf("rho_l  = %f\n",rho_l);
-                //printf("rho_g  = %f\n",rho_g);
+                printf("rho_l  = %f\n",rho_l);
+                printf("rho_g  = %f\n",rho_g);
                 //printf("mu_l  = %f\n",mu_l);
                 //printf("mu_g  = %f\n",mu_g);
                 //printf("dt  = %f\n",dt);
