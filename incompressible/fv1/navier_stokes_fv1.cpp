@@ -534,21 +534,26 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     J(d1, scvf.to()  , _P_, sh) -= flux_sh;
                 }
             }
-            /*if(!boolGradientPressure){
-                number rho_ave = 0.0;
-                number VOL = 0.0;
-                for(size_t sh = 0; sh < geo.num_scvf(); ++sh)
-                    rho_ave += 1.0 / m_imDensitySCV[sh];
-                rho_ave = geo.num_scvf() / rho_ave;
+            else
+            {
                 
-                //    Add flux derivative for local matrix
+                const typename TFVGeom::SCV& scv_from = geo.scv(scvf.from());
+                const typename TFVGeom::SCV& scv_to = geo.scv(scvf.to());
+                
+                MathVector<dim> PressGradsh;
+                
+                VecScale(PressGradsh  ,  scvf.normal(), VecProd(scvf.normal(),scvf.global_grad(sh)) / VecLengthSq(scvf.normal()));
+                
+                //    2. Add contributions to local defect
                 for(int d1 = 0; d1 < dim; ++d1)
                 {
-                    const number flux_sh = scvf.shape(sh) * scvf.normal()[d1] ;
-                    J(d1, scvf.from(), _P_, sh) += (m_imDensitySCV[scvf.from()] / rho_ave) * flux_sh;
-                    J(d1, scvf.to()  , _P_, sh) -= (m_imDensitySCV[scvf.to()] / rho_ave) * flux_sh;
+                    J(d1, scvf.from(), _P_, sh) += PressGradsh[d1] * scv_from.volume() / 2.0;
+                    J(d1, scvf.to(), _P_, sh)   += PressGradsh[d1] * scv_to.volume() / 2.0;
+                    
+
                 }
-            }*/
+
+            }
             
             ////////////////////////////////////////////////////
             // Convective Term (Momentum Equation)
@@ -893,12 +898,12 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             
         }
 	}
-    if ( boolGradientPressure) // no convective terms in the Stokes equation
+    /*if ( boolGradientPressure) // no convective terms in the Stokes equation
     {
-        number rho_ave = 0.0;
-        for(size_t sh = 0; sh < numSh; ++sh)
-            rho_ave += m_imDensitySCV[sh];
-        rho_ave = rho_ave / numSh;
+        //number rho_ave = 0.0;
+        //for(size_t sh = 0; sh < numSh; ++sh)
+            //rho_ave += m_imDensitySCV[sh];
+        //rho_ave = rho_ave / numSh;
         for(size_t ip = 0; ip < geo.num_scv(); ++ip)
         {
         //     get current SCV
@@ -907,10 +912,12 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 const int SH = scv.node_id();
             
         //     Add to local rhs
-            for(int d1 = 0; d1 < dim; ++d1){
-                for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+            for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+            {
+                for(int d1 = 0; d1 < dim; ++d1)
                 {
-                    J(d1,SH,_P_, sh) +=  (m_imDensitySCV[SH] / rho_ave) * scv.global_grad(sh)[d1] * scv.volume();
+                    //J(d1,SH,_P_, sh) +=  (m_imDensitySCV[SH] / rho_ave) * scv.global_grad(sh)[d1] * scv.volume();
+                    J(d1,SH,_P_, sh) +=   scv.global_grad(sh)[d1] * scv.volume();
                 }
             }
             
@@ -918,7 +925,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         }
         
 
-    }
+    }*/
     if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given() && interface)
     {
         //     loop Sub Control Volumes (SCV)
@@ -1466,25 +1473,28 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                 d(d1, scvf.to()  ) -= pressure * scvf.normal()[d1];
             }
         }
-        
-        /*if(!boolGradientPressure){
-            number rho_ave = 0.0;
+        else
+        {
+            const typename TFVGeom::SCV& scv_from = geo.scv(scvf.from());
+            const typename TFVGeom::SCV& scv_to = geo.scv(scvf.to());
+            /*number rho_ave = 0.0;
             number VOL = 0.0;
             for(size_t sh = 0; sh < geo.num_scvf(); ++sh)
                 rho_ave += 1.0 / m_imDensitySCV[sh];
-            rho_ave = geo.num_scvf() / rho_ave;
+            rho_ave = geo.num_scvf() / rho_ave;*/
             //    1. Interpolate pressure at ip
-            number pressure = 0.0;
+            MathVector<dim> PressGrad; VecSet(PressGrad,0.0);
             for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                pressure += scvf.shape(sh) * u(_P_, sh) ;
+                VecScaleAppend(PressGrad, u(_P_,sh), scvf.global_grad(sh));
+            VecScale(PressGrad  ,  scvf.normal(), VecProd(scvf.normal(),PressGrad)/VecLengthSq(scvf.normal()));
             
             //    2. Add contributions to local defect
             for(int d1 = 0; d1 < dim; ++d1)
             {
-                d(d1, scvf.from()) += ( m_imDensitySCV[scvf.from()] /  rho_ave) * pressure * scvf.normal()[d1];
-                d(d1, scvf.to()  ) -= ( m_imDensitySCV[scvf.to()   ] / rho_ave) * pressure * scvf.normal()[d1];
+                d(d1, scvf.from()) += PressGrad[d1] * scv_from.volume() / 2.0;
+                d(d1, scvf.to()  ) += PressGrad[d1] * scv_to.volume() / 2.0;
             }
-        }*/
+        }
         
 
 		////////////////////////////////////////////////////
@@ -1532,14 +1542,14 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         }*/
         
 	}
-    if ( boolGradientPressure) // no convective terms in the Stokes equation
+    /*if ( boolGradientPressure) // no convective terms in the Stokes equation
     {
         MathVector<dim> PressGrad[geo.num_scv()];
         
-        number rho_ave = 0.0;
-        for(size_t sh = 0; sh < numSh; ++sh)
-            rho_ave += m_imDensitySCV[sh];
-        rho_ave = rho_ave / numSh;
+        //number rho_ave = 0.0;
+        //for(size_t sh = 0; sh < numSh; ++sh)
+            //rho_ave += m_imDensitySCV[sh];
+        //rho_ave = rho_ave / numSh;
         
         for(size_t ip = 0; ip < geo.num_scv(); ++ip)
         {
@@ -1555,14 +1565,15 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             }
         //     Add to local rhs
             for(int d1 = 0; d1 < dim; ++d1){
-                d(d1, SH) =  (m_imDensitySCV[SH] / rho_ave) * PressGrad[ip][d1] * scv.volume();
+                //d(d1, SH) =  (m_imDensitySCV[SH] / rho_ave) * PressGrad[ip][d1] * scv.volume();
+                d(d1, SH) =   PressGrad[ip][d1] * scv.volume();
             }
             
             
         }
         
 
-    }
+    }*/
     
     if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given() && interface)
     {
@@ -1899,7 +1910,7 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
 
 // 	get finite volume geometry
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
-    if(m_imSourceSCV.data_given())
+    /*if(m_imSourceSCV.data_given())
     {
         // 	loop Sub Control Volumes (SCV)
         number Vol=0.0;
@@ -1953,22 +1964,12 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
             }
         }
 
-    }
+    }*/
     /*if(m_imSourceSCV.data_given())
     {
         //     loop Sub Control Volumes (SCV)
 
-        MathVector<dim> RhoGrad;
-        VecSet(RhoGrad, 0.0);
-        for(size_t ip = 0; ip < geo.num_scv(); ++ip)
-        {
-            const typename TFVGeom::SCV& scv = geo.scv(ip);
-            const int sh = scv.node_id();
-            
-            VecScaleAppend(RhoGrad, m_imDensitySCV[ip], scv.global_grad(sh));
-        }
         
-
         for(size_t ip = 0; ip < geo.num_scv(); ++ip)
         {
             //     get current SCV
@@ -1977,12 +1978,51 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
             
             //     Add to local rhs
             for(int d1 = 0; d1 < dim; ++d1){
-                d(d1, sh) -= m_imSourceSCVF[ip][d1]*RhoGrad[dim-1]*geo.scv_global_ips()[ip][dim-1]*scv.volume();
+                d(d1, sh) += m_imSourceSCV[ip][d1]*scv.volume();
 
             }
         }
 
     }*/
+    if(m_imSourceSCVF.data_given())
+    {
+        //     loop Sub Control Volumes (SCV)
+        
+        //     loop Sub Control Volumes (SCV)
+        
+        static const size_t numSh = reference_element_traits<TElem>::reference_element_type::numCorners;
+        
+        bool interface = false;
+        if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given())
+            interface = Inter->cut_interface(m_imJumpShape, numSh);
+        //Since there is a density jump in inte interface the force is calculated as a pressure jump
+        if (true)
+        {
+            for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+            {
+                //     get current SCV
+                const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+                
+                //    get associated SubControlVolumes
+                const typename TFVGeom::SCV& scvFrom = geo.scv(scvf.from());
+                const typename TFVGeom::SCV& scvTo   = geo.scv(scvf.to());
+                
+                const int from = scvFrom.node_id();
+                const int to = scvTo.node_id();
+                
+                
+                //     Add to local rhs
+                for(int d1 = 0; d1 < dim; ++d1){
+                    d(d1, scvf.from()) += m_imSourceSCVF[ip][d1] * scvFrom.volume() / 2.0;
+                    d(d1, scvf.to()  ) += m_imSourceSCVF[ip][d1] * scvTo.volume() / 2.0;
+                    
+                    //d(d1, scvf.from()) +=  RhoDiff * VecProd(m_imSourceSCVF[ip],scvf.normal()) * scvFrom.volume() * scvf.normal()[d1]/ (4.0*VecProd(scvf.normal(),scvf.normal()));
+                    //d(d1, scvf.to()  ) +=  RhoDiff * VecProd(m_imSourceSCVF[ip],scvf.normal()) * scvTo.volume() * scvf.normal()[d1]/ (4.0*VecProd(scvf.normal(),scvf.normal()));
+                }
+            }
+        }
+
+    }
     /*if(m_imSourceSCVF.data_given())
     {
         //     loop Sub Control Volumes (SCV)
