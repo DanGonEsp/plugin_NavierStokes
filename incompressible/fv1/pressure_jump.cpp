@@ -190,7 +190,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     
     bool bSurfTensionJump = false;
-    bool bHidroPressJump= true;
+    bool bHidroPressJump= false;
     bool bSourceJump = false;
     bool bViscJump = true;
     bool bGradientJump = false;

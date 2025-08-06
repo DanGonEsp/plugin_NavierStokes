@@ -165,6 +165,10 @@ class CompressibleNavierStokesFV1
 
 	/// returns scvf source
 		DataImport<MathVector<dim>, dim> sourceSCVF(){ return m_imSourceSCVF;}
+    
+    ///    returns source
+        SmartPtr<CplUserData<MathVector<dim>, dim> > source() {return m_imSourceSCVF.user_data ();}
+    
 
 	///	sets an upwinding for the convective term of momentum equation
 		void set_upwind(SmartPtr<INavierStokesUpwind<dim> > spUpwind)

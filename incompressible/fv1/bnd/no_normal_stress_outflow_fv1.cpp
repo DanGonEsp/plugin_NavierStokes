@@ -50,13 +50,18 @@ NavierStokesNoNormalStressOutflowFV1(SmartPtr< IncompressibleNavierStokesBase<TD
 {
     m_imKinViscosity.set_comp_lin_defect(false);
     m_imDensity.set_comp_lin_defect(false);
+    m_imSource.set_comp_lin_defect(false);
 //	register imports
 	this->register_import(m_imKinViscosity);
 	this->register_import(m_imDensity);
+    this->register_import(m_imSource);
 
 //	initialize the imports from the master discretization
 	set_kinematic_viscosity(spMaster->kinematic_viscosity ());
 	set_density(spMaster->density ());
+    set_source(spMaster->source ());
+    
+    m_imSource.set_rhs_part();
 
 	//	update assemble functions
 	register_all_funcs(false);
@@ -186,6 +191,9 @@ prep_elem(const LocalVector& u, GridObject* elem, const ReferenceObjectID roid, 
 	
 	m_imDensity.set_local_ips(&m_vLocIP[0], m_vLocIP.size());
 	m_imDensity.set_global_ips(&m_vGloIP[0], m_vGloIP.size());
+    
+    m_imSource.set_local_ips(&m_vLocIP[0], m_vLocIP.size());
+    m_imSource.set_global_ips(&m_vGloIP[0], m_vGloIP.size());
 }
 
 /// Assembling of the diffusive flux (due to the viscosity) in the Jacobian of the momentum eq.
@@ -433,8 +441,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 			
 		//	B. The continuity equation
             
-            const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
-            number scale = 1.0 / (m_imDensity[ip] * (VecLength(stdVel)/D + m_imKinViscosity[ip]/pow(D,2)));
+            //const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+            //number scale = 1.0 / (m_imDensity[ip] * (VecLength(stdVel)/D + m_imKinViscosity[ip]/pow(D,2)));
 
 			for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
             {
@@ -500,12 +508,52 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		
 		// c. Continuity equation:
             
-            const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
-            number scale = 1.0 / (m_imDensity[ip] * (VecLength(stdVel)/D + m_imKinViscosity[ip]/pow(D,2)));
+            //const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+            //number scale = 1.0 / (m_imDensity[ip] * (VecLength(stdVel)/D + m_imKinViscosity[ip]/pow(D,2)));
             d(_P_, bf->node_id()) += VecDot (stdVel, bf->normal());// * m_imDensity[ip];
             //d(_P_, bf->node_id()) += scale*VecDot (PressureGrad, bf->normal());
 		}
 	}
+}
+
+template<typename TDomain>
+template<typename TElem, typename TFVGeom>
+void NavierStokesNoNormalStressOutflowFV1<TDomain>::
+add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoords[])
+{
+//     Only first order implemented
+    UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
+    
+//    if zero data given, return
+    if(!m_imSource.data_given()) return;
+
+//     get finite volume geometry
+    static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+    typedef typename TFVGeom::BF BF;
+
+//     loop registered boundary segments
+    typename std::vector<int>::const_iterator subsetIter;
+    size_t ip = 0;
+    for(subsetIter = m_vBndSubSetIndex.begin();
+        subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
+    {
+    //    get subset index corresponding to boundary
+        const int bndSubset = *subsetIter;
+        
+    //    get the list of the ip's:
+        if(geo.num_bf(bndSubset) == 0) continue;
+        const std::vector<BF>& vBF = geo.bf(bndSubset);
+
+    //     loop the boundary faces
+        typename std::vector<BF>::const_iterator bf;
+        for(bf = vBF.begin(); bf != vBF.end(); ++bf, ++ip)
+        {
+            number pgh = VecDot(bf->global_ip(),m_imSource[ip]);
+
+            for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+                d(d1, bf->node_id()) += - pgh * bf->normal ()[d1];
+        }
+    }
 }
 
 /// Assembling of the diffusive flux (due to the viscosity) in the defect of the momentum eq.
@@ -748,7 +796,7 @@ register_func()
 	this->set_add_jac_M_elem_fct(	id, &T::template add_jac_M_elem<TElem, TFVGeom>);
 	this->set_add_def_A_elem_fct(	id, &T::template add_def_A_elem<TElem, TFVGeom>);
 	this->set_add_def_M_elem_fct(	id, &T::template add_def_M_elem<TElem, TFVGeom>);
-	this->set_add_rhs_elem_fct(	id, &T::template add_rhs_elem<TElem, TFVGeom>);
+	this->set_add_rhs_elem_fct(	    id, &T::template add_rhs_elem<TElem, TFVGeom>);
 }
 
 

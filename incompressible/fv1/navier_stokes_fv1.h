@@ -181,6 +181,10 @@ class NavierStokesFV1
 
 	///	sets the source function
 		void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
+    
+    ///    returns source
+        SmartPtr<CplUserData<MathVector<dim>, dim> > source() {return m_imSourceSCV.user_data ();}
+    
         void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
         void set_pressure_jump(SmartPtr<CplUserData<number, dim> > user);
         void set_vol_fraction(SmartPtr<CplUserData<number, dim> > user);

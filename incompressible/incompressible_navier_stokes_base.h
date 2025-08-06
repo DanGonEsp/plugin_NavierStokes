@@ -198,6 +198,8 @@ class IncompressibleNavierStokesBase
 	 */
 	///	\{
 		virtual void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user) = 0;
+    ///    returns source
+        virtual SmartPtr<CplUserData<MathVector<dim>, dim> > source() = 0;
 
 	/// switches the convective terms off (to solve the Stokes equation)
 	/**

@@ -88,6 +88,10 @@ class NavierStokesFVCR
 
 	///	sets the source function
 		void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
+    ///    returns source
+        SmartPtr<CplUserData<MathVector<dim>, dim> > source() {return m_imSource.user_data ();}
+    
+    
         void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_divergence_rel_vel(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_mass_change(SmartPtr<CplUserData<number, dim> > user);

@@ -122,6 +122,9 @@ class NavierStokesNoNormalStressOutflowFV1
 	///	adds the stiffness part to the local defect
 		template <typename TElem, typename TFVGeom>
 		void add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[]);
+    
+        template <typename TElem, typename TFVGeom>
+        void add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoords[]);
 
 	public:
 	///	dummy implementations
@@ -130,8 +133,6 @@ class NavierStokesNoNormalStressOutflowFV1
 		void add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[]){}
 		template <typename TElem, typename TFVGeom>
 		void add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[]){}
-		template <typename TElem, typename TFVGeom>
-		void add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoords[]){}
 	/// \}
 
     

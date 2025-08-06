@@ -86,6 +86,8 @@ class NavierStokesFV
 
 	///	sets the source function
 		void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
+    ///    returns source
+        SmartPtr<CplUserData<MathVector<dim>, dim> > source() {return m_imSource.user_data ();}
 
 	public:
 	///	type of trial space for each function used

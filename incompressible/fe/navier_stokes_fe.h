@@ -90,6 +90,9 @@ class NavierStokesFE
 
 	///	sets the source function
 		void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
+    
+    ///    returns source
+        SmartPtr<CplUserData<MathVector<dim>, dim> > source() {return m_imSource.user_data ();}
 
 	///	sets the stabilization parameter
 		void set_stabilization(number alpha) {m_stabParam = alpha;}

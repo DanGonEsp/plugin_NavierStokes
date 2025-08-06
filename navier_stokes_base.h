@@ -190,6 +190,9 @@ class NavierStokesBase
 #endif
 	///	\}
 
+    ///     ///    returns source term
+    virtual SmartPtr<CplUserData<MathVector<dim>, dim> > source() = 0;
+
     ///	sets if the exact jacobian is computed (fixpoint approximation else)
         void set_exact_jacobian(bool bExactJacobian)
         {

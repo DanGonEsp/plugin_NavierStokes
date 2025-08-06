@@ -171,6 +171,9 @@ class CompressibleNavierStokesBase
 	 */
 	///	\{
 		virtual void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > user) = 0;
+    
+    ///    returns source
+        virtual SmartPtr<CplUserData<MathVector<dim>, dim> > source() = 0;
 
 	///	sets if Mach-number blending is used in momentum equation
 		void set_mach_number_blend(bool machNrBlend) {m_bMachNrBlend = machNrBlend;}
