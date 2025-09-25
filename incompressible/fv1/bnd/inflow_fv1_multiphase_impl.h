@@ -30,8 +30,8 @@
  * GNU Lesser General Public License for more details.
  */
 
-#ifndef __H__UG__NAVIER_STOKES__BND__INFLOW_FV1_IMPL__
-#define __H__UG__NAVIER_STOKES__BND__INFLOW_FV1_IMPL__
+#ifndef __H__UG__NAVIER_STOKES__BND__INFLOW_FV1M_IMPL__
+#define __H__UG__NAVIER_STOKES__BND__INFLOW_FV1M_IMPL__
 
 #include "inflow_fv1_multiphase.h"
 #include "lib_disc/spatial_disc/elem_disc/neumann_boundary/fv1/neumann_boundary_fv1.h"
@@ -40,28 +40,28 @@ namespace ug{
 namespace NavierStokes{
 
 template <typename TDomain, typename TAlgebra>
-NavierStokesInflowFV1<TDomain,TAlgebra>::
-NavierStokesInflowFV1(SmartPtr< NavierStokesFV1<TDomain> > spMaster)
+NavierStokesInflowFV1M<TDomain,TAlgebra>::
+NavierStokesInflowFV1M(SmartPtr< NavierStokesFV1M<TDomain> > spMaster)
 	: m_spNeumannDisc(new NeumannBoundaryFV1<TDomain>(spMaster->symb_fcts()[dim].c_str())),
 	  m_spDirichletConstraint(new DirichletBoundary<TDomain,TAlgebra>),
 	  m_spMaster(spMaster)
 {
 	const std::vector<std::string>& vFctName = m_spMaster->symb_fcts();
 
-	if(vFctName.size() != TDomain::dim + 1)
+	if(vFctName.size() != TDomain::dim + 2)
 		UG_THROW("NavierStokesInflow::set_functions: This Boundary "
-				"Condition works on exactly dim+1 (velocity+pressure) "
+				"Condition works on exactly dim+1 (velocity+pressure+Volume fraction) "
 				"components, but "<<vFctName.size()<<"components given.");
 }
 
 template <typename TDomain, typename TAlgebra>
-void NavierStokesInflowFV1<TDomain,TAlgebra>::
+void NavierStokesInflowFV1M<TDomain,TAlgebra>::
 add(SmartPtr<CplUserData<MathVector<dim>, dim> > user, const char* subsetsBND)
 {
 	const std::vector<std::string>& vFctName = m_spMaster->symb_fcts();
 	if(vFctName.empty())
 		UG_THROW("NavierStokesInflow::add: Symbolic names for"
-				" velocity and pressure not set. Please set them first.");
+				" velocity, pressure and VolFraction not set. Please set them first.");
 
 	std::string innerSubsets;
 	for(size_t s = 0; s < m_spMaster->symb_subsets().size(); ++s){
@@ -84,4 +84,4 @@ add(SmartPtr<CplUserData<MathVector<dim>, dim> > user, const char* subsetsBND)
 } // namespace NavierStokes
 } // end namespace ug
 
-#endif /* __H__UG__NAVIER_STOKES__BND__INFLOW_FV1_IMPL__ */
+#endif /* __H__UG__NAVIER_STOKES__BND__INFLOW_FV1M_IMPL__ */

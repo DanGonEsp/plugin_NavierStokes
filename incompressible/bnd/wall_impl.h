@@ -48,10 +48,10 @@ NavierStokesWall(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaster)
 {
 	m_vFctName = spMaster->symb_fcts();
 
-	if(m_vFctName.size() != TDomain::dim + 1)
+	/*if(m_vFctName.size() != TDomain::dim + 1)
 		UG_THROW("NavierStokesWall::set_functions: This Boundary "
 				"Condition works on exactly dim+1 (velocity+pressure) "
-				"components, but "<<m_vFctName.size()<<"components given.");
+				"components, but "<<m_vFctName.size()<<"components given.");*/
 }
 
 template <typename TDomain, typename TAlgebra>

@@ -107,6 +107,8 @@ class INavierStokesUpwind
         MathVector<dim> upwind_rel_vel( const size_t scvf,
                                         const MathVector<dim> vRelVelCorners[],
                                         const MathVector<dim> vRelVel[]) const;
+    /// returns the upwind velocity
+        number upwind_value(const size_t scvf, const LocalVector& CornerVel, const size_t _val_) const;
 
 	///	upwind shape for corner vel
 		number upwind_shape_sh(size_t scvf, size_t sh) const
@@ -415,6 +417,33 @@ upwind_rel_vel(const size_t scvf,
 
 //    return value
     return vel;
+}
+///    upwind velocity
+template <int dim>
+number
+INavierStokesUpwind<dim>::
+upwind_value(const size_t scvf,
+           const LocalVector& CornerVel,
+           const size_t _Val_) const
+{
+//    reset result
+    number value = 0.0;
+
+//    add corner shapes
+    for(size_t sh = 0; sh < num_sh(); ++sh)
+        value += upwind_shape_sh(scvf, sh) * CornerVel(_Val_, sh);
+
+//    done if only depending on shapes
+    if(!non_zero_shape_ip()) return value;
+    else
+        UG_THROW("Error in upwind method");
+
+//    compute ip vel
+   /* for(size_t scvf2 = 0; scvf2 < num_scvf(); ++scvf2)
+        VecScaleAppend(vel, upwind_shape_ip(scvf, scvf2), vStdVel[scvf2]);
+
+//    return value
+    return momentum;*/
 }
 
 template <template <class Elem, int WorldDim> class TFVGeom, int dim, typename TImpl>

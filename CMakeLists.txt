@@ -52,12 +52,14 @@ set(SOURCES	navier_stokes_base.cpp
 			incompressible/incompressible_navier_stokes_base.cpp	
 			
 			incompressible/fv1/navier_stokes_fv1.cpp
+            incompressible/fv1/navier_stokes_fv1_multiphase.cpp
 			incompressible/fe/navier_stokes_fe.cpp
 			incompressible/fvcr/navier_stokes_fvcr.cpp
 			incompressible/fv/navier_stokes_fv.cpp
 
 			incompressible/bnd/no_normal_stress_outflow_base.cpp
 			incompressible/fv1/bnd/no_normal_stress_outflow_fv1.cpp
+            incompressible/fv1/bnd/no_normal_stress_outflow_fv1_multiphase.cpp
 			incompressible/fv/bnd/no_normal_stress_outflow_fv.cpp
 			incompressible/fvcr/bnd/no_normal_stress_outflow_fvcr.cpp
 

@@ -30,8 +30,8 @@
  * GNU Lesser General Public License for more details.
  */
 
-#ifndef __H__UG__PLUGINS__NAVIER_STOKES__INCOMPRESSIBLE__FV1__BND__NO_NORMAL_STRESS_OUTFLOW_FV1_
-#define __H__UG__PLUGINS__NAVIER_STOKES__INCOMPRESSIBLE__FV1__BND__NO_NORMAL_STRESS_OUTFLOW_FV1_
+#ifndef __H__UG__PLUGINS__NAVIER_STOKES__INCOMPRESSIBLE__FV1M__BND__NO_NORMAL_STRESS_OUTFLOW_FV1M_
+#define __H__UG__PLUGINS__NAVIER_STOKES__INCOMPRESSIBLE__FV1M__BND__NO_NORMAL_STRESS_OUTFLOW_FV1M_
 
 // other ug4 modules
 #include "common/common.h"
@@ -67,7 +67,7 @@ namespace NavierStokes{
  * \f$ \sigma = \mu (\nabla \vec{u} + (\nabla \vec{u})^T) \f$ the stress tensor.
  */
 template<	typename TDomain>
-class NavierStokesNoNormalStressOutflowFV1
+class NavierStokesNoNormalStressOutflowFV1M
 	: public NavierStokesNoNormalStressOutflowBase<TDomain>
 {
 	private:
@@ -75,7 +75,7 @@ class NavierStokesNoNormalStressOutflowFV1
 		typedef NavierStokesNoNormalStressOutflowBase<TDomain> base_type;
 
 	///	own type
-		typedef NavierStokesNoNormalStressOutflowFV1<TDomain> this_type;
+		typedef NavierStokesNoNormalStressOutflowFV1M<TDomain> this_type;
 
 	public:
 	///	World dimension
@@ -83,7 +83,7 @@ class NavierStokesNoNormalStressOutflowFV1
 
 	public:
 	///	Constructor (setting default values)
-		NavierStokesNoNormalStressOutflowFV1(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaster);
+		NavierStokesNoNormalStressOutflowFV1M(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaster);
 
 	protected:
 	///	sets the kinematic viscosity
@@ -94,6 +94,7 @@ class NavierStokesNoNormalStressOutflowFV1
 		virtual void set_density(SmartPtr<CplUserData<number, dim> > data)
         {
             m_imDensity.set_data(data);
+            m_imDensity_old.set_data(data);
             m_imDensityCoor.set_data(data);
         }
     
@@ -176,6 +177,7 @@ class NavierStokesNoNormalStressOutflowFV1
 			const BF& bf,
 			LocalMatrix& J,
 			const LocalVector& u,
+            const MathVector<dim>& Vel,
             const MathVector<dim>& StdVel
 		);
 	/// adds the convective part of the local defect of the momentum equation
@@ -186,27 +188,28 @@ class NavierStokesNoNormalStressOutflowFV1
 			const BF& bf,
 			LocalVector& d,
 			const LocalVector& u,
+            const MathVector<dim>& Vel,
 			const MathVector<dim>& StdVel
 		);
-    /// adds the pressure part of the local Jacobian of the momentum equation
+    /// adds the convective part of the local Jacobian of the momentum equation
         template <typename BF>
-        inline void pressure_flux_Jac
+        inline void convective_flux_volumefraction_Jac
         (
             const size_t ip,
             const BF& bf,
             LocalMatrix& J,
-            const LocalVector& u
+            const LocalVector& u,
+            const MathVector<dim>& StdVel
         );
-    /// adds the pressure  part of the local defect of the momentum equation
+    /// adds the convective part of the local defect of the momentum equation
         template <typename BF>
-        inline void pressure_flux_defect
+        inline void convective_flux_volumefraction_defect
         (
             const size_t ip,
             const BF& bf,
             LocalVector& d,
             const LocalVector& u,
-            const number& pressure,
-            const MathVector<dim>& PressureGrad
+            const MathVector<dim>& StdVel
         );
     /// adds the convective part of the local defect of the momentum equation
         template <typename BF>
@@ -230,6 +233,7 @@ class NavierStokesNoNormalStressOutflowFV1
 	protected:
 	/// abbreviation for pressure
 		static const size_t _P_ = dim;
+        static const size_t _C_ = dim+1;
 
 		using base_type::m_spMaster;
 		using base_type::m_vBndSubSetIndex;
@@ -239,6 +243,7 @@ class NavierStokesNoNormalStressOutflowFV1
 
 	/// Data import for density
 		DataImport<number, dim> m_imDensity;
+        DataImport<number, dim> m_imDensity_old;
         DataImport<number, dim> m_imDensityCoor;
     
     /// Data import for Source
@@ -264,4 +269,4 @@ class NavierStokesNoNormalStressOutflowFV1
 } // namespace NavierStokes
 } // end namespace ug
 
-#endif /*__H__UG__PLUGINS__NAVIER_STOKES__NO_NORMAL_STRESS_OUTFLOW_FV1_*/
+#endif /*__H__UG__PLUGINS__NAVIER_STOKES__NO_NORMAL_STRESS_OUTFLOW_FV1M_*/

@@ -48,6 +48,10 @@
 
 #include "lib_disc/function_spaces/grid_function.h"
 
+#include "navier_stokes_fv1_multiphase.h"
+#include "bnd/inflow_fv1_multiphase.h"
+#include "bnd/no_normal_stress_outflow_fv1_multiphase.h"
+
 using namespace std;
 using namespace ug::bridge;
 
@@ -87,6 +91,16 @@ static void DomainAlgebra(Registry& reg, string grp)
  			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesInflowFV1", tag);
 	}
+    //    NavierStokesInflow FV1M
+    {
+        typedef NavierStokesInflowFV1M<TDomain, TAlgebra> T;
+        typedef NavierStokesInflowBase<TDomain, TAlgebra> TBase;
+        string name = string("NavierStokesInflowFV1M").append(suffix);
+        reg.add_class_<T, TBase>(name, grp)
+            .template add_constructor<void (*)(SmartPtr< NavierStokesFV1M<TDomain> >)>("MasterElemDisc")
+             .set_construct_as_smart_pointer(true);
+        reg.add_class_to_group(name, "NavierStokesInflowFV1M", tag);
+    }
 	
 	typedef ug::GridFunction<TDomain, TAlgebra> TFct;
 	static const int dim = TDomain::dim;
@@ -200,8 +214,10 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesFV1Stabilization<dim> >)>(&T::set_upwind))
 			.add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesUpwind<dim> >)>(&T::set_upwind))
 			.add_method("set_upwind",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind))
+            .add_method("set_relative_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_relative_velocity), "", "RelativeVel")
+            .add_method("set_divergence_rel_vel", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_divergence_rel_vel), "", "RelVel Divergence")
             .add_method("set_mass_change", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_mass_change), "", "Mass")
-            .add_method("set_source_surface", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_source_surface), "", "SourceSurface")
+            .add_method("set_particle_pressure", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_particle_pressure), "", "ParticlePressure")
 			.add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
             .add_method("set_density_ref", static_cast<void (T::*)(number)>(&T::set_density_ref), "", "density_ref")
             .add_method("set_interface_value", static_cast<void (T::*)(number)>(&T::set_interface_value), "", "set_interface_value")
@@ -211,6 +227,40 @@ static void Domain(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesFV1", tag);
 	}
+    //    Navier-Stokes FV1M
+    {
+        typedef NavierStokesFV1M<TDomain> T;
+        typedef IncompressibleNavierStokesBase<TDomain> TBase;
+        string name = string("NavierStokesFV1M").append(suffix);
+        reg.add_class_<T, TBase >(name, grp)
+            .template add_constructor<void (*)(const char*,const char*)>("Functions#Subset(s)")
+            .template add_constructor<void (*)(const std::vector<std::string>&, const std::vector<std::string>&)>("Functions#Subset(s)")
+            .add_method("set_stabilization",  static_cast<void (T::*)(SmartPtr<INavierStokesFV1Stabilization<dim> >)>(&T::set_stabilization))
+            .add_method("set_stabilization",  static_cast<void (T::*)(const std::string&)>(&T::set_stabilization))
+            .add_method("set_stabilization",  static_cast<void (T::*)(const std::string&, const std::string&)>(&T::set_stabilization))
+            .add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesFV1Stabilization<dim> >)>(&T::set_upwind))
+            .add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesUpwind<dim> >)>(&T::set_upwind))
+            .add_method("set_upwind",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind))
+            .add_method("set_upwind_vol",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind_vol))
+            .add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<IConvectionShapes<dim> >)>(&T::set_upwind))
+            .add_method("set_relative_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_relative_velocity), "", "RelativeVel")
+            .add_method("set_divergence_rel_vel", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_divergence_rel_vel), "", "RelVel Divergence")
+            .add_method("set_mass_change", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_mass_change), "", "Mass")
+            .add_method("set_particle_pressure", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_particle_pressure), "", "ParticlePressure")
+            .add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
+            .add_method("set_density_ref", static_cast<void (T::*)(number)>(&T::set_density_ref), "", "density_ref")
+            .add_method("set_interface_value", static_cast<void (T::*)(number)>(&T::set_interface_value), "", "set_interface_value")
+            .add_method("set_jump_shape", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim>>, const std::string&)>(&T::set_jump_shape), "", "JumpShape")
+            .add_method("set_interface_normal", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_interface_normal), "", "SurfaceNormal")
+            .add_method("set_vol_fraction", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> > )>(&T::set_vol_fraction), "", "VolFraction")
+            .add_method("volume_fraction", &T::volume_fraction)
+            .add_method("volume_fraction_average", &T::volume_fraction_average)
+            .add_method("volume_fraction_grad", &T::volume_fraction_grad)
+            .add_method("particle_pressure", &T::particle_pressure)
+            .add_method("set_phase_parameters", &T::set_phase_parameters)
+            .set_construct_as_smart_pointer(true);
+        reg.add_class_to_group(name, "NavierStokesFV1M", tag);
+    }
 
 
 	//	NavierStokesNoNormalStressOutflow FV1
@@ -223,6 +273,16 @@ static void Domain(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesNoNormalStressOutflowFV1", tag);
 	}
+    //    NavierStokesNoNormalStressOutflow FV1M
+    {
+        typedef NavierStokesNoNormalStressOutflowFV1M<TDomain> T;
+        typedef NavierStokesNoNormalStressOutflowBase<TDomain> TBase;
+        string name = string("NavierStokesNoNormalStressOutflowFV1M").append(suffix);
+        reg.add_class_<T, TBase>(name, grp)
+            .template add_constructor<void (*)(SmartPtr< IncompressibleNavierStokesBase<TDomain> >)>("MasterDisc")
+            .set_construct_as_smart_pointer(true);
+        reg.add_class_to_group(name, "NavierStokesNoNormalStressOutflowFV1M", tag);
+    }
 
 	//	NavierStokesSymBCFV1
 	{

@@ -109,9 +109,9 @@ NavierStokesNoNormalStressOutflowBase(SmartPtr< IncompressibleNavierStokesBase<T
 	  m_spMaster (spMaster)
 {
 //	check number of functions
-	if(this->num_fct() != dim+1)
+	/*if(this->num_fct() != dim+1)
 		UG_THROW("Wrong number of functions: The ElemDisc 'NavierStokes'"
-					   " needs exactly "<<dim+1<<" symbolic function.");
+					   " needs exactly "<<dim+1<<" symbolic function.");*/
 	
 //	yet no boundary subsets
 	m_vBndSubSetIndex.clear ();
