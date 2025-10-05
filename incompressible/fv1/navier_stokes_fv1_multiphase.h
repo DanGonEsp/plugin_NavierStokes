@@ -188,7 +188,6 @@ class NavierStokesFV1M
         void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_divergence_rel_vel(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
-        void set_particle_pressure(SmartPtr<CplUserData<number, dim> > user);
     
         void set_pressure_jump(SmartPtr<CplUserData<number, dim> > user);
         void set_vol_fraction(SmartPtr<CplUserData<number, dim> > user);
@@ -250,18 +249,22 @@ class NavierStokesFV1M
         }
         void set_phase_parameters(Interface<dim>* user)
         {
+            if(m_spStab.invalid())
+                UG_THROW("Stabilization has not been set.");
+            m_spStab->set_phase_parameters(user);
             Inter = user;
         }
     
     ///    returns the export of the VolumeFractions
         SmartPtr<CplUserData<number, dim> > volume_fraction() {return m_exVolumeFraction;}
-    ///    returns the export of the VolumeFractions
-        SmartPtr<CplUserData<number, dim> > volume_fraction_average() {return m_exVolumeFractionAve;}
-    ///    returns the export of the pressure gradient
+    ///    returns the export of the VolumeFraction gradient
         SmartPtr<CplUserData<MathVector<dim>, dim> > volume_fraction_grad() {return m_exVolumeFractionGrad;}
+    ///    returns the export of the Einstein Viscosity
+        SmartPtr<CplUserData<number, dim> > einstein_viscosity() {return m_exEinsteinViscosity;}
     ///    returns the export of the PariclePressure
         SmartPtr<CplUserData<number, dim> > particle_pressure() {return m_exPsPressure;}
-    
+    ///    returns the export of the ParticlePressure gradient
+        SmartPtr<CplUserData<MathVector<dim>, dim> > particle_pressure_grad() {return m_exPsPressureGrad;}
     
 			
 	protected:
@@ -273,12 +276,14 @@ class NavierStokesFV1M
     using base_type::m_exPressureGrad;
     ///    Export for the PariclePressure
     SmartPtr<DataExport<number,dim> > m_exPsPressure;
+    ///    Export for the Particlepressure gradient
+    SmartPtr<DataExport<MathVector<dim>,dim> > m_exPsPressureGrad;
     ///    Export for the VolumeFraction
     SmartPtr<DataExport<number,dim> > m_exVolumeFraction;
-    ///    Export for the VolumeFraction
-    SmartPtr<DataExport<number,dim> > m_exVolumeFractionAve;
-    ///    Export for the pressure gradient
+    ///    Export for the VolFraction gradient
     SmartPtr<DataExport<MathVector<dim>,dim> > m_exVolumeFractionGrad;
+    ///    Export for the Einstein Viscosity
+    SmartPtr<DataExport<number,dim> > m_exEinsteinViscosity;
     
 
 
@@ -572,7 +577,7 @@ class NavierStokesFV1M
 		inline number peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
                                    const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
         template <typename TFVGeom>
-        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel,  MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do);
+        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, number* StdVol, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do);
     
         template <typename TFVGeom>
         inline void vel_grad(const LocalVector& u, const TFVGeom& geo, MathMatrix<dim,dim>* VelGrad);
@@ -653,19 +658,7 @@ class NavierStokesFV1M
                               const size_t nip,
                               bool bDeriv,
                               std::vector<std::vector<number > > vvvDeriv[]);
-    ///    export value of the volume fraction
-        template <typename TElem, typename TFVGeom>
-        void ex_nodal_volfraction_ave(number vValue[],
-                              const MathVector<dim> vGlobIP[],
-                              number time, int si,
-                              const LocalVector& u,
-                              GridObject* elem,
-                              const MathVector<dim> vCornerCoords[],
-                              const MathVector<TFVGeom::dim> vLocIP[],
-                              const size_t nip,
-                              bool bDeriv,
-                              std::vector<std::vector<number > > vvvDeriv[]);
-    ///    export value of the pressure gradient
+    ///    export value of the VolumeFraction gradient
         template <typename TElem, typename TFVGeom>
         void ex_volume_fraction_grad(MathVector<dim> vValue[],
                               const MathVector<dim> vGlobIP[],
@@ -677,6 +670,18 @@ class NavierStokesFV1M
                               const size_t nip,
                               bool bDeriv,
                               std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
+    ///    export value of the einstein viscosity
+        template <typename TElem, typename TFVGeom>
+        void ex_nodal_einstein_viscosity(number vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<number > > vvvDeriv[]);
     ///    export value of the partilce pressure
         template <typename TElem, typename TFVGeom>
         void ex_nodal_particle_pressure(number vValue[],
@@ -689,6 +694,18 @@ class NavierStokesFV1M
                               const size_t nip,
                               bool bDeriv,
                               std::vector<std::vector<number > > vvvDeriv[]);
+    ///    export value of the ParticlePressure gradient
+        template <typename TElem, typename TFVGeom>
+        void ex_particle_pressure_grad(MathVector<dim> vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
     
     
 		
@@ -710,8 +727,6 @@ class NavierStokesFV1M
         DataImport<MathVector<dim>, dim> m_imRelativeVelocity;
         DataImport<MathVector<dim>, dim> m_imDivergenceFlux;
         DataImport<number, dim> m_imMass;
-    ///    Data import for Particle Pressure term
-        DataImport<number, dim> m_imParticlePressureSCV;
     
     ///    Data import for multiphase flow
         DataImport<number, dim> m_imJumpShape;
@@ -749,13 +764,6 @@ class NavierStokesFV1M
         using base_type::m_gradDivFactor;
         number m_density_ref = 0;
         bool boolGradientPressure = false;
-    
-    /// method to compute the upwind shapes
-        SmartPtr<IConvectionShapes<dim> > m_spConvShape;
-    
-    ///    returns the updated convection shapes
-        typedef IConvectionShapes<dim> conv_shape_type;
-        const IConvectionShapes<dim>& get_updated_conv_shapes(const FVGeometryBase& geo, const MathVector<dim> vVel_ip[] ,bool compute_deriv);
 
 		virtual void init();
 

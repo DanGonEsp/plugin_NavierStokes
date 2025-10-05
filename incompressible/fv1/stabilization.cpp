@@ -138,6 +138,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
        const number jump_shape[],
        const MathVector<dim> normal[],
+       const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
@@ -464,6 +465,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
        const number jump_shape[],
        const MathVector<dim> normal[],
+       const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
@@ -843,6 +845,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
        const number jump_shape[],
        const MathVector<dim> normal[],
+       const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
@@ -1093,13 +1096,13 @@ update(const FV1Geometry<TElem, dim>* geo,
             number diag = vViscoPerDiffLenSq[ip];
             
             //    Time part
-            if(pvCornerValueOldTime != NULL && density_old.data_given())
-                diag += density_old[ip]/dt;
+            /*if(pvCornerValueOldTime != NULL)
+                diag += density[ip]/dt;*/
             
             //    Convective Term  (no convective terms in the Stokes eq.)
             if (! bStokes)
             {
-                //diag += vNormStdVelPerConvLen[ip];
+                diag += vNormStdVelPerConvLen[ip];
                 //diag += DenMomentum[ip];
             }
             
@@ -1121,23 +1124,23 @@ update(const FV1Geometry<TElem, dim>* geo,
 
                 
                 //    Time
-                if(pvCornerValueOldTime != NULL && density_old.data_given())
+                /*if(pvCornerValueOldTime != NULL && density_old.data_given())
                 {
                     //    interpolate old time step
                     number oldIPVel = 0.0;
                     for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                        oldIPVel += density_old[ip] * scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+                        oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
                     
                     //    add to rhs
-                    rhs += oldIPVel / dt;
-                }
+                    rhs += density_old[ip] * oldIPVel / dt;
+                }*/
                 
                 //    loop shape functions
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
                 {
                     //    Diffusion part
                     number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-                    //number sumVel = vViscoPerDiffLenSq[ip] * (densitySCV[k] / RHO[ip]) * scvf.shape(k);
+                    //number sumVel = vViscoPerDiffLenSq[ip] * (densitySCV[k] / density[ip]) * scvf.shape(k);
                     //number sumVel = vViscoPerDiffLenSq[ip] *(densitySCV[k])  * scvf.shape(k);
                     
                     //sumVel += -2.0 * kinVisco[ip] * (densitySCV[k]/density[ip]) * VecProd( RhoGrad[ip], scvf.global_grad(k));
@@ -1194,6 +1197,9 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     //    Add to rhs
                     rhs += sumP * vCornerValue(_P_, k);
+                    
+                    if(Inter->ParticleGradientForce())
+                        rhs += sumP * ps[k];
                     
                     //    set stab shape
                      
@@ -1765,6 +1771,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
        const number jump_shape[],
        const MathVector<dim> normal[],
+       const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
@@ -2200,6 +2207,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
        const number jump_shape[],
        const MathVector<dim> normal[],
+       const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt, 
@@ -2424,6 +2432,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
        const number jump_shape[],
        const MathVector<dim> normal[],
+       const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt,
@@ -2525,6 +2534,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
        const number jump_shape[],
        const MathVector<dim> normal[],
+       const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt, 

@@ -501,12 +501,12 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             VecScale(Vel_t,stdVel,ViscScale);
             
             number ConvScale = m_imDensity[ip]*VecLength(stdVel)/D;
-            if (!m_spMaster->stokes ())
+            /*if (!m_spMaster->stokes ())
             {
                 
                 inv_scale += ConvScale;
                 VecScaleAppend(Vel_t,ConvScale,Vel);
-            }
+            }*/
             /*if(this->is_time_dependent())
             {
                 //    get and check current and old solution
@@ -545,8 +545,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     //J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]; //* m_imDensity [ip];
                     J(_P_, bf->node_id (), d2, sh) += (ViscScale/inv_scale)*bf->shape(sh) * bf->normal()[d2];
                 }
-                if (!m_spMaster->stokes ())
-                    J(_P_, bf->node_id (), d2, bf->node_id()) += (ConvScale/inv_scale) * bf->normal()[d2];
+                /*if (!m_spMaster->stokes ())
+                    J(_P_, bf->node_id (), d2, bf->node_id()) += (ConvScale/inv_scale) * bf->normal()[d2];*/
             }
             
             
@@ -628,12 +628,12 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             number inv_scale = ViscScale;
             
             VecScale(Vel_t,stdVel,ViscScale);
-            if (!m_spMaster->stokes ())
+            /*if (!m_spMaster->stokes ())
             {
                 const number ConvScale = m_imDensity[ip]*VecLength(stdVel)/D;
                 inv_scale += ConvScale;
                 VecScaleAppend(Vel_t,ConvScale,Vel);
-            }
+            }*/
             
             /*if(this->is_time_dependent())
             {

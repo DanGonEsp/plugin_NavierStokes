@@ -41,7 +41,7 @@
 #include "pressure_jump.h"
 #include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
 #include "lib_disc/spatial_disc/user_data/data_import.h"
-
+#include "../../../MultiphaseFlow/properties_interface.h"
 
 namespace ug{
 namespace NavierStokes{
@@ -132,6 +132,10 @@ class INavierStokesFV1Stabilization
 		//	set sizes in upwind
 			if(m_spUpwind.valid()) m_spUpwind->template set_geometry_type<TFVGeom>();
 		}
+    
+        void set_phase_parameters(Interface<dim>* user){Inter = user;}
+    protected:
+        Interface<dim>* Inter;
 	
 	/////////////////////////////////////////
 	// interface to the upwind
@@ -214,6 +218,7 @@ class INavierStokesFV1Stabilization
                     const DataImport<number, dim>& densitySCV,
                     const number jump_shape[],
                     const MathVector<dim> normal[],
+                    const number ps[],
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
 		            const LocalVector* pvCornerValueOldTime, number dt,
@@ -221,7 +226,7 @@ class INavierStokesFV1Stabilization
                     const bool multiphase,
                     const bool phase_2[])
 			{(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel,
-											bStokes, kinVisco, kinViscoSCV, density, density_old, densitySCV, jump_shape, normal, Source, SourceSCV,
+											bStokes, kinVisco, kinViscoSCV, density, density_old, densitySCV, jump_shape, normal, ps, Source, SourceSCV,
 											pvCornerValueOldTime, dt, density_ref, multiphase, phase_2);}
 
 	/////////////////////////////////////////
@@ -317,6 +322,7 @@ class INavierStokesFV1Stabilization
                                                 const DataImport<number, dim>& densitySCV,
                                                 const number jump_shape[],
                                                 const MathVector<dim> normal[],
+                                                const number ps[],
                                                 const DataImport<MathVector<dim>, dim>& Source,
                                                 const DataImport<MathVector<dim>, dim>& SourceSCV,
 												const LocalVector* pvCornerValueOldTime, number dt,
@@ -554,6 +560,7 @@ class NavierStokesFIELDSStabilization
                     const DataImport<number, dim>& densitySCV,
                     const number jump_shape[],
                     const MathVector<dim> normal[],
+                    const number ps[],
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
 		            const LocalVector* pvCornerValueOldTime, number dt,
@@ -579,6 +586,7 @@ class NavierStokesFIELDSStabilization
                                              const DataImport<number, dim>& densitySCV,
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
+                                             const number ps[],
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt,
@@ -654,6 +662,7 @@ class NavierStokesFLOWStabilization
                     const DataImport<number, dim>& densitySCV,
                     const number jump_shape[],
                     const MathVector<dim> normal[],
+                    const number ps[],
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt,
@@ -679,6 +688,7 @@ class NavierStokesFLOWStabilization
                                              const DataImport<number, dim>& densitySCV,
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
+                                             const number ps[],
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
 											 const LocalVector* pvCornerValueOldTime, number dt,
@@ -735,6 +745,8 @@ class NavierStokesFIELDS_2_Stabilization
         using base_type::pressure_jump_value;
         using base_type::pressure_jump_shape_p;
         using base_type::pressure_jump_shape_vel;
+    
+        using base_type::Inter;
 
     public:
     ///    constructor
@@ -760,6 +772,7 @@ class NavierStokesFIELDS_2_Stabilization
                     const DataImport<number, dim>& densitySCV,
                     const number jump_shape[],
                     const MathVector<dim> normal[],
+                    const number ps[],
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt,
@@ -786,6 +799,7 @@ class NavierStokesFIELDS_2_Stabilization
                                              const DataImport<number, dim>& densitySCV,
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
+                                             const number ps[],
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt,
@@ -860,6 +874,7 @@ class NavierStokesVISCOSITY_Stabilization
                     const DataImport<number, dim>& densitySCV,
                     const number jump_shape[],
                     const MathVector<dim> normal[],
+                    const number ps[],
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt,
@@ -885,6 +900,7 @@ class NavierStokesVISCOSITY_Stabilization
                                              const DataImport<number, dim>& densitySCV,
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
+                                             const number ps[],
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt,
@@ -961,6 +977,7 @@ class NavierStokesKARIMIANStabilization
                     const DataImport<number, dim>& densitySCV,
                     const number jump_shape[],
                     const MathVector<dim> normal[],
+                    const number ps[],
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt,
@@ -986,6 +1003,7 @@ class NavierStokesKARIMIANStabilization
                                              const DataImport<number, dim>& densitySCV,
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
+                                             const number ps[],
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt,
@@ -1059,6 +1077,7 @@ class NavierStokesNOStabilization
                     const DataImport<number, dim>& densitySCV,
                     const number jump_shape[],
                     const MathVector<dim> normal[],
+                    const number ps[],
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt,
@@ -1084,6 +1103,7 @@ class NavierStokesNOStabilization
                                              const DataImport<number, dim>& densitySCV,
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
+                                             const number ps[],
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt,
@@ -1145,6 +1165,7 @@ class NavierStokesFV1WithoutStabilization
                     const DataImport<number, dim>& densitySCV,
                     const number jump_shape[],
                     const MathVector<dim> normal[],
+                    const number ps[],
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
 					const LocalVector* pvCornerValueOldTime, number dt,
@@ -1171,6 +1192,7 @@ class NavierStokesFV1WithoutStabilization
                                              const DataImport<number, dim>& densitySCV,
                                              const number jump_shape[],
                                              const MathVector<dim> normal[],
+                                             const number ps[],
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt,
