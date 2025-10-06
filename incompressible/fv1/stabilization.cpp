@@ -1068,7 +1068,11 @@ update(const FV1Geometry<TElem, dim>* geo,
 
     }
     
-    
+    MathVector<dim> vConsGravitySCVF[numIp];
+    if(Inter->boolConsistentGravity())
+    {
+        Inter-> template ConsistentGravitySCVF<TElem>(vConsGravitySCVF, *geo, geo->corners(), numIp, densitySCV.values());
+    }
     
     
     //    Find out if upwinded velocities depend on other ip velocities. In that case
@@ -1117,9 +1121,16 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Source
                 number rhs = 0.0;
-                if(boolSource)
+                if(Inter->boolConsistentGravity())
                 {
-                    rhs =  SOURCE[ip][d];
+                    rhs =  vConsGravitySCVF[ip][d];
+                }
+                else
+                {
+                    if(boolSource)
+                    {
+                        rhs =  SOURCE[ip][d];
+                    }
                 }
 
                 

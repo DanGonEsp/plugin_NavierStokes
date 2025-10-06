@@ -1404,35 +1404,35 @@ template<typename TElem, typename TFVGeom>
 void NavierStokesFV1M<TDomain>::
 add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[])
 {
-	
-// 	Only first order implemented
-	UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
-
-// 	get finite volume geometry
-	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+    
+    // 	Only first order implemented
+    UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
+    
+    // 	get finite volume geometry
+    static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
     static const size_t numSCVF = TFVGeom::numSCVF;
     static const size_t numSh = reference_element_traits<TElem>::reference_element_type::numCorners;
     static const int refDim = TElem::dim;
-   
-
-//	check for solutions to pass to stabilization in time-dependent case
-	const LocalVector *pSol = &u, *pOldSol = NULL;
-	number dt = 0.0;
-	if(this->is_time_dependent())
-	{
-	//	get and check current and old solution 
-		const LocalVectorTimeSeries* vLocSol = this->local_time_solutions();
-		if(vLocSol->size() != 2)
-			UG_THROW("NavierStokes::add_def_A_elem: "
-							" Stabilization needs exactly two time points.");
-
-	//	remember local solutions
-		pSol = &vLocSol->solution(0);
-		pOldSol = &vLocSol->solution(1);
-		dt = vLocSol->time(0) - vLocSol->time(1);
-	}
-
-//	interpolate velocity at ip with standard lagrange interpolation
+    
+    
+    //	check for solutions to pass to stabilization in time-dependent case
+    const LocalVector *pSol = &u, *pOldSol = NULL;
+    number dt = 0.0;
+    if(this->is_time_dependent())
+    {
+        //	get and check current and old solution
+        const LocalVectorTimeSeries* vLocSol = this->local_time_solutions();
+        if(vLocSol->size() != 2)
+            UG_THROW("NavierStokes::add_def_A_elem: "
+                     " Stabilization needs exactly two time points.");
+        
+        //	remember local solutions
+        pSol = &vLocSol->solution(0);
+        pOldSol = &vLocSol->solution(1);
+        dt = vLocSol->time(0) - vLocSol->time(1);
+    }
+    
+    //	interpolate velocity at ip with standard lagrange interpolation
     
     MathMatrix<dim,dim> VelocityGrad[numSh];
     MathVector<dim> StdVel[numSCVF];
@@ -1449,8 +1449,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     Inter->Ps( Ps, DPs, VelocityGrad, u, _C_, numSh, false);
     
     
-//	compute stabilized velocities and shapes for continuity equation
-	// \todo: (optional) Here we can skip the computation of shapes, implement?
+    //	compute stabilized velocities and shapes for continuity equation
+    // \todo: (optional) Here we can skip the computation of shapes, implement?
     bool interface = false;
     bool Phase2[numSCVF];
     number mu_l, rho_l;
@@ -1458,7 +1458,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     MathVector<dim> Source_1;
     MathVector<dim> Source_g;
     number** SCVFinterShape = new number*[numSCVF];
-
+    
     
     const INavierStokesPressureJump<dim>& press_jump = *m_spPressureJump;
     
@@ -1500,18 +1500,18 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     // Estimation of the veloctity at ip for upwind shape and continuity equations
     for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
         Vel_ip[ip] = stab.stab_vel(ip);
-
+    
     
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
-	//	compute upwind shapes
-		if(m_spConvUpwind.valid())
-			if(m_spStab->upwind() != m_spConvUpwind)
+        //	compute upwind shapes
+        if(m_spConvUpwind.valid())
+            if(m_spStab->upwind() != m_spConvUpwind)
             {
                 m_spConvUpwind->update(&geo, StdVel);
                 m_spConvUpwind->update_downwind(&geo, StdVel);
             }
-	}
+    }
     
     //    compute upwind shapes
     if(m_spConvUpwind_vol.valid())
@@ -1521,8 +1521,6 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         if(m_spConvUpwind_rel.valid())
             m_spConvUpwind_rel->update(&geo, m_imRelativeVelocity.values());
     
-    StdLinConsistentGravity<refDim>* RhoG;
-
 
 
 	const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
@@ -2279,10 +2277,29 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
 	UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
 
 //	if zero data given, return
-    if(!m_imSourceSCVF.data_given() && !m_imSourceSCV.data_given() && !m_imDivergenceFlux.data_given()) return;
+    if(!m_imSourceSCVF.data_given() && !m_imSourceSCV.data_given() && !m_imDivergenceFlux.data_given() && !Inter->boolConsistentGravity()) return;
 
 // 	get finite volume geometry
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+    
+    MathVector<dim> vConsGravitySCV[geo.num_scv()];
+    if(Inter->boolConsistentGravity())
+    {
+        Inter-> template ConsistentGravitySCV<TElem>(vConsGravitySCV, geo, vCornerCoords, geo.num_scv(), m_imDensitySCV.values());
+        
+        for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+        {
+            //     get current SCV
+            const typename TFVGeom::SCV& scv = geo.scv(ip);
+            const int sh = scv.node_id();
+            
+            //     Add to local rhs
+            for(int d1 = 0; d1 < dim; ++d1){
+                d(d1, sh) += vConsGravitySCV[ip][d1]*scv.volume();
+
+            }
+        }
+    }
     /*if(m_imSourceSCV.data_given())
     {
         // 	loop Sub Control Volumes (SCV)
