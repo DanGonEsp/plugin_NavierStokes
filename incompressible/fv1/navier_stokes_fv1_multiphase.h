@@ -256,7 +256,6 @@ class NavierStokesFV1M
             m_spStab->set_phase_parameters(user);
             Inter = user;
         }
-        Interface<dim>* InterfaceParam() {return Inter;}
     
     ///    returns the export of the VolumeFractions
         SmartPtr<CplUserData<number, dim> > volume_fraction() {return m_exVolumeFraction;}

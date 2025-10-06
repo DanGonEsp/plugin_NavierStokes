@@ -43,6 +43,7 @@
 #include "lib_disc/spatial_disc/user_data/data_import.h"
 
 #include "../../bnd/no_normal_stress_outflow_base.h"
+#include "../../../../MultiphaseFlow/properties_interface.h"
 
 namespace ug{
 namespace NavierStokes{
@@ -256,6 +257,15 @@ class NavierStokesNoNormalStressOutflowFV1M
     /// Boundary integration points of the viscosity and the density
         std::vector<MathVector<dim> > m_vLocCoor;
         std::vector<MathVector<dim> > m_vGloCoor;
+    
+        Interface<dim>* Inter;
+    public:
+        void set_phase_parameters(Interface<dim>* user)
+        {
+            if (!user->valid())
+                UG_THROW("Interface parameters has not been initialized");
+            Inter = user;
+        }
 
 	protected:
 		void register_all_funcs(bool bHang);

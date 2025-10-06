@@ -64,7 +64,7 @@ NavierStokesNoNormalStressOutflowFV1M(SmartPtr< IncompressibleNavierStokesBase<T
 	set_kinematic_viscosity(spMaster->kinematic_viscosity ());
 	set_density(spMaster->density ());
     set_source(spMaster->source ());
-    
+
     m_imSource.set_rhs_part();
 
 	//	update assemble functions
@@ -688,7 +688,7 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
     UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
     
 //    if zero data given, return
-    if(!m_imSource.data_given()) return;
+    if(!m_imSource.data_given() && !Inter->boolConsistentGravity()) return;
 
 //     get finite volume geometry
     static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
@@ -696,27 +696,57 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
 
 //     loop registered boundary segments
     typename std::vector<int>::const_iterator subsetIter;
-    size_t ip = 0;
-    for(subsetIter = m_vBndSubSetIndex.begin();
-        subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
+    if(m_imSource.data_given())
     {
-    //    get subset index corresponding to boundary
-        const int bndSubset = *subsetIter;
-        
-    //    get the list of the ip's:
-        if(geo.num_bf(bndSubset) == 0) continue;
-        const std::vector<BF>& vBF = geo.bf(bndSubset);
-
-    //     loop the boundary faces
-        typename std::vector<BF>::const_iterator bf;
-        for(bf = vBF.begin(); bf != vBF.end(); ++bf, ++ip)
+        size_t ip = 0;
+        for(subsetIter = m_vBndSubSetIndex.begin();
+            subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
         {
-            number pgh = VecDot(bf->global_ip(),m_imSource[ip]);
-
-            for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
-                d(d1, bf->node_id()) += - pgh * bf->normal ()[d1];
+            //    get subset index corresponding to boundary
+            const int bndSubset = *subsetIter;
+            
+            //    get the list of the ip's:
+            if(geo.num_bf(bndSubset) == 0) continue;
+            const std::vector<BF>& vBF = geo.bf(bndSubset);
+            
+            //     loop the boundary faces
+            typename std::vector<BF>::const_iterator bf;
+            for(bf = vBF.begin(); bf != vBF.end(); ++bf, ++ip)
+            {
+                number pgh = VecDot(bf->global_ip(),m_imSource[ip]);
+                
+                for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+                    d(d1, bf->node_id()) += - pgh * bf->normal ()[d1];
+            }
         }
     }
+    if(Inter->boolConsistentGravity())
+    {
+        size_t ip = 0;
+        for(subsetIter = m_vBndSubSetIndex.begin();
+            subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
+        {
+            //    get subset index corresponding to boundary
+            const int bndSubset = *subsetIter;
+            
+            //    get the list of the ip's:
+            if(geo.num_bf(bndSubset) == 0) continue;
+            const std::vector<BF>& vBF = geo.bf(bndSubset);
+            
+            MathVector<dim> Gravity; VecSet(Gravity,0.0); Gravity[dim-1]=-9.81;
+            
+            //     loop the boundary faces
+            typename std::vector<BF>::const_iterator bf;
+            for(bf = vBF.begin(); bf != vBF.end(); ++bf, ++ip)
+            {
+                number pgh = m_imDensity[ip]*VecDot(bf->global_ip(),Gravity);
+                
+                for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+                    d(d1, bf->node_id()) += - pgh * bf->normal ()[d1];
+            }
+        }
+    }
+    
 }
 
 /// Assembling of the diffusive flux (due to the viscosity) in the defect of the momentum eq.
