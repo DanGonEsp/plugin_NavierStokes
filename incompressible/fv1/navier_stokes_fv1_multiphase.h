@@ -251,9 +251,12 @@ class NavierStokesFV1M
         {
             if(m_spStab.invalid())
                 UG_THROW("Stabilization has not been set.");
+            if (!user->valid())
+                UG_THROW("Interface parameters has not been initialized");
             m_spStab->set_phase_parameters(user);
             Inter = user;
         }
+        Interface<dim>* InterfaceParam() {return Inter;}
     
     ///    returns the export of the VolumeFractions
         SmartPtr<CplUserData<number, dim> > volume_fraction() {return m_exVolumeFraction;}

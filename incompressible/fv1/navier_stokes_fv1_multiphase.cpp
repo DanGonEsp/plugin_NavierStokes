@@ -1412,7 +1412,6 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
     static const size_t numSCVF = TFVGeom::numSCVF;
     static const size_t numSh = reference_element_traits<TElem>::reference_element_type::numCorners;
-    static const int refDim = TElem::dim;
     
     
     //	check for solutions to pass to stabilization in time-dependent case

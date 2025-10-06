@@ -133,7 +133,12 @@ class INavierStokesFV1Stabilization
 			if(m_spUpwind.valid()) m_spUpwind->template set_geometry_type<TFVGeom>();
 		}
     
-        void set_phase_parameters(Interface<dim>* user){Inter = user;}
+        void set_phase_parameters(Interface<dim>* user)
+        {
+            if (!user->valid())
+                UG_THROW("Interface parameters has not been initialized");
+            Inter = user;
+        }
     protected:
         Interface<dim>* Inter;
 	
