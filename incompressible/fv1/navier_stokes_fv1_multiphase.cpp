@@ -719,7 +719,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 //	derivative due to peclet blending
                 if(m_bPecletBlend)
                 {
-                    const number convFluxPe = prod * (1.0-w) * m_imDensitySCV[sh] * scvf.shape(sh);// * (m_imDensitySCVF[ip] / m_imDensitySCVF[ip]);
+                    const number convFluxPe = prod * (1.0-w) * m_imDensitySCVF[ip] * scvf.shape(sh);
                     for(int d1 = 0; d1 < dim; ++d1)
                     {
                         J(d1, scvf.from(), d1, sh) += convFluxPe;
@@ -734,160 +734,21 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 //	Add remaining term for exact jacobian
                 if(m_boolFullNewton)
                 {
-                    //	Stabilization used as upwind
-                    /*if(m_spConvStab.valid())
-                    {
-                        UG_THROW("Momentum trasport not implemented for PAC");
-                        //	loop defect components
-                        for(int d1 = 0; d1 < dim; ++d1)
-                        {
-                            for(int d2 = 0; d2 < dim; ++d2)
-                            {
-                                //	derivatives w.r.t. velocity
-                                //	Compute n * derivs
-                                number prod_vel = 0.0;
-                                
-                                //	Compute sum_j n_j * \partial_{u_i^sh} u_j
-                                if(stab.vel_comp_connected())
-                                    for(size_t k = 0; k < (size_t)dim; ++k)
-                                        prod_vel += w * convStab.stab_shape_vel(ip, k, d2, sh)
-                                        * scvf.normal()[k];
-                                else
-                                    prod_vel = convStab.stab_shape_vel(ip, d1, d1, sh)
-                                    * scvf.normal()[d1];
-                                
-                                prod_vel *= m_bFullNewtonFactor;
-                                
-                                J(d1, scvf.from(), d2, sh) += prod_vel * UpwindMomentum[d1];
-                                J(d1, scvf.to()  , d2, sh) -= prod_vel * UpwindMomentum[d1];
-                            }
-                            
-                            //	derivative w.r.t pressure
-                            //	Compute n * derivs
-                            number prod_p = 0.0;
-                            
-                            //	Compute sum_j n_j * \parial_{u_i^sh} u_j
-                            for(int k = 0; k < dim; ++k)
-                                prod_p += convStab.stab_shape_p(ip, k, sh)
-                                * scvf.normal()[k];
-                            
-                            prod_p *= m_bFullNewtonFactor;
-                            
-                            J(d1, scvf.from(), _P_, sh) += prod_p * UpwindMomentum[d1];
-                            J(d1, scvf.to()  , _P_, sh) -= prod_p * UpwindMomentum[d1];
-                        }
-                    }*/
-                    
-                    //	Upwind used as upwind
-                    /*if(m_spConvUpwind.valid())
-                    {
-                        //	loop defect components
-                        for(int d1 = 0; d1 < dim; ++d1)
-                            for(int d2 = 0; d2 < dim; ++d2)
-                            {
-                                //	derivatives w.r.t. velocity
-                                number prod_vel = upwind.upwind_shape_sh(ip,sh)
-                                * scvf.normal()[d2] * m_imDensitySCVF[ip];
-                                
-                                J(d1, scvf.from(), d2, sh) += prod_vel * UpwindVel[d1];
-                                J(d1, scvf.to()  , d2, sh) -= prod_vel * UpwindVel[d1];
-                            }
-                    }*/
                     // Jacobian for std Vel as convecting velocity
                     for(int d = 0; d < dim; ++d)
                     {
                         for(int d1 = 0; d1 < dim; ++d1)
                         {
-                            //number VelShape = (Rho_up[ip] * upwind.downwind_conv_length(ip) * upwind.upwind_shape_sh(ip, sh)  + Rho_do[ip] * upwind.upwind_conv_length(ip) * upwind.downwind_shape_sh(ip, sh) ) / ( Rho_up[ip] * upwind.downwind_conv_length(ip) + Rho_do[ip] * upwind.upwind_conv_length(ip));
-                            //number contFlux_vel =  m_bFullNewtonFactor * VelShape * scvf.normal()[d1];
+
                             number contFlux_vel =  m_bFullNewtonFactor * scvf.shape(sh) * scvf.normal()[d1];
                             J(d, scvf.from(), d1, sh) += contFlux_vel * UpwindMomentum[d];
                             J(d, scvf.to()  , d1, sh) -= contFlux_vel * UpwindMomentum[d];
                             
-                            /*if(interface)
-                            {
-                                number sumSlipVel = 0.0;
-                                if (  ((Phase2[ip] && m_imJumpShape[sh]<0) || (!Phase2[ip] && m_imJumpShape[sh]>0) )   )
-                                {
-                                    sumSlipVel = -1.0 * m_bFullNewtonFactor * m_imJumpShape[sh] * scvf.shape(sh) * scvf.normal()[d1] ;
-                                    //sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * (densitySCV[k] / RHO[ip]) * jump_shape[k];
-                                }
-                                for(size_t k2 = 0; k2 < scvf.num_sh(); ++k2)
-                                {
-                                    for(int d2 = 0; d2 < dim; ++d2)
-                                    {
-                                        J(d, scvf.from(), d2, k2) += sumSlipVel * press_jump.tang_vel_shape_vel( sh,  d1,  d2,  k2) * UpwindMomentum[d];
-                                        J(d, scvf.to()  , d2, k2) -= sumSlipVel * press_jump.tang_vel_shape_vel( sh,  d1,  d2,  k2) * UpwindMomentum[d];
-                                        
-                                    }
-                                }
-                            }*/
                         }
                         
 
                     }
                     
-                    //    Add derivative of stabilized flux w.r.t velocity comp to local matrix
-                    /*if(stab.vel_comp_connected())
-                    {
-
-                        for(int d1 = 0; d1 < dim; ++d1)
-                        {
-                            number contFlux_vel = 0.0;
-                            for(int d2 = 0; d2 < dim; ++d2)
-                                contFlux_vel += m_bFullNewtonFactor * stab.stab_shape_vel(ip, d2, d1, sh)
-                                * scvf.normal()[d2];
-                            
-                            for(int d = 0; d < dim; ++d)
-                            {
-                                J(d, scvf.from(), d1, sh) += contFlux_vel * UpwindMomentum[d];
-                                J(d, scvf.to()  , d1, sh) -= contFlux_vel * UpwindMomentum[d];
-                            }
-                        }
-                    }
-                    else
-                    {
-                        
-                        for(int d1 = 0; d1 < dim; ++d1)
-                        {
-                            const number contFlux_vel = m_bFullNewtonFactor * stab.stab_shape_vel(ip, d1, d1, sh)
-                            * scvf.normal()[d1];
-                            
-                            for(int d = 0; d < dim; ++d)
-                            {
-                                J(d, scvf.from(), d1, sh) += contFlux_vel * UpwindMomentum[d];
-                                J(d, scvf.to()  , d1, sh) -= contFlux_vel * UpwindMomentum[d];
-                            }
-                        }
-                        
-                    }
-                    
-                
-                    //    Add derivative of stabilized flux w.r.t pressure to local matrix
-
-                    number contFlux_p = 0.0;
-                    for(int d1 = 0; d1 < dim; ++d1)
-                        contFlux_p += m_bFullNewtonFactor * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1];
-                    for(int d = 0; d < dim; ++d)
-                    {
-                        J(d, scvf.from(), _P_, sh) += contFlux_p * UpwindMomentum[d];
-                        J(d, scvf.to()  , _P_, sh) -= contFlux_p * UpwindMomentum[d];
-                    }*/
-                    
-                    //	derivative due to peclet blending
-                    /*if(m_bPecletBlend)
-                    {
-                        for(int d1 = 0; d1 < dim; ++d1)
-                            for(int d2 = 0; d2 < dim; ++d2)
-                            {
-                                const number convFluxPe = UpwindVel[d1] * (1.0-w)
-                                * scvf.shape(sh)
-                                * scvf.normal()[d2]
-                                * m_imDensitySCVF[ip];
-                                J(d1, scvf.from(), d2, sh) += convFluxPe;
-                                J(d1, scvf.to()  , d2, sh) -= convFluxPe;
-                            }
-                    }*/
                 } // end exact jacobian part
                 
                 
@@ -1565,7 +1426,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         
         
         /////////////////////////////////////////////////////
-        // Convective Term
+        // Convective Term in (conservation of mass, treansport eq.)
         /////////////////////////////////////////////////////
             //      sum up convective flux using convection shapes
         
@@ -2128,80 +1989,6 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
         }
 
     }
-    /*if(m_imSourceSCV.data_given())
-    {
-        // 	loop Sub Control Volumes (SCV)
-        number Vol=0.0;
-        number Rho = 0.0;
-        number ShapeVol=0.0;
-        static const size_t numSh = reference_element_traits<TElem>::reference_element_type::numCorners;
-        
-        number InterfaceShape[numSh];
-        bool interface = false;
-        if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given())
-            interface = Inter->cut_interface(m_imJumpShape, numSh);
-        if(interface)
-            Inter->template InterfaceShape<TElem>(InterfaceShape, geo, m_imJumpShape, numSh,  m_interface_vol_fraction);
-        for(size_t ip = 0; ip < geo.num_scv(); ++ip)
-        {
-            //     get current SCV
-            const typename TFVGeom::SCV& scv = geo.scv(ip);
-            
-            //     get associated node
-            const int sh = scv.node_id();
-            
-            Vol += scv.volume();
-            Rho += m_imDensitySCV[ip] * scv.volume();
-            if(interface)
-                ShapeVol += (1.0-InterfaceShape[sh]);
-        }
-        
-        Rho *= 1.0/Vol;
-
-        for(size_t ip = 0; ip < geo.num_scv(); ++ip)
-        {
-            // 	get current SCV
-            const typename TFVGeom::SCV& scv = geo.scv(ip);
-            
-            // 	get associated node
-            const int sh = scv.node_id();
-            
-            // 	Add to local rhs
-            for(int d1 = 0; d1 < dim; ++d1){
-                if (!interface)
-                {
-                    //d(d1, sh) += m_imSourceSCV[ip][d1] * (m_imDensitySCV[ip] - m_density_ref) * scv.volume();
-                    d(d1, sh) += m_imSourceSCV[ip][d1] * scv.volume();
-                }
-                else
-                {
-                    //d(d1, sh) += m_imSourceSCV[ip][d1] * (m_imDensitySCV[ip] - m_density_ref) * ( (1.0-InterfaceShape[sh] ) / ShapeVol) * Vol ;
-                    d(d1, sh) += m_imSourceSCV[ip][d1]  * ( (1.0-InterfaceShape[sh] ) / ShapeVol) * Vol ;
-                }
-
-            }
-        }
-
-    }*/
-    /*if(m_imSourceSCV.data_given())
-    {
-        //     loop Sub Control Volumes (SCV)
-
-        
-        for(size_t ip = 0; ip < geo.num_scv(); ++ip)
-        {
-            //     get current SCV
-            const typename TFVGeom::SCV& scv = geo.scv(ip);
-            const int sh = scv.node_id();
-            
-            //     Add to local rhs
-            for(int d1 = 0; d1 < dim; ++d1){
-                d(d1, sh) += m_imSourceSCV[ip][d1]*scv.volume();
-
-            }
-        }
-
-    }*/
     /*if(m_imSourceSCVF.data_given() || m_imDivergenceFlux.data_given())
     {
 
@@ -2358,8 +2145,8 @@ peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip,
 	 * VecDistance(geo.corners() [scvf.to()], geo.corners() [scvf.from()]) / kinVisco;
 
 //	compute weight
-	const number Pe2 = Pe * Pe;
-	const number w = Pe2 / (5.0 + Pe2);
+	//const number Pe2 = Pe * Pe;
+	const number w = Pe / (1.0 + Pe);
 
 //	compute upwind vel
 	VecScaleAdd(UpwindMomentum, w, UpwindMomentum, (1.0-w) * densitySCVF, StdVel);
