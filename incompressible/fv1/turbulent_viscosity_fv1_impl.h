@@ -820,7 +820,7 @@ void FV1SmagorinskyTurbViscData<TGridFunction>::update(){
 	//	get domain of grid function
 	domain_type& domain = *m_u->domain().get();
 	SetAttachmentValues(m_acTurbulentViscosity, m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
-
+    printf("Update: Smagorinsky turbulent model\n");
 	//	coord and vertex array
 //	MathVector<dim> coCoord[domain_traits<dim>::MaxNumVerticesOfElem];
 //	Vertex* vVrt[domain_traits<dim>::MaxNumVerticesOfElem];
@@ -855,7 +855,7 @@ template<typename TGridFunction>
 void FV1DynamicTurbViscData<TGridFunction>::update(){
 	//	get domain of grid function
 	domain_type& domain = *m_u->domain().get();
-
+    printf("Update: Dynamic turbulent model\n");
 	//	get position accessor
 	// for debug typedef typename domain_type::position_accessor_type position_accessor_type;
 	// for debug const position_accessor_type& posAcc = domain.position_accessor();

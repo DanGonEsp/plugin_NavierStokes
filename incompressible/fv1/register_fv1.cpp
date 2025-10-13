@@ -43,6 +43,7 @@
 #include "stabilization.h"
 #include "pressure_jump.h"
 #include "nodal_pressure_grad.h"
+#include "shear_stress.h"
 
 #include "turbulent_viscosity_fv1.h"
 
@@ -164,6 +165,25 @@ static void DomainAlgebra(Registry& reg, string grp)
         .set_construct_as_smart_pointer(true);
         reg.add_class_to_group(name, "NodalPressureGradient", tag);
     }
+    // ShearStressFV1
+    {
+        string name = string("ShearStressFV1").append(suffix);
+        typedef ShearStressFV1<TFct> T;
+        typedef CplUserData<number, dim> TBase;
+        typedef INewtonUpdate TBase2;
+        reg.add_class_<T, TBase,TBase2>(name, grp)
+            .template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
+                .add_method("set_source", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_source), "", "Source")
+                .add_method("set_source", static_cast<void (T::*)(number)>(&T::set_source), "", "F_x")
+                .add_method("set_source", static_cast<void (T::*)(number,number)>(&T::set_source), "", "F_x, F_y")
+                .add_method("set_source", static_cast<void (T::*)(number,number,number)>(&T::set_source), "", "F_x, F_y, F_z")
+            #ifdef UG_FOR_LUA
+                .add_method("set_source", static_cast<void (T::*)(const char*)>(&T::set_source), "", "Source Vector")
+            #endif
+                .add_method("update", &T::update)
+        .set_construct_as_smart_pointer(true);
+        reg.add_class_to_group(name, "ShearStressFV1", tag);
+    }
 
 }
 
@@ -245,6 +265,7 @@ static void Domain(Registry& reg, string grp)
             .add_method("set_relative_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_relative_velocity), "", "RelativeVel")
             .add_method("set_divergence_rel_vel", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_divergence_rel_vel), "", "RelVel Divergence")
             .add_method("set_mass_change", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_mass_change), "", "Mass")
+            .add_method("set_diffusion", static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> >)>(&T::set_diffusion), "", "Diffusion")
             .add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
             .add_method("set_density_ref", static_cast<void (T::*)(number)>(&T::set_density_ref), "", "density_ref")
             .add_method("set_interface_value", static_cast<void (T::*)(number)>(&T::set_interface_value), "", "set_interface_value")

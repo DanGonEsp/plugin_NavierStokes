@@ -188,6 +188,7 @@ class NavierStokesFV1M
         void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_divergence_rel_vel(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
+        void set_diffusion(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > user);
     
         void set_pressure_jump(SmartPtr<CplUserData<number, dim> > user);
         void set_vol_fraction(SmartPtr<CplUserData<number, dim> > user);
@@ -724,6 +725,9 @@ class NavierStokesFV1M
 		DataImport<number, dim> m_imDensitySCVF;
         DataImport<number, dim> m_imDensitySCVF_old;
 		DataImport<number, dim> m_imDensitySCV;
+    
+    ///    Data import for Diffusion
+        DataImport<MathMatrix<dim,dim>, dim> m_imDiffusion;
     
     ///    Data import for Relative velocity
         DataImport<MathVector<dim>, dim> m_imRelativeVelocity;

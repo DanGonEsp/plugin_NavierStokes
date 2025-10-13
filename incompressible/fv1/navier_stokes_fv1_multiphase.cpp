@@ -73,7 +73,6 @@ NavierStokesFV1M<TDomain>::NavierStokesFV1M(const std::vector<std::string>& vFct
     m_exEinsteinViscosity = make_sp(new DataExport<number, dim>(functions.c_str()));
     m_exPsPressure = make_sp(new DataExport<number, dim>(functions.c_str()));
     m_exPsPressureGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions.c_str()));
-    
     init();
 };
 
@@ -105,6 +104,7 @@ void NavierStokesFV1M<TDomain>::init()
     
     m_imMass.set_comp_lin_defect(false);
     m_imRelativeVelocity.set_comp_lin_defect(false);
+    m_imDiffusion.set_comp_lin_defect(false);
     
     //	register imports
     this->register_import(m_imSourceSCV);
@@ -121,6 +121,7 @@ void NavierStokesFV1M<TDomain>::init()
     this->register_import(m_imMass);
     this->register_import(m_imDivergenceFlux);
     this->register_import(m_imRelativeVelocity);
+    this->register_import(m_imDiffusion);
     
     m_imSourceSCV.set_rhs_part();
     m_imSourceSCVF.set_rhs_part();
@@ -235,6 +236,15 @@ set_mass_change(SmartPtr<CplUserData<number, dim> > data)
     m_imMass.set_data(data);
 }
 
+//////// Diffusion
+
+template<typename TDomain>
+void NavierStokesFV1M<TDomain>::
+set_diffusion(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > data)
+{
+    m_imDiffusion.set_data(data);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //	assembling functions
 ////////////////////////////////////////////////////////////////////////////////
@@ -342,7 +352,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
         m_imMass.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDivergenceFlux.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imRelativeVelocity.template set_local_ips<refDim>(vSCVFip,numSCVFip);
-        
+        m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
 
     }
@@ -391,6 +401,9 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
         m_imMass.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDivergenceFlux.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imRelativeVelocity.template set_local_ips<refDim>(vSCVFip,numSCVFip);
+        
+        m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
+        
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
         
     }
@@ -413,6 +426,8 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
     m_imMass.set_global_ips(vSCVFip, numSCVFip);
     m_imDivergenceFlux.set_global_ips( vSCVFip, numSCVFip);
     m_imRelativeVelocity.set_global_ips(vSCVFip, numSCVFip);
+    
+    m_imDiffusion.set_global_ips(vSCVFip, numSCVFip);
     if(this->is_time_dependent())
         m_imDensitySCVF_old.set_global_ips(vSCVFip, numSCVFip);
 
@@ -462,6 +477,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     number Rho_do[numSCVF];
     number Ps[numSh];
     number DPs[numSh];
+    //    Diff. Tensor times Gradient
+    MathVector<dim> Dgrad;
     
     vel_grad(  u,  geo,  VelocityGrad);
     std_vel(  u,  geo, StdVel, StdVol, Vel, m_imDensitySCV,Rho_up,Rho_do);
@@ -823,11 +840,47 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                  J(_P_, scvf.to(),   _C_, sh) -= contFluxRelVel;
             }
             
+        
+        ////////////////////////////////////////////////////
+        // Diffusive Term   (Transport Equation)
+        ////////////////////////////////////////////////////
+            if(m_imDiffusion.data_given())
+            {
+                #ifdef UG_ENABLE_DEBUG_LOGS
+                //    DID_CONV_DIFF_FV1
+                number D_diff_flux_sum = 0.0;
+                #endif
 
+            //     loop shape functions
+                for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+                {
+                //     Compute Diffusion Tensor times Gradient
+                    MatVecMult(Dgrad, m_imDiffusion[ip], scvf.global_grad(sh));
+
+                //    Compute flux at IP
+                    const number D_diff_flux = -VecDot(Dgrad, scvf.normal());
+                    UG_DLOG(DID_CONV_DIFF_FV1, 2, ">>OCT_DISC_DEBUG: " << "convection_diffusion_fv1.cpp: " << "add_jac_A_elem(): " << "sh # "  << sh << " ; normalSize scvf # " << ip << ": " << VecLength(scvf.normal()) << "; \t from "<< scvf.from() << "; to " << scvf.to() << "; D_diff_flux: " << D_diff_flux << "; scvf.global_grad(sh): " << scvf.global_grad(sh) << std::endl);
+
+                //     Add flux term to local matrix // HIER MATRIXINDIZES!!!
+                    UG_ASSERT((scvf.from() < J.num_row_dof(_C_)) && (scvf.to() < J.num_col_dof(_C_)),
+                              "Bad local dof-index on element with object-id " << elem->base_object_id()
+                              << " with center: " << CalculateCenter(elem, vCornerCoords));
+
+                    J(_C_, scvf.from(), _C_, sh) += D_diff_flux;
+                    J(_C_, scvf.to()  , _C_, sh) -= D_diff_flux;
+
+                    #ifdef UG_ENABLE_DEBUG_LOGS
+                    //    DID_CONV_DIFF_FV1
+                    D_diff_flux_sum += D_diff_flux;
+                    #endif
+                }
+
+                UG_DLOG(DID_CONV_DIFF_FV1, 2, "D_diff_flux_sum = " << D_diff_flux_sum << std::endl << std::endl);
+            }
             
             
             ////////////////////////////////////////////////////
-            // Convective Term Transport Equation
+            // Convective Term (Transport Equation)
             ////////////////////////////////////////////////////
             
             const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
@@ -1424,6 +1477,32 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             
         } //Continue the if (relvel)
         
+        
+        /////////////////////////////////////////////////////
+        // Diffusive Term
+        /////////////////////////////////////////////////////
+
+        
+        if(m_imDiffusion.data_given())
+        {
+        //    to compute D \nabla c
+            MathVector<dim> Dgrad_c, grad_c;
+
+        //     compute gradient and shape at ip
+            VecSet(grad_c, 0.0);
+            for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+                VecScaleAppend(grad_c, u(_C_,sh), scvf.global_grad(sh));
+
+        //    scale by diffusion tensor
+            MatVecMult(Dgrad_c, m_imDiffusion[ip], grad_c);
+
+        //     Compute flux
+            const number diff_flux = -VecDot(Dgrad_c, scvf.normal());
+
+        //     Add to local defect
+            d(_C_, scvf.from()) += diff_flux;
+            d(_C_, scvf.to()  ) -= diff_flux;
+        }
         
         /////////////////////////////////////////////////////
         // Convective Term in (conservation of mass, treansport eq.)
