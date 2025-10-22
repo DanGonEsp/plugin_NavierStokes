@@ -345,14 +345,14 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     J(d1, bf->node_id(), d1, sh) += 100*(-bf->shape(sh));
                 }
 				// do nothing for continuity equation because un = 0
-                const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+                //const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
                 //number scale = 1.0 / (m_imDensity[ip] * (VecLength(StdVel[ip])/D + m_imKinViscosity[ip]/pow(D,2)));
-                number scale = 1.0 / (m_imDensity[ip] * ( m_imKinViscosity[ip]/pow(D,2)));
+                //number scale = 1.0 / (m_imDensity[ip] * ( m_imKinViscosity[ip]/pow(D,2)));
 
                 /*for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
                 {
                     for (size_t d2 = 0; d2 < (size_t)dim; ++d2)
-                        J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]; //* m_imDensity [ip];
+                        J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2];
                     
                     //J(_P_, bf->node_id (), _P_, sh) -= scale*VecProd(bf->global_grad(sh) , bf->normal());
                 }*/
@@ -452,9 +452,9 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                 d(d1, bf->node_id()) += 100*(m_imVelocity[ip][d1]-stdVel[d1]);
             
 			// do nothing for continuity equation because un = 0
-            const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+            //const number D =   ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
             //number scale = 1.0 / (m_imDensity[ip] * (VecLength(stdVel)/D + m_imKinViscosity[ip]/pow(D,2)));
-            number scale = 1.0 / (m_imDensity[ip] * ( m_imKinViscosity[ip]/pow(D,2)));
+            //number scale = 1.0 / (m_imDensity[ip] * ( m_imKinViscosity[ip]/pow(D,2)));
             d(_P_, bf->node_id()) += VecDot (m_imVelocity[ip], bf->normal());// * m_imDensity[ip];
             //printf("Defect error = %f\n",d(_P_, bf->node_id()));
             //d(_P_, bf->node_id()) -= scale*VecDot (PressureGrad, bf->normal());

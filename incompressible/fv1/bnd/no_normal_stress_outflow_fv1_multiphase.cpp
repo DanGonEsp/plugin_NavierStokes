@@ -500,7 +500,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             
             VecScale(Vel_t,stdVel,ViscScale);
             
-            number ConvScale = m_imDensity[ip]*VecLength(stdVel)/D;
+            //number ConvScale = m_imDensity[ip]*VecLength(stdVel)/D;
             /*if (!m_spMaster->stokes ())
             {
                 

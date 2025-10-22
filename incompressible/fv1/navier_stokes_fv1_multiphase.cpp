@@ -104,6 +104,7 @@ void NavierStokesFV1M<TDomain>::init()
     
     m_imMass.set_comp_lin_defect(false);
     m_imRelativeVelocity.set_comp_lin_defect(false);
+    m_imRelativeVelocitySCV.set_comp_lin_defect(false);
     m_imDiffusion.set_comp_lin_defect(false);
     
     //	register imports
@@ -121,6 +122,7 @@ void NavierStokesFV1M<TDomain>::init()
     this->register_import(m_imMass);
     this->register_import(m_imDivergenceFlux);
     this->register_import(m_imRelativeVelocity);
+    this->register_import(m_imRelativeVelocitySCV);
     this->register_import(m_imDiffusion);
     
     m_imSourceSCV.set_rhs_part();
@@ -220,6 +222,7 @@ void NavierStokesFV1M<TDomain>::
 set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 {
     m_imRelativeVelocity.set_data(data);
+    m_imRelativeVelocitySCV.set_data(data);
 }
 
 template<typename TDomain>
@@ -317,7 +320,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
     if(m_spConvUpwind_vol.valid())
         m_spConvUpwind_vol->template set_geometry_type<TFVGeom >();
     
-    if(m_imRelativeVelocity.data_given())
+    if(m_imRelativeVelocity.data_given() || m_imRelativeVelocitySCV.data_given())
     {
         //    check, that convective upwinding has been set
         if(m_spConvUpwind_rel.invalid())
@@ -352,6 +355,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
         m_imMass.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDivergenceFlux.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imRelativeVelocity.template set_local_ips<refDim>(vSCVFip,numSCVFip);
+        m_imRelativeVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
 
@@ -401,6 +405,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
         m_imMass.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDivergenceFlux.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imRelativeVelocity.template set_local_ips<refDim>(vSCVFip,numSCVFip);
+        m_imRelativeVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
         
@@ -426,6 +431,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
     m_imMass.set_global_ips(vSCVFip, numSCVFip);
     m_imDivergenceFlux.set_global_ips( vSCVFip, numSCVFip);
     m_imRelativeVelocity.set_global_ips(vSCVFip, numSCVFip);
+    m_imRelativeVelocitySCV.set_global_ips(vSCVip, numSCVip);
     
     m_imDiffusion.set_global_ips(vSCVFip, numSCVFip);
     if(this->is_time_dependent())
@@ -470,6 +476,9 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     //	interpolate velocity at ip with standard lagrange interpolation
     MathMatrix<dim,dim> VelocityGrad[numSh];
     MathVector<dim> StdVel[numSCVF];
+    MathVector<dim> StdRelVel_div[numSCVF];
+    MathVector<dim> StdRelVel_t[numSCVF];
+    MathVector<dim> StdRelVel[numSCVF];
     MathVector<dim> Vel[numSCVF];
     MathVector<dim> Vel_ip[numSCVF];
     number StdVol[numSCVF];
@@ -482,8 +491,12 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     
     vel_grad(  u,  geo,  VelocityGrad);
     std_vel(  u,  geo, StdVel, StdVol, Vel, m_imDensitySCV,Rho_up,Rho_do);
-    Inter->Ps( Ps, DPs, VelocityGrad, u, _C_, numSh, true);
+    if(Inter->ParticleGradientForce())
+        Inter->Ps( Ps, DPs, VelocityGrad, u, _C_, numSh, true);
     
+    if(m_imRelativeVelocitySCV.data_given())
+        std_rel_vel(  u,  geo, StdRelVel_div, StdRelVel_t, m_imDensitySCV, m_imRelativeVelocitySCV,true);
+        
     
     bool interface = false;
     bool Phase2[numSCVF];
@@ -547,9 +560,9 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         m_spConvUpwind_vol->update(&geo, Vel_ip);
     
     //    compute upwind shapes
-    if(m_imRelativeVelocity.data_given())
+    if(m_imRelativeVelocitySCV.data_given())
         if(m_spConvUpwind_rel.valid())
-            m_spConvUpwind_rel->update(&geo, m_imRelativeVelocity.values());
+            m_spConvUpwind_rel->update(&geo, StdRelVel_t);
 
 
 	const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
@@ -817,28 +830,28 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             {
                 number contFlux_c = 0.0;
                 for(int d1 = 0; d1 < dim; ++d1)
-                    contFlux_c += DPs[sh] * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1]; //* m_imDensitySCVF[ip];
+                    contFlux_c += DPs[sh] * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1]; // m_imDensitySCVF[ip];
                 
                 J(_P_, scvf.from(), _C_, sh) += contFlux_c;
                 J(_P_, scvf.to()  , _C_, sh) -= contFlux_c;
             }
             
             
-            if(m_imRelativeVelocity.data_given())
+            /*if(m_imRelativeVelocitySCV.data_given())
             {
-                //const number C_up_rel = upwind_rel.upwind_value(ip, u, _C_);
-                const number prod_rel = VecProd(m_imRelativeVelocity[ip], scvf.normal());
+                const number Vol = fmin( fmax(u(_C_, sh),0.0), 1.0 );
+                const number prod_rel = VecProd(m_imRelativeVelocitySCV[sh], scvf.normal());
                 const number rhos = Inter->Density_s();
                 const number rhoa = Inter->Density_a();
                 
                 //    compute flux at ip
-                //const number contFluxRelVel = -upwind_rel.upwind_shape_sh(ip, sh) * (1.0 - 2.0 * C_up_rel) * (rhos-rhoa) * prod_rel / m_imDensitySCVF[ip];
-                const number contFluxRelVel = -scvf.shape(sh) * (1.0 - 2.0 * StdVol[ip]) * (rhos-rhoa) * prod_rel / m_imDensitySCVF[ip];
+                //const number contFluxRelVel = +upwind_rel.upwind_shape_sh(ip, sh) * (1.0 - 2.0 * C_up_rel) * (rhoa-rhos) * prod_rel / m_imDensitySCVF[ip];
+                const number contFluxRelVel = +scvf.shape(sh) * (1.0 - 2.0 * Vol) * (rhoa-rhos) * prod_rel / m_imDensitySCV[sh];
                  
                  //    Add flux term to local matrix
                  J(_P_, scvf.from(), _C_, sh) += contFluxRelVel;
                  J(_P_, scvf.to(),   _C_, sh) -= contFluxRelVel;
-            }
+            }*/
             
         
         ////////////////////////////////////////////////////
@@ -932,7 +945,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             {
                 number contFlux_c = 0.0;
                 for(int d1 = 0; d1 < dim; ++d1)
-                    contFlux_c += C_up_vol * DPs[sh] * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1]; //* m_imDensitySCVF[ip];
+                    contFlux_c += C_up_vol * DPs[sh] * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1];
                 
                 J(_C_, scvf.from(), _C_, sh) += contFlux_c;
                 J(_C_, scvf.to()  , _C_, sh) -= contFlux_c;
@@ -940,16 +953,20 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         
             
             
-            if(m_imRelativeVelocity.data_given())
+            if(m_imRelativeVelocitySCV.data_given())
             {
-                //const number C_up_rel = upwind_rel.upwind_value(ip, u, _C_);
-                const number prod_rel = VecProd(m_imRelativeVelocity[ip], scvf.normal());
+                const number C_up_rel = upwind_rel.upwind_value(ip, u, _C_);
+                const number prod_rel = VecProd(StdRelVel_t[ip], scvf.normal());
+                const number prod_rel_sh = VecProd(m_imRelativeVelocitySCV[sh], scvf.normal());
                 const number rhoa = Inter->Density_a();
+                const number alpha_max = Inter->Alpha_max();
                 
 
                 //Transport Eq.  Component of relative velocity in Sand Vel
-                const number conv_flux_rel_sh = (upwind_rel.upwind_shape_sh(ip, sh) * (1.0 -  StdVol[ip]) ) * rhoa * prod_rel / m_imDensitySCVF[ip];
+                //const number conv_flux_rel_sh = (upwind_rel.upwind_shape_sh(ip, sh) * (1.0 -  StdVol[ip]) ) * rhoa * prod_rel / m_imDensitySCVF[ip];
+                number conv_flux_rel_sh = upwind_rel.upwind_shape_sh(ip, sh) * prod_rel;
                 
+                conv_flux_rel_sh += -1.0 * C_up_rel * scvf.shape(sh) * rhoa * prod_rel_sh / (m_imDensitySCV[sh] * alpha_max);
                 
                 //    Add flux term to local matrix
                 J(_C_, scvf.from(), _C_, sh) += conv_flux_rel_sh;
@@ -1218,6 +1235,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     
     MathMatrix<dim,dim> VelocityGrad[numSh];
     MathVector<dim> StdVel[numSCVF];
+    MathVector<dim> StdRelVel_div[numSCVF];
+    MathVector<dim> StdRelVel_t[numSCVF];
     MathVector<dim> Vel[numSCVF];
     MathVector<dim> Vel_ip[numSCVF];
     number StdVol[numSCVF];
@@ -1228,8 +1247,11 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     
     vel_grad(  u,  geo,  VelocityGrad);
     std_vel(  u,  geo, StdVel, StdVol, Vel, m_imDensitySCV,Rho_up,Rho_do);
-    Inter->Ps( Ps, DPs, VelocityGrad, u, _C_, numSh, false);
+    if(Inter->ParticleGradientForce())
+        Inter->Ps( Ps, DPs, VelocityGrad, u, _C_, numSh, false);
     
+    if(m_imRelativeVelocitySCV.data_given())
+        std_rel_vel(  u,  geo, StdRelVel_div, StdRelVel_t, m_imDensitySCV, m_imRelativeVelocitySCV,false);
     
     //	compute stabilized velocities and shapes for continuity equation
     // \todo: (optional) Here we can skip the computation of shapes, implement?
@@ -1299,9 +1321,9 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     if(m_spConvUpwind_vol.valid())
         m_spConvUpwind_vol->update(&geo, Vel_ip);
     
-    if(m_imRelativeVelocity.data_given())
+    if(m_imRelativeVelocitySCV.data_given())
         if(m_spConvUpwind_rel.valid())
-            m_spConvUpwind_rel->update(&geo, m_imRelativeVelocity.values());
+            m_spConvUpwind_rel->update(&geo, StdRelVel_t);
     
 
 
@@ -1458,16 +1480,17 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		d(_P_, scvf.to()  ) -= contFlux;
         
         
-        if(m_imRelativeVelocity.data_given())
+        /*if(m_imRelativeVelocitySCV.data_given())
         {
             //const number C_up_rel = fmax(fmin(upwind_rel.upwind_value(ip, u, _C_),1.0), 0.0);
-            const number prod_rel = VecProd(m_imRelativeVelocity[ip], scvf.normal());
-            const number rhos = Inter->Density_s();
-            const number rhoa = Inter->Density_a();
+            const number contFluxRelVel = VecProd(StdRelVel_div[ip], scvf.normal());
+            //const number rhos = Inter->Density_s();
+            //const number rhoa = Inter->Density_a();
             
         //    compute flux at ip
-            //const number contFluxRelVel = -(1.0 - C_up_rel) * C_up_rel * (rhos-rhoa) * prod_rel / m_imDensitySCVF[ip];
-            const number contFluxRelVel = -(1.0 - StdVol[ip]) * StdVol[ip] * (rhos-rhoa) * prod_rel / m_imDensitySCVF[ip];
+            //const number contFluxRelVel = +(1.0 - C_up_rel) * C_up_rel * (rhoa-rhos) * prod_rel / m_imDensitySCVF[ip];
+            //const number contFluxRelVel =  prod_rel ;
+            //const number contFluxRelVel = +(1.0 - StdVol[ip]) * StdVol[ip] * (rhoa-rhos) * prod_rel / m_imDensitySCVF[ip];
 
         //    Add contributions to local defect
             d(_P_, scvf.from()) += contFluxRelVel;
@@ -1475,7 +1498,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 
 
             
-        } //Continue the if (relvel)
+        }*/ //Continue the if (relvel)
         
         
         /////////////////////////////////////////////////////
@@ -1505,7 +1528,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         }
         
         /////////////////////////////////////////////////////
-        // Convective Term in (conservation of mass, treansport eq.)
+        // Convective Term in (conservation of mass, transport eq.)
         /////////////////////////////////////////////////////
             //      sum up convective flux using convection shapes
         
@@ -1522,14 +1545,14 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 
         
         // Continue the if (relvel)
-        if(m_imRelativeVelocity.data_given())
+        if(m_imRelativeVelocitySCV.data_given())
         {
             const number C_up_rel = upwind_rel.upwind_value(ip, u, _C_);
-            const number prod_rel = VecProd(m_imRelativeVelocity[ip], scvf.normal());
+            const number prod_rel = VecProd(StdRelVel_t[ip], scvf.normal());
   
-            const number rhoa = Inter->Density_a();
+            //const number rhoa = Inter->Density_a();
             
-            const number conv_flux_rel = C_up_rel * (1.0 - StdVol[ip] ) * rhoa * prod_rel / m_imDensitySCVF[ip];
+            const number conv_flux_rel = C_up_rel * prod_rel ;
 
         //  add to local defect
             d(_C_, scvf.from()) += conv_flux_rel;
@@ -1537,22 +1560,6 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             
         }
 
-        
-        
-        /*const number rhoa = Inter->Density_a();
-        for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
-        {
-        //     get current SCVF
-            const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-            number vol = 0.0;
-            for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                vol += scvf.shape(sh) * u(_C_, sh);
-            vol = fmax(fmin(vol,1.0), 0.0);
-            
-            VecScaleAppend(Vel_s[ip], (1.0-vol)*rhoa / m_imDensitySCVF[ip], m_imRelativeVelocity[ip] );
-            
-            
-        }*/
 
         
 	}
@@ -1717,9 +1724,9 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 
 // 	get finite volume geometry
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
-    static const size_t numSCV = TFVGeom::numSCV;
+    //static const size_t numSCV = TFVGeom::numSCV;
     
-    /*number Vol_m = 0.0;
+    number Vol_m = 0.0;
     number fac_m = 1.0;
     
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1753,7 +1760,7 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 
             }
 		}
-    }*/
+    }
     /*for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
     {
         //     get current SCV
@@ -1778,7 +1785,7 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             //d(d1, scvf.to()  ) +=  RhoDiff * VecProd(m_imSourceSCVF[ip],scvf.normal()) * scvTo.volume() * scvf.normal()[d1]/ (4.0*VecProd(scvf.normal(),scvf.normal()));
         }
     }*/
-    number RhoSCV[numSCV];
+    /*number RhoSCV[numSCV];
     number Count[numSCV];
     
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1821,7 +1828,7 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             
 
         }
-    }
+    }*/
     
     number Vol_t = 0.0;
     number fac_t = 1.0;
@@ -1870,7 +1877,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     static const size_t numSCV = TFVGeom::numSCV;
     
 
-    /*MathVector<dim> VRho; VecSet(VRho,0.0);
+    MathVector<dim> VRho; VecSet(VRho,0.0);
     number Vol_m = 0.0;
     number fac_m = 1.0;
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1903,7 +1910,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             //d(d1, sh) += u(d1, sh) * scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho); //printf("Change the lin_def");
 		}
         
-    }*/
+    }
     /*for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
     {
         //     get current SCV
@@ -1929,7 +1936,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         }
     }*/
     
-    number RhoSCV[numSCV];
+    /*number RhoSCV[numSCV];
     number Count[numSCV];
     
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1972,7 +1979,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             
 
         }
-    }
+    }*/
     
 
     
@@ -2049,7 +2056,7 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
             }
         }
     }
-    if(m_imSourceSCV.data_given())
+    else if(m_imSourceSCV.data_given())
     {
         //     loop Sub Control Volumes (SCV)
 
@@ -2299,7 +2306,45 @@ std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, numb
     }
     
 }
+template<typename TDomain>
+template<typename TFVGeom>
+inline
+void
+NavierStokesFV1M<TDomain>::
+std_rel_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_div, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV, const DataImport<MathVector<dim>, dim>& RelVelSCV, const bool jac)
+{
+    
+    
+    const number rhos = Inter->Density_max();
+    const number rhoa = Inter->Density_a();
+    const number alpha_max = Inter->Alpha_max();
+    
+    for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+    {
+        const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+        
+        VecSet(StdRelVel_t[ip], 0.0);
+        VecSet(StdRelVel_div[ip], 0.0);
+        for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+        {
+            
+            const number Vol = fmin( fmax(u(_C_, sh),0.0), 1.0 ) / alpha_max;
+            
+            if(Vol >1.0)
+                UG_THROW("NavierStokes::std_rel_vel: "
+                         " Volume fraction = "<< Vol <<" overcome the limit alpha_max = " << alpha_max<<"");
 
+            for(int d1 = 0; d1 < dim; ++d1)
+            {
+                if(!jac)
+                    StdRelVel_div[ip][d1] += scvf.shape(sh) * (rhoa-rhos) * Vol * (1.0 - Vol) * RelVelSCV[sh][d1] / densitySCV[sh];
+        
+                StdRelVel_t[ip][d1] += scvf.shape(sh) * rhoa * (1.0 - Vol) * RelVelSCV[sh][d1] / densitySCV[sh];
+            }
+            
+        }
+    }
+}
 template<typename TDomain>
 template<typename TFVGeom>
 inline
@@ -2378,12 +2423,12 @@ lin_def_densitySCV(const LocalVector& u,
         {
             for(size_t c = 0; c < dim; ++c)
             {
-                vvvLinDef[ip][c][co] += u(c, co) * scv.volume() * 0.5;
-                for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+                vvvLinDef[ip][c][co] += u(c, co) * scv.volume();
+                /*for(size_t ip = 0; ip < geo.num_scv(); ++ip)
                 {
                     const int co2 = scv.node_id();
                     vvvLinDef[ip][c][co2] += u(c, co) *  0.5 * scv.volume()/Vol;
-                }
+                }*/
             }
         }
         
@@ -2986,7 +3031,8 @@ ex_div_velocity(MathVector<dim> vValue[],
         
         vel_grad(  u,  geo,  VelocityGrad);
         std_vel(  u,  geo, StdVel, StdVol, Vel, m_imDensitySCV,Rho_up,Rho_do);
-        Inter->Ps( Ps, DPs, VelocityGrad, u, _C_, numSh, true);
+        if(Inter->ParticleGradientForce())
+            Inter->Ps( Ps, DPs, VelocityGrad, u, _C_, numSh, true);
         
         
     //    compute stabilized velocities and shapes for continuity equation

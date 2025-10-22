@@ -583,6 +583,9 @@ class NavierStokesFV1M
         inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, number* StdVol, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do);
     
         template <typename TFVGeom>
+        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_div, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV,  const DataImport<MathVector<dim>, dim>& RelVelSCV, const bool Jac);
+    
+        template <typename TFVGeom>
         inline void vel_grad(const LocalVector& u, const TFVGeom& geo, MathMatrix<dim,dim>* VelGrad);
 
 	///	export value of the velocity
@@ -731,6 +734,7 @@ class NavierStokesFV1M
     
     ///    Data import for Relative velocity
         DataImport<MathVector<dim>, dim> m_imRelativeVelocity;
+        DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
         DataImport<MathVector<dim>, dim> m_imDivergenceFlux;
         DataImport<number, dim> m_imMass;
     
