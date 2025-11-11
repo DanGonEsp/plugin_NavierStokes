@@ -733,7 +733,6 @@ class NavierStokesFV1M
         DataImport<MathMatrix<dim,dim>, dim> m_imDiffusion;
     
     ///    Data import for Relative velocity
-        DataImport<MathVector<dim>, dim> m_imRelativeVelocity;
         DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
         DataImport<MathVector<dim>, dim> m_imDivergenceFlux;
         DataImport<number, dim> m_imMass;

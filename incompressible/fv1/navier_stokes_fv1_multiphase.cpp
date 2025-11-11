@@ -103,7 +103,6 @@ void NavierStokesFV1M<TDomain>::init()
     m_imSurfaceNormal.set_comp_lin_defect(false);
     
     m_imMass.set_comp_lin_defect(false);
-    m_imRelativeVelocity.set_comp_lin_defect(false);
     m_imRelativeVelocitySCV.set_comp_lin_defect(false);
     m_imDiffusion.set_comp_lin_defect(false);
     
@@ -121,7 +120,6 @@ void NavierStokesFV1M<TDomain>::init()
     
     this->register_import(m_imMass);
     this->register_import(m_imDivergenceFlux);
-    this->register_import(m_imRelativeVelocity);
     this->register_import(m_imRelativeVelocitySCV);
     this->register_import(m_imDiffusion);
     
@@ -221,7 +219,6 @@ template<typename TDomain>
 void NavierStokesFV1M<TDomain>::
 set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 {
-    m_imRelativeVelocity.set_data(data);
     m_imRelativeVelocitySCV.set_data(data);
 }
 
@@ -320,7 +317,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
     if(m_spConvUpwind_vol.valid())
         m_spConvUpwind_vol->template set_geometry_type<TFVGeom >();
     
-    if(m_imRelativeVelocity.data_given() || m_imRelativeVelocitySCV.data_given())
+    if( m_imRelativeVelocitySCV.data_given())
     {
         //    check, that convective upwinding has been set
         if(m_spConvUpwind_rel.invalid())
@@ -354,7 +351,6 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
         
         m_imMass.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDivergenceFlux.template set_local_ips<refDim>(vSCVFip,numSCVFip);
-        m_imRelativeVelocity.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imRelativeVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
@@ -404,7 +400,6 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
         
         m_imMass.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDivergenceFlux.template set_local_ips<refDim>(vSCVFip,numSCVFip);
-        m_imRelativeVelocity.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imRelativeVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
@@ -430,7 +425,6 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
     
     m_imMass.set_global_ips(vSCVFip, numSCVFip);
     m_imDivergenceFlux.set_global_ips( vSCVFip, numSCVFip);
-    m_imRelativeVelocity.set_global_ips(vSCVFip, numSCVFip);
     m_imRelativeVelocitySCV.set_global_ips(vSCVip, numSCVip);
     
     m_imDiffusion.set_global_ips(vSCVFip, numSCVFip);
@@ -2328,7 +2322,7 @@ std_rel_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVe
         for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
         {
             
-            const number Vol = fmin( fmax(u(_C_, sh),0.0), 1.0 ) / alpha_max;
+            const number Vol = fmin( fmax(u(_C_, sh)/alpha_max,0.0), 1.0 ) ;
             
             if(Vol >1.0)
                 UG_THROW("NavierStokes::std_rel_vel: "
@@ -4198,6 +4192,50 @@ ex_particle_pressure_grad(MathVector<dim> vValue[],
             }
         }
     }
+    /*if(true)//else
+    {
+    //    get trial space
+        LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+
+    //    storage for shape function at ip
+        MathVector<refDim> vLocGrad[numSH];
+        MathVector<refDim> locGrad;
+
+    //    Reference Mapping
+        MathMatrix<dim, refDim> JTInv;
+        ReferenceMapping<ref_elem_type, dim> mapping(vCornerCoords);
+        
+    //    evaluate at shapes at ip
+        rTrialSpace.grads(vLocGrad, geo.coe_local()[0]);
+        mapping.jacobian_transposed_inverse(JTInv, geo.coe_local()[0]);
+
+    //    loop ips
+        for(size_t ip = 0; ip < nip; ++ip)
+        {
+
+
+        //    compute grad at ip
+            VecSet(locGrad, 0.0);
+            for(size_t sh = 0; sh < numSH; ++sh)
+                VecScaleAppend(locGrad, Ps[sh], vLocGrad[sh]);
+
+        //    compute global grad
+
+            MatVecMult(vValue[ip], JTInv, locGrad);
+
+        //    compute derivative w.r.t. to unknowns iff needed
+            if(bDeriv)
+            {
+                for(size_t sh = 0; sh < numSH; ++sh)
+                {
+                    MathVector<refDim> vLocGrad_aux;
+                    VecScale(vLocGrad_aux, vLocGrad[sh], DPs[sh] );
+                    MatVecMult(vvvDeriv[ip][_C_][sh], JTInv, vLocGrad_aux);
+                }
+
+            }
+        }
+    }*/
 };
 
 ////////////////////////////////////////////////////////////////////////////////
