@@ -4130,7 +4130,7 @@ ex_particle_pressure_grad(MathVector<dim> vValue[],
     Inter->Ps( Ps, DPs, VelocityGrad, u, _C_, numSH, bDeriv);
 
 //    FV1M SCVF ip
-    if(vLocIP == geo.scvf_local_ips())
+    /*if(vLocIP == geo.scvf_local_ips())
     {
     //    Loop Sub Control Volume Faces (SCVF)
         for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -4191,8 +4191,8 @@ ex_particle_pressure_grad(MathVector<dim> vValue[],
 
             }
         }
-    }
-    /*if(true)//else
+    }*/
+    if(true)//else
     {
     //    get trial space
         LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
@@ -4235,7 +4235,7 @@ ex_particle_pressure_grad(MathVector<dim> vValue[],
 
             }
         }
-    }*/
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
