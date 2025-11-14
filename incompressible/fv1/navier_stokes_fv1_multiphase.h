@@ -230,10 +230,7 @@ class NavierStokesFV1M
 			if(m_spStab.valid() && m_spStab->upwind().invalid()) m_spStab->set_upwind(m_spConvUpwind);}
     ///    sets the upwind based on a string identifier
         void set_upwind_vol(const std::string& name)
-            {
-            m_spConvUpwind_vol = CreateNavierStokesUpwind<dim>(name);
-            m_spConvUpwind_rel = CreateNavierStokesUpwind<dim>(name);
-            }
+            {m_spConvUpwind_vol = CreateNavierStokesUpwind<dim>(name);}
 
 		void set_pac_upwind(bool bPac)
 		{
@@ -758,8 +755,6 @@ class NavierStokesFV1M
 		SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind;
     ///    Upwinding for VolFraction in convective term of Transport equation
         SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind_vol;
-    ///    Upwinding for VolFraction in convective term of Transport equation due to relative velocity
-        SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind_rel;
 
 	/// abbreviation for pressure and volume fraction
 		static const size_t _P_ = dim;
