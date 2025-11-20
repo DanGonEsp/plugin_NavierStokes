@@ -713,8 +713,7 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
             typename std::vector<BF>::const_iterator bf;
             for(bf = vBF.begin(); bf != vBF.end(); ++bf, ++ip)
             {
-                number pgh = VecDot(bf->global_ip(),m_imSource[ip]);
-                
+                number pgh = VecDot(bf->global_ip(),m_imSource[ip]) + Inter->ReferencePressure();
                 for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
                     d(d1, bf->node_id()) += - pgh * bf->normal ()[d1];
             }
