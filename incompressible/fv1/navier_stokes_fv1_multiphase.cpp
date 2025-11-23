@@ -592,6 +592,14 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                         J(d1, scvf.to()  , d2, sh) -= flux2_sh;
                     }
             }
+            if (false){
+                for (int d1=0;d1<dim;d1++)
+                    for (int d2=0;d2<dim;d2++){
+                        number stab_flux = (2.0/3.0) * m_imDensitySCVF[ip] * m_imKinViscosity[ip] * scvf.global_grad(sh)[d2] * scvf.normal()[d1];
+                        J(d1, scvf.from(), d2, sh) += stab_flux;
+                        J(d1, scvf.to()  , d2, sh) -= stab_flux;
+                    }
+            }
             
             
             ////////////////////////////////////////////////////
@@ -1354,6 +1362,16 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			d(d1, scvf.from()) += diffFlux[d1];
 			d(d1, scvf.to()  ) -= diffFlux[d1];
 		}
+        
+        if (false){
+            for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+                for (int d1=0;d1<dim;d1++)
+                    for (int d2=0;d2<dim;d2++){
+                        number stab_flux = (2.0/3.0) * m_imDensitySCVF[ip] * m_imKinViscosity[ip] * scvf.global_grad(sh)[d2] * u(d2,sh) * scvf.normal()[d1];
+                        d(d1, scvf.from()) += stab_flux;
+                        d(d1, scvf.to()  ) -= stab_flux;
+                    }
+        }
         
 		////////////////////////////////////////////////////
 		// Convective Term (Momentum Equation)
@@ -2700,6 +2718,16 @@ lin_def_viscosity(const LocalVector& u,
             vvvLinDef[ip][c][scvf.from()] += diffFlux[c];
             vvvLinDef[ip][c][scvf.to()  ] -= diffFlux[c];
         }
+        
+        if (false){
+            for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+                for (int d1=0;d1<dim;d1++)
+                    for (int d2=0;d2<dim;d2++){
+                        number stab_flux = (2.0/3.0) * m_imDensitySCVF[ip] * scvf.global_grad(sh)[d2] * u(d2,sh) * scvf.normal()[d1];
+                        vvvLinDef[ip][d1][scvf.from()] += stab_flux;
+                        vvvLinDef[ip][d1][scvf.to()  ] -= stab_flux;
+                    }
+        }
     }
         
 }
@@ -3402,7 +3430,16 @@ ex_nodal_pressure(number vValue[],
 
 //    number of shape functions
     static const size_t numSH =    ref_elem_type::numCorners;
-
+    number Cs[numSH];
+    for(size_t sh = 0; sh < numSH; ++sh)
+    {
+        if(u(_C_, sh)<0.57)
+            Cs[sh] = 0.0;
+        else if(u(_P_, sh) < 0.0)
+            Cs[sh] = 0.0;
+        else
+            Cs[sh] = 1.0;
+    }
 
 //    FV1M SCVF ip
     if(vLocIP == geo.scvf_local_ips())
@@ -3416,13 +3453,13 @@ ex_nodal_pressure(number vValue[],
         //    compute pressure at ip
             vValue[ip] = 0.0;
             for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                vValue[ip] += u(_P_, sh) * scvf.shape(sh);
+                vValue[ip] += Cs[sh]*u(_P_, sh) * scvf.shape(sh);
 
         //    compute derivative w.r.t. to unknowns iff needed
             if(bDeriv)
             {
                 for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                    vvvDeriv[ip][_P_][sh] = scvf.shape(sh);
+                    vvvDeriv[ip][_P_][sh] = Cs[sh]*scvf.shape(sh);
 
                 // do not forget that number of DoFs (== vvvDeriv[ip][_P_])
                 // might be > scvf.num_sh() in case of hanging nodes!
@@ -3445,14 +3482,14 @@ ex_nodal_pressure(number vValue[],
             const size_t co = scv.node_id();
 
         //    solution at ip
-            vValue[ip] = u(_P_, co);
+            vValue[ip] = Cs[co]*u(_P_, co);
 
         //    set derivatives if needed
             if(bDeriv)
             {
                 size_t ndof = vvvDeriv[ip][_P_].size();
                 for(size_t sh = 0; sh < ndof; ++sh)
-                    vvvDeriv[ip][_P_][sh] = (sh==co) ? 1.0 : 0.0;
+                    vvvDeriv[ip][_P_][sh] = (sh==co) ? Cs[sh] : 0.0;
             }
         }
     }
@@ -3474,14 +3511,14 @@ ex_nodal_pressure(number vValue[],
         //    compute concentration at ip
             vValue[ip] = 0.0;
             for(size_t sh = 0; sh < numSH; ++sh)
-                vValue[ip] += u(_P_, sh) * vShape[sh];
+                vValue[ip] += Cs[sh]*u(_P_, sh) * vShape[sh];
 
         //    compute derivative w.r.t. to unknowns iff needed
         //    \todo: maybe store shapes directly in vvvDeriv
             if(bDeriv)
             {
                 for(size_t sh = 0; sh < numSH; ++sh)
-                    vvvDeriv[ip][_P_][sh] = vShape[sh];
+                    vvvDeriv[ip][_P_][sh] = Cs[sh]*vShape[sh];
 
                 // beware of hanging nodes!
                 size_t ndof = vvvDeriv[ip][_P_].size();
