@@ -3259,7 +3259,7 @@ ex_velocity_grad(MathMatrix<dim, dim> vValue[],
                     {
                         vValue[ip](d1, d2) += u(d1, sh)*scv.global_grad(sh)[d2];
                         //vValue[ip](d1, d2) += (m_imDensitySCV[sh] / m_imDensitySCV[ip]) * u(d1, sh)*scv.global_grad(sh)[d2];
-                        if(std:isnan(vValue[ip](d1, d2)))
+                        if(std::isnan(vValue[ip](d1, d2)))
                         {
                             UG_LOG("Error SCV\n");
                         }
