@@ -485,7 +485,11 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     number mu_g, rho_g;
     MathVector<dim> Source_1;
     MathVector<dim> Source_g;
-    number** SCVFinterShape = new number*[numSCVF];
+	
+	std::vector<number> buffer(numSCVF * numSh);
+	std::vector<number*> SCVFinterShape(numSCVF);
+	for (size_t i = 0; i < numSCVF; ++i)
+		SCVFinterShape[i] = buffer.data() + i * numSh;
     
     
     
@@ -500,9 +504,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         {
             m_spPressureJump->update( &geo, *pSol, StdVel, m_bStokes, m_imSurfaceNormal, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, m_imJumpShape, m_imVolumeFraction, pOldSol, dt, m_density_ref, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, m_interface_vol_fraction);
             
-            for(size_t count=0; count<numSCVF; count++)
-                SCVFinterShape[count] = new number[numSh];
-            Inter->template InterfaceSCVFShapes<TElem>(SCVFinterShape, geo,  m_imVolumeFraction, m_imJumpShape, numSh,  m_interface_vol_fraction);
+            Inter->template InterfaceSCVFShapes<TElem>(SCVFinterShape.data(), geo,  m_imVolumeFraction, m_imJumpShape, numSh,  m_interface_vol_fraction);
             
         }
         m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imJumpShape.values(), m_imSurfaceNormal.values(), Ps, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt, m_density_ref, interface, Phase2);
@@ -1240,8 +1242,12 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     number mu_g, rho_g;
     MathVector<dim> Source_1;
     MathVector<dim> Source_g;
-    number** SCVFinterShape = new number*[numSCVF];
     
+	std::vector<number> buffer(numSCVF * numSh);
+	std::vector<number*> SCVFinterShape(numSCVF);
+	for (size_t i = 0; i < numSCVF; ++i)
+		SCVFinterShape[i] = buffer.data() + i * numSh;
+
     
     const INavierStokesPressureJump<dim>& press_jump = *m_spPressureJump;
     
@@ -1255,9 +1261,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         {
             UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.")
             m_spPressureJump->update( &geo, *pSol, StdVel, m_bStokes, m_imSurfaceNormal, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, m_imJumpShape, m_imVolumeFraction, pOldSol, dt, m_density_ref, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, m_interface_vol_fraction);
-            for(size_t count=0; count<numSCVF; count++)
-                SCVFinterShape[count] = new number[numSh];
-            Inter->template InterfaceSCVFShapes<TElem>(SCVFinterShape, geo,  m_imVolumeFraction, m_imJumpShape, numSh,  m_interface_vol_fraction);
+            Inter->template InterfaceSCVFShapes<TElem>(SCVFinterShape.data(), geo,  m_imVolumeFraction, m_imJumpShape, numSh,  m_interface_vol_fraction);
             
         }
         
