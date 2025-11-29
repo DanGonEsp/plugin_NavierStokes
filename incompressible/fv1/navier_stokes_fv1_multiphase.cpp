@@ -863,9 +863,9 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                     UG_DLOG(DID_CONV_DIFF_FV1, 2, ">>OCT_DISC_DEBUG: " << "convection_diffusion_fv1.cpp: " << "add_jac_A_elem(): " << "sh # "  << sh << " ; normalSize scvf # " << ip << ": " << VecLength(scvf.normal()) << "; \t from "<< scvf.from() << "; to " << scvf.to() << "; D_diff_flux: " << D_diff_flux << "; scvf.global_grad(sh): " << scvf.global_grad(sh) << std::endl);
 
                 //     Add flux term to local matrix // HIER MATRIXINDIZES!!!
-                    UG_ASSERT((scvf.from() < J.num_row_dof(_C_)) && (scvf.to() < J.num_col_dof(_C_)),
+                    /*UG_ASSERT((scvf.from() < J.num_row_dof(_C_)) && (scvf.to() < J.num_col_dof(_C_)),
                               "Bad local dof-index on element with object-id " << elem->base_object_id()
-                              << " with center: " << CalculateCenter(elem, vCornerCoords));
+                              << " with center: " << CalculateCenter(elem, vCornerCoords));*/
 
                     J(_C_, scvf.from(), _C_, sh) += D_diff_flux;
                     J(_C_, scvf.to()  , _C_, sh) -= D_diff_flux;

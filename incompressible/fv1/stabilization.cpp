@@ -1100,8 +1100,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             number diag = vViscoPerDiffLenSq[ip];
             
             //    Time part
-            if(pvCornerValueOldTime != NULL)
-                diag += density[ip]/dt;
+            /*if(pvCornerValueOldTime != NULL)
+                diag += density[ip]/dt;*/
             
             //    Convective Term  (no convective terms in the Stokes eq.)
             if (! bStokes)
@@ -1135,7 +1135,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 
                 
                 //    Time
-                if(pvCornerValueOldTime != NULL && density_old.data_given())
+                /*if(pvCornerValueOldTime != NULL && density_old.data_given())
                 {
                     //    interpolate old time step
                     number oldIPVel = 0.0;
@@ -1144,7 +1144,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     //    add to rhs
                     rhs += density_old[ip] * oldIPVel / dt;
-                }
+                }*/
                 
                 //    loop shape functions
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
