@@ -41,7 +41,6 @@
 #include "bnd/inflow_stress_fv1.h"
 #include "bnd/wall_sliding_fv1.h"
 #include "stabilization.h"
-#include "pressure_jump.h"
 #include "nodal_pressure_grad.h"
 #include "shear_stress.h"
 
@@ -235,15 +234,8 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesUpwind<dim> >)>(&T::set_upwind))
 			.add_method("set_upwind",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind))
             .add_method("set_relative_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_relative_velocity), "", "RelativeVel")
-            .add_method("set_divergence_rel_vel", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_divergence_rel_vel), "", "RelVel Divergence")
-            .add_method("set_mass_change", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_mass_change), "", "Mass")
-            .add_method("set_particle_pressure", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_particle_pressure), "", "ParticlePressure")
 			.add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
-            .add_method("set_density_ref", static_cast<void (T::*)(number)>(&T::set_density_ref), "", "density_ref")
-            .add_method("set_interface_value", static_cast<void (T::*)(number)>(&T::set_interface_value), "", "set_interface_value")
-            .add_method("set_jump_shape", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim>>, const std::string&)>(&T::set_jump_shape), "", "JumpShape")
             .add_method("set_interface_normal", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_interface_normal), "", "SurfaceNormal")
-            .add_method("set_vol_fraction", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> > )>(&T::set_vol_fraction), "", "VolFraction")
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesFV1", tag);
 	}
@@ -263,15 +255,9 @@ static void Domain(Registry& reg, string grp)
             .add_method("set_upwind",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind))
             .add_method("set_upwind_vol",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind_vol))
             .add_method("set_relative_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_relative_velocity), "", "RelativeVel")
-            .add_method("set_divergence_rel_vel", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_divergence_rel_vel), "", "RelVel Divergence")
-            .add_method("set_mass_change", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_mass_change), "", "Mass")
             .add_method("set_diffusion", static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> >)>(&T::set_diffusion), "", "Diffusion")
             .add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
-            .add_method("set_density_ref", static_cast<void (T::*)(number)>(&T::set_density_ref), "", "density_ref")
-            .add_method("set_interface_value", static_cast<void (T::*)(number)>(&T::set_interface_value), "", "set_interface_value")
-            .add_method("set_jump_shape", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim>>, const std::string&)>(&T::set_jump_shape), "", "JumpShape")
             .add_method("set_interface_normal", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_interface_normal), "", "SurfaceNormal")
-            .add_method("set_vol_fraction", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> > )>(&T::set_vol_fraction), "", "VolFraction")
             .add_method("volume_fraction", &T::volume_fraction)
             .add_method("volume_fraction_grad", &T::volume_fraction_grad)
             .add_method("einstein_viscosity", &T::einstein_viscosity)
@@ -416,24 +402,6 @@ static void Dimension(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesFV1WithoutStabilization", tag);
 	}
-//    INavierStokesPressureJump
-    {
-        typedef INavierStokesPressureJump<dim> T;
-        string name = string("INavierStokesPressureJump").append(suffix);
-        reg.add_class_<T>(name, grp);
-        reg.add_class_to_group(name, "INavierStokesPressureJump", tag);
-    }
-
-//    NavierStokesFIELDSStabilization
-    {
-        typedef NavierStokesViscousPressureJump<dim> T;
-        typedef INavierStokesPressureJump<dim> TBase;
-        string name = string("NavierStokesViscousPressureJump").append(suffix);
-        reg.add_class_<T, TBase>(name, grp)
-            .add_constructor()
-            .set_construct_as_smart_pointer(true);
-        reg.add_class_to_group(name, "NavierStokesViscousPressureJump", tag);
-    }
 }
 
 }; // end Functionality

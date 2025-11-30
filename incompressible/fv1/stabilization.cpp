@@ -136,18 +136,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number jump_shape[],
-       const MathVector<dim> normal[],
        const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
-       const LocalVector* pvCornerValueOldTime, number dt,
-       const number density_ref,
-       const bool multiphase,
-       const bool phase_2[])
+       const LocalVector* pvCornerValueOldTime, number dt)
 {
-    if(multiphase)
-        UG_THROW("Pressure Jump Not implemented for FIELDS stabilization.");
     
     //	abbreviation for pressure
     static const size_t _P_ = dim;
@@ -212,7 +205,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 //	Source
                 number rhs = 0.0;
                 if(Source.data_given())
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
+                    rhs = (   density[ip] / density[ip]) * Source[ip][d];
                 
                 //	Time
                 if(pvCornerValueOldTime != NULL)
@@ -378,7 +371,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 //	Source
                 f[ip] = 0.0;
                 if(Source.data_given())
-                    f[ip] = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
+                    f[ip] = (   density[ip] / density[ip]) * Source[ip][d];
                 
                 //	Time
                 if(pvCornerValueOldTime != NULL)
@@ -463,18 +456,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number jump_shape[],
-       const MathVector<dim> normal[],
        const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
-       const LocalVector* pvCornerValueOldTime, number dt,
-       const number density_ref,
-       const bool multiphase,
-       const bool phase_2[])
+       const LocalVector* pvCornerValueOldTime, number dt)
 {
-    if(multiphase)
-        UG_THROW("Pressure Jump Not implemented for FLOW stabilization.");
     //	abbreviation for pressure
     static const size_t _P_ = dim;
     
@@ -547,7 +533,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 //	Source
                 number rhs = 0.0;
                 if(Source.data_given())
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
+                    rhs = (   density[ip] / density[ip]) * Source[ip][d];
                 
                 //	Time
                 if(pvCornerValueOldTime != NULL)
@@ -768,7 +754,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //	Source
                 if(Source.data_given())
-                    f[ip] += (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
+                    f[ip] += (   density[ip] / density[ip]) * Source[ip][d];
                 
                 //	Time
                 if(pvCornerValueOldTime != NULL)
@@ -843,15 +829,10 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number jump_shape[],
-       const MathVector<dim> normal[],
        const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
-       const LocalVector* pvCornerValueOldTime, number dt,
-       const number density_ref,
-       const bool multiphase,
-       const bool phase_2[])
+       const LocalVector* pvCornerValueOldTime, number dt)
 {
     if( non_zero_shape_ip())
     {
@@ -932,75 +913,13 @@ update(const FV1Geometry<TElem, dim>* geo,
         }
         //DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip]);
     }
-
-    number mu_2 = 0.0, mu_1 = 0.0;
-    number rho_ave = 0.0;
-    for(size_t sh = 0; sh < numSh; ++sh)
-        rho_ave += 1.0 / densitySCV[sh];
-    rho_ave = numSh / rho_ave;
-    
-    
-    number alpha1 = 1.0;//((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
-    number alpha2 = 1.0;//((!multiphase && jump_shape[0]>0))? 1.0 : 1.0;
-    number alpha3 = 1.0;
     
 
     bool boolSource = (SourceSCV.data_given()) ? true : false;
     
-
-
-    
-    MathVector<dim> Source_1;
-    MathVector<dim> Source_2;
-    if (multiphase)
-    {
-        VecSet(Source_1,0.0);
-        VecSet(Source_2,0.0);
-        
-        
-        int Count_1 = 0;
-        int Count_2 = 0;
-        
-        for(size_t sh = 0; sh < numSh; ++sh)
-        {
-            if (jump_shape[sh]>0)
-            {
-                mu_2  +=  (densitySCV[sh] * kinViscoSCV[sh]);
-
-                if(boolSource) {VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );}
-                Count_2 +=1;
-                
-            }
-            else
-            {
-                mu_1  +=  (densitySCV[sh] * kinViscoSCV[sh]);
-                if(boolSource) {VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );}
-                Count_1 +=1;
-                
-            }
-            
-            
-        }
-        mu_1 = mu_1 / Count_1 ;
-        mu_2 = mu_2 / Count_2 ;
-
-        if(boolSource)
-        {
-            VecScale(Source_1,Source_1,1.0/Count_1);
-            VecScale(Source_2,Source_2,1.0/Count_2);
-        }
-        
-        if ((mu_2 < mu_1)||(mu_2<=0.0)||(mu_1<=0.0))
-            UG_THROW("Viscosity in phase 1 is lower that phase 2");
-        
-
-    }
-    
-
     //    cache values
     number vViscoPerDiffLenSq[numIp];
     MathVector<dim> SOURCE[numIp];
-    bool interface_change[numIp];
     
     number vNormStdVelPerConvLen[numIp];
     
@@ -1013,52 +932,10 @@ update(const FV1Geometry<TElem, dim>* geo,
         const int from = scvFrom.node_id();
         const int to = scvTo.node_id();
         
-        if (multiphase)
-        {
-            
-            interface_change[ip] = (jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0) ? true : false;
- 
-            
-            if(phase_2[ip])
-            {
-                vViscoPerDiffLenSq[ip] = (mu_2) * diff_length_sq_inv(ip);
-                if(boolSource) SOURCE[ip] = Source_2;
-            }
-            else
-            {
-                vViscoPerDiffLenSq[ip] = (mu_1) * diff_length_sq_inv(ip);
-                if(boolSource) SOURCE[ip] = Source_1;
-            }
+		vViscoPerDiffLenSq[ip] = density[ip]*kinVisco[ip] * diff_length_sq_inv(ip);
+		if(boolSource) SOURCE[ip] = Source[ip];
+		
 
-            
-        }
-        else
-        {   
-
-            /*vViscoPerDiffLenSq[ip] = 0.5 * (kinViscoSCV[to] + kinViscoSCV[from] )* diff_length_sq_inv(ip);
-            if(boolSource) SOURCE[ip] = SourceSCV[to];*/
-
-            
-            //(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
-            vViscoPerDiffLenSq[ip] = density[ip]*kinVisco[ip] * diff_length_sq_inv(ip);
-            if(boolSource) SOURCE[ip] = Source[ip];
-            
-            /*vViscoPerDiffLenSq[ip] = (density[ip] / RHO[ip])* kinVisco[ip] * diff_length_sq_inv(ip);
-            if(boolSource) SOURCE[ip] = Source[ip];*/
-            
-            /*if(densitySCV[from]*kinViscoSCV[from] > densitySCV[to]*kinViscoSCV[to])
-            {
-                vViscoPerDiffLenSq[ip] = kinViscoSCV[from] * diff_length_sq_inv(ip);
-                RHO[ip]=densitySCV[from];//(scvFrom.volume()*densitySCV[from]+scvTo.volume()*densitySCV[to]) / (scvFrom.volume()+scvTo.volume());
-                if(boolSource) SOURCE[ip] = Source[ip];
-            }
-            else
-            {
-                vViscoPerDiffLenSq[ip] = kinViscoSCV[to] * diff_length_sq_inv(ip);
-                if(boolSource) SOURCE[ip] = Source[ip];
-                
-            }*/
-        }
         
         if(!bStokes)
         {
@@ -1178,31 +1055,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     
                     //    Pressure part
-                    number sumP = 0.0;
-                    if(multiphase)
-                    {
-                        if( (interface_change[ip]))
-                        {
-                            sumP = -1.0 * alpha3 * (scvf.global_grad(k))[d] ;
-                            //sumP += -1.0 * alpha3 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
-                            //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / RHO[ip];
-                            
-                        }
-                        else
-                        {
-                            sumP = -1.0 * alpha2 * (scvf.global_grad(k))[d] ;
-                            //sumP += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / RHO[ip];
-                        }
-                        
-                        //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  ;
-                        //sumP += -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) ;
-                        
-                    }
-                    else
-                    {
-                        sumP = -1.0 * alpha1 * scvf.global_grad(k)[d]  ;// - 1.0 * scvf.shape(k) * RhoGrad[ip][d] ;
-                        //sumP = -1.0 * alpha1 * (RHO[ip] ) * scvf.global_grad(k)[d];
-                    }
+					number sumP = -1.0 * scvf.global_grad(k)[d]  ;// - 1.0 * scvf.shape(k) *
                     
                     
                     
@@ -1214,529 +1067,20 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     //    set stab shape
                      
-                    /*if ( multiphase&&((jump_shape[scvf.from()]>0 && jump_shape[k]<0) || (jump_shape[scvf.from()]<0 && jump_shape[k]>0)))
-                        sumP = 0.0;*/
                         
                     stab_shape_p(ip, d, k) += sumP / diag;
                     
                     
                     
-                    if(multiphase)
-                    {
-                        number sumPJump =0.0;
-
-                        if ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )
-                            
-                        {
-                            
-                            if( interface_change[ip])
-                            {
-                                
-                                sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) ;
-                                //sumPJump +=  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  ;
-                                //sumPJump +=  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) ;
-                                
-                            }
-                            else
-                            {
-                                
-                                sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) ;
-                                //sumPJump +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) ;
-                            }
-
-                            //sumPJump +=  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
-                            //sumPJump +=  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) ;
-                        }
-
-                            
-                        
-                        //    Add to rhs
-                        rhs += sumPJump * pressure_jump_value(k);
-                        
-                        //stab_shape_p_jump(ip, d, k) = 0.0*sumPJump/diag;
-                        //    Add to contributions of the pressure jump at corner k with respect the corner pressure at node SH2
-                        for(size_t k2 = 0; k2 < scvf.num_sh(); ++k2)
-                        {
-                            stab_shape_p(ip, d, k2) += sumPJump * pressure_jump_shape_p(k,k2) / diag;
-                            for(int d1 = 0; d1 < dim; ++d1)
-                            {
-                                stab_shape_vel(ip, d, d1, k2) += sumPJump * pressure_jump_shape_vel( k,  d1, k2) / diag;
-
-                            }
-                        }
-                        
-                        /*number sumSlipVel = 0.0;
-                        
-                        if (  ((phase_2[ip] && jump_shape[k]<0) || (!phase_2[ip] && jump_shape[k]>0) )   )
-                        {
-                            sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
-                            //sumSlipVel = -1.0 * vViscoPerDiffLenSq[ip] * scvf.shape(k) * (densitySCV[k] / RHO[ip]) * jump_shape[k];
-                        }
-                        
-                        rhs += sumSlipVel * tang_vel(k,d);
-                        //stab_shape_slip_vel(ip, d, d, k) = 0.0*sumSlipVel/diag;
-                        
-                        for(size_t k2 = 0; k2 < scvf.num_sh(); ++k2)
-                        {
-                            for(int d1 = 0; d1 < dim; ++d1)
-                            {
-                                stab_shape_vel(ip, d, d1, k2) += sumSlipVel * tang_vel_shape_vel( k,  d,  d1,  k2) / diag;
-
-                            }
-                        }*/
-            
-                    }
-
-                        
-
-                    
-                    
                 }
                 
                 //    Finally, the can invert this row
                 stab_vel(ip)[d] = rhs / diag;
-                //printf("Bug7 \n");
-                
             }
-            //if(multiphase && (interface_change[ip]))
-            if(false)
-            {
-
-                
-                
-                
-                MathVector<dim> DX = normal[0];
-                number Factor1 = 1.0;//Magnitud;//Vec2/Vec1;
-
-                
-                VecScale(stab_vel(ip)  ,  DX,  Factor1 * VecProd(DX,stab_vel(ip)));
-
-                
-                for(size_t k = 0; k < scvf.num_sh(); ++k)
-                {
-                    number ValueV = 0.0;
-                    number ValueP = 0.0;
-                    
-                    for(int d1 = 0; d1 < dim; d1++)
-                    {
-                        ValueP += stab_shape_p(ip, d1, k) * DX[d1];
-                        ValueV = 0.0;
-                        
-                        for(int d2 = 0; d2 < dim; d2++)
-                        {
-                            ValueV       += stab_shape_vel(ip, d2, d1, k)      * DX[d2];
-                        }
-                        for(int d2 = 0; d2 < dim; d2++)
-                        {
-                            stab_shape_vel(ip, d2, d1, k) = Factor1 * ValueV * DX[d2];
-                            //stab_shape_vel(ip, d2, d1, k) = Factor1 * stab_shape_vel(ip, d2, d1, k);
-                        }
-                        
-                    }
-                    
-                    for(int d1 = 0; d1 < dim; d1++)
-                    {
-                        stab_shape_p(ip, d1, k) = Factor1 * ValueP * DX[d1];
-                        //stab_shape_p(ip, d1, k) = Factor1 * stab_shape_p(ip, d1, k);
-                    }
-
-                    
-                }
-                
-                
-            }
-            
         }
     }
-    /*
-     number sumVel2;
-     if ( d == d2)
-         sumVel2 = scvf.shape(k);
-     else
-         sumVel2 = 0.0;
-     //sumVel2 = scvf.shape(k) * normal[k][d2] *normal[k][d];
-     */
-
 }
-/*{
-    if(multiphase)
-        UG_THROW("Slip Vel Jump Not implemented for fields_2 stabilization.");
-    if( non_zero_shape_ip())
-    {
-        UG_THROW("Not implemented for ip velocities depending on other ip.");
-    }
-    
-    //    abbreviation for pressure
-    static const size_t _P_ = dim;
-    
-    //    Some constants
-    static const size_t numIp = FV1Geometry<TElem, dim>::numSCVF;
-    static const size_t numSh = FV1Geometry<TElem, dim>::numSCV;
-    
-    //    compute upwind (no convective terms for the Stokes eq. => no upwind)
-    if (! bStokes) this->compute_upwind(geo, vStdVel);
-    
-    //    compute diffusion length
-    this->compute_diff_length(*geo);
-    
-    if(!multiphase)
-    {
-        
-        //    cache values
-        number vViscoPerDiffLenSq[numIp];
-        for(size_t ip = 0; ip < numIp; ++ip)
-        {
-            vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
-        }
-        
-        number vNormStdVelPerConvLen[numIp];
-        if(!bStokes)
-            for(size_t ip = 0; ip < numIp; ++ip)
-                vNormStdVelPerConvLen[ip] = VecTwoNorm(vStdVel[ip]) / upwind_conv_length(ip);
-        
-        //    Find out if upwinded velocities depend on other ip velocities. In that case
-        //    we have to solve a matrix system. Else the system is diagonal and we can
-        //    compute the inverse directly
-        
-        //    diagonal case (i.e. upwind vel depend only on corner vel or no upwind)
-        
-        //    We can solve the systems ip by ip
-        for(size_t ip = 0; ip < numIp; ++ip)
-        {
-            //    get SubControlVolumeFace
-            const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
-            
-            //    First, we compute the contributions to the diagonal
-            //    Note: - There is no contribution of the upwind vel to the diagonal
-            //            in this case, only for non-diag problems
-            //          - The diag does not depend on the dimension
-            
-            //    Diffusion part
-            number diag = vViscoPerDiffLenSq[ip];
-            
-            //    Time part
-            if(pvCornerValueOldTime != NULL)
-            {
-                    diag += 1./dt;
-            }
-            
-            
-            //    Convective Term (no convective terms in the Stokes eq.)
-            if (! bStokes)
-                diag += vNormStdVelPerConvLen[ip];
-            
-            //     Loop components of velocity
-            for(size_t d = 0; d < (size_t)dim; d++)
-            {
-                //    Now, we can assemble the rhs. This rhs is assembled by all
-                //    terms, that are non-dependent on the ip vel.
-                //    Note, that we can compute the stab_shapes on the fly when setting
-                //    up the system.
-                
-                //    Source
-                number rhs = 0.0;
-                if(Source.data_given())
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
-                
-                //    Time
-                if(pvCornerValueOldTime != NULL)
-                {
-                    //    interpolate old time step
-                    number oldIPVel = 0.0;
-                    for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                        oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
-                    
-                    //    add to rhs
-                    rhs += oldIPVel / dt;
-                }
-                
-                //    loop shape functions
-                for(size_t k = 0; k < scvf.num_sh(); ++k)
-                {
-                    //    Diffusion part
-                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-                    
-                    //    Convective term
-                    if (! bStokes) // no convective terms in the Stokes eq.
-                        sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
-                    
-                    //    Add to rhs
-                    rhs += sumVel * vCornerValue(d, k);
-                    
-                    //    set stab shape
-                    stab_shape_vel(ip, d, d, k) = sumVel / diag;
-                    for(size_t d2 = 0; d2 < dim; ++d2)
-                    {
-                        if(d2 == d) continue;
-                        stab_shape_vel(ip, d, d2, k) = 0.0;
-                    }
-                    
-                    
-                    //    Pressure part
-                    const number sumP = -1.0 * (scvf.global_grad(k))[d] / density[ip];
-                    
-                    //    Add to rhs
-                    rhs += sumP * vCornerValue(_P_, k);
-                    
-                    //    set stab shape
-                    stab_shape_p(ip, d, k) = sumP / diag;
-                    
-                    
-                }
-                
-                //    Finally, the can invert this row
-                stab_vel(ip)[d] = rhs / diag;
-            }
-        }
-        // end switch for non-diag
-    }
-    else
-    {
-                
-        number mu_2 = 0.0, mu_1 = 0.0;
-        
-        
-        number visc1 = -10000000, visc2 = -10000000;
-        
-        for(size_t sh = 0; sh < numSh; ++sh)
-        {
-            if (jump_shape[sh]>0)
-            {
-                visc2 = fmax( visc2, densitySCV[sh] * kinViscoSCV[sh]);
-            }
-            else
-            {
-                visc1 = fmax( visc1, -densitySCV[sh] * kinViscoSCV[sh]);
-            }
-            
-        }
-        
-        mu_2 = visc2;
-        mu_1 = -visc1;
-        
-        if ((mu_2 < mu_1)||(mu_2<0.0)||(mu_1<0.0))
-            UG_THROW("Viscosity in phase 1 is lower that phase 2");
-        
-        
-        //    cache values
-        number vViscoPerDiffLenSq[numIp];
-        number vNormStdVelPerConvLen[numIp];
-        bool interface_change[numIp];
-        for(size_t ip = 0; ip < numIp; ++ip)
-        {
-            const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
-            if(jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0)
-            {
-                interface_change[ip] = true;
-                vViscoPerDiffLenSq[ip] = 1.0;
-            }
-            else
-            {
-                vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
-                interface_change[ip] = false;
-            }
-            if(!bStokes)
-                vNormStdVelPerConvLen[ip] = VecTwoNorm(vStdVel[ip]) / upwind_conv_length(ip);
-            
-        }
-        
-        
-        
-        //    We can solve the systems ip by ip
-        for(size_t ip = 0; ip < numIp; ++ip)
-        {
-            //    get SubControlVolumeFace
-            const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
-            
-            //    First, we compute the contributions to the diagonal
-            //    Note: - There is no contribution of the upwind vel to the diagonal
-            //            in this case, only for non-diag problems
-            //          - The diag does not depend on the dimension
-            if(!interface_change[ip])
-            {
-                //    Diffusion part
-                    number diag = vViscoPerDiffLenSq[ip];
-                
-                //    Time part
-                if(pvCornerValueOldTime != NULL)
-                {
-                    diag += 1./dt;
-                }
-                
-                
-                //    Convective Term (no convective terms in the Stokes eq.)
-                if (! bStokes)
-                    diag += vNormStdVelPerConvLen[ip];
-                
-                //     Loop components of velocity
-                for(size_t d = 0; d < (size_t)dim; d++)
-                {
-                    //    Now, we can assemble the rhs. This rhs is assembled by all
-                    //    terms, that are non-dependent on the ip vel.
-                    //    Note, that we can compute the stab_shapes on the fly when setting
-                    //    up the system.
-                    
-                    //    Source
-                    number rhs = 0.0;
-                    if(Source.data_given())
-                    {
-
-                        rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
-                    }
-                    
-                    //    Time
-                    if(pvCornerValueOldTime != NULL)
-                    {
-                        //    interpolate old time step
-                        number oldIPVel = 0.0;
-                        for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                            oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
-                        
-                        //    add to rhs
-                        rhs += oldIPVel / dt;
-                    }
-            
-                    //    loop shape functions
-                    for(size_t k = 0; k < scvf.num_sh(); ++k)
-                    {
-                        //    Diffusion part
-                        number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-                        
-                        //    Convective term
-                        if (! bStokes ) // no convective terms in the Stokes eq.
-                            sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
-                        
-                        //    Add to rhs
-                        rhs += sumVel * vCornerValue(d, k);
-                        
-                        //    set stab shape
-                        stab_shape_vel(ip, d, d, k) = sumVel / diag;
-                        
-                        for(size_t d2 = 0; d2 < dim; ++d2)
-                        {
-                            if(d2 == d) continue;
-                            stab_shape_vel(ip, d, d2, k) = 0.0;
-                        }
-                        
-                        
-                        
-                        
-                        
-                        number sumP;
-                        
-                        number alpha = 1.0;
-                        
-                        if (jump_shape[scvf.from()] * jump_shape[k]<0.0)
-                            alpha = 1.0;
-                        
-                        sumP = -1.0 * alpha * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
-                            
-
-                        
-                        //    Add to rhs
-                        rhs += sumP * vCornerValue(_P_, k);
-                        
-                        //    set stab shape
-                        stab_shape_p(ip, d, k) = sumP / diag;
-                        
-                        
-                        number sumPJump =0.0;
-                         
-                        if (jump_shape[scvf.from()]>0.0)
-                        {
-                            
-                            if (jump_shape[k]<0.0)
-                                sumPJump =  jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / density[ip];
-                            else
-                                sumPJump = 0.0;
-                            
-                        }
-                        else
-                        {
-                            if (jump_shape[k]>0.0)
-                                sumPJump =  jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) / density[ip];
-                            else
-                                sumPJump = 0.0;
-                        }
-                        
-                        sumPJump *= alpha;
-                        //    Add to rhs
-                        rhs += sumPJump * (pressure_jump[k]);
-                        stab_shape_p_jump(ip, d, k) = sumPJump/diag;
-                        
-                        
-                    }
-                    
-                    //    Finally, the can invert this row
-                    stab_vel(ip)[d] = rhs / diag;
-                }
-            }
-            else
-            {
-
-                            
-                //     Loop components of velocity
-                for(size_t d = 0; d < (size_t)dim; d++)
-                {
-                    //    Now, we can assemble the rhs. This rhs is assembled by all
-                    //    terms, that are non-dependent on the ip vel.
-                    //    Note, that we can compute the stab_shapes on the fly when setting
-                    //    up the system.
-                    
-                    //    Source
-                    number rhs = 0.0;
-
-                    
-                    //    loop shape functions
-                    for(size_t k = 0; k < scvf.num_sh(); ++k)
-                    {
-                        
-                        for(size_t d2 = 0; d2 < dim; ++d2)
-                        {
-                            number sumVel2;
-                            if ( d == d2)
-                                sumVel2 = scvf.shape(k);
-                            else
-                                sumVel2 = 0.0;
-                            sumVel2 = scvf.shape(k) * normal[k][d2] *normal[k][d];
-
-                            
-                            rhs += sumVel2 * vCornerValue(d2, k);
-                            
-                            
-                            stab_shape_vel(ip, d, d2, k) = sumVel2;
-                        }
-                        
-                        
-                        number sumP;
-                        
-                        //    Pressure part
-
-                        sumP = 0.0 ;
-                        
-                        //    set stab shape
-                        stab_shape_p(ip, d, k) = sumP ;
-                        
-                        
-                        number sumPJump =0.0;
-
-                        //    Add to rhs
-
-                        stab_shape_p_jump(ip, d, k) = sumPJump;
-                        
-                    }
-                    
-                    //    Finally, the can invert this row
-                    stab_vel(ip)[d] = rhs ;
-                }
-            }
-        }
-        
-    }
-}*/
                                         
-
-
 
 template <>
 void NavierStokesFIELDS_2_Stabilization<1>::register_func()
@@ -1780,15 +1124,10 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number jump_shape[],
-       const MathVector<dim> normal[],
        const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
-       const LocalVector* pvCornerValueOldTime, number dt,
-       const number density_ref,
-       const bool multiphase,
-       const bool phase_2[])
+       const LocalVector* pvCornerValueOldTime, number dt)
 {
     if( non_zero_shape_ip())
     {
@@ -1811,69 +1150,15 @@ update(const FV1Geometry<TElem, dim>* geo,
     //    compute diffusion length
     this->compute_diff_length(*geo);
     
-    number mu_2 = 0.0, mu_1 = 0.0;
-    number visc1 = -10000000, visc2 = -10000000;
-    
-    number alpha1 = 1.0;
-    number alpha2 = 1.0;
-    number alpha3 = 1.0;
-    
-
-    
-    if (multiphase)
-    {
-
-        
-        for(size_t sh = 0; sh < numSh; ++sh)
-        {
-            if (jump_shape[sh]>0)
-            {
-                visc2 = fmax( visc2, densitySCV[sh] * kinViscoSCV[sh]);
-            }
-            else
-            {
-                visc1 = fmax( visc1, -densitySCV[sh] * kinViscoSCV[sh]);
-            }
-            
-        }
-        
-        mu_2 = visc2;
-        mu_1 = -visc1;
-        
-        if ((mu_2 < mu_1)||(mu_2<0.0)||(mu_1<0.0))
-            UG_THROW("Viscosity in phase 1 is lower that phase 2");
-    }
-    
-
     //    cache values
     number vViscoPerDiffLenSq[numIp];
-    bool interface_change[numIp];
     
     number vNormStdVelPerConvLen[numIp];
     number vNormStdVelPerDownLen[numIp];
     
     for(size_t ip = 0; ip < numIp; ++ip)
     {
-        if (multiphase)
-        {
-            const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
-            if(jump_shape[scvf.to()]*jump_shape[scvf.from()]<0.0)
-            {
-                interface_change[ip] = true;
-            }
-                
-            else
-            {
-                interface_change[ip] = false;
-            }
-            if (phase_2[ip])
-                vViscoPerDiffLenSq[ip] = (mu_2) * diff_length_sq_inv(ip);
-            else
-                vViscoPerDiffLenSq[ip] = (mu_1) * diff_length_sq_inv(ip);
-            
-        }
-        else
-            vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
+		vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
         
         if(!bStokes)
         {
@@ -1901,275 +1186,105 @@ update(const FV1Geometry<TElem, dim>* geo,
         //    get SubControlVolumeFace
         const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
         
-        if (!multiphase )
-        {
-
-            
-            //    First, we compute the contributions to the diagonal
-            //    Note: - There is no contribution of the upwind vel to the diagonal
-            //            in this case, only for non-diag problems
-            //          - The diag does not depend on the dimension
-            
-            //    the diagonal entry
-            number diag = vViscoPerDiffLenSq[ip];
-            
-            //    Time part
-            if(pvCornerValueOldTime != NULL)
-                diag += 1./dt;
-            
-            //    Convective Term  (no convective terms in the Stokes eq.)
-            if (! bStokes)
-                diag += vNormStdVelPerConvLen[ip];
-            
-            //     Loop components of velocity
-            for(int d = 0; d < dim; d++)
-            {
-                //    Now, we can assemble the rhs. This rhs is assembled by all
-                //    terms, that are non-dependent on the ip vel.
-                //    Note, that we can compute the stab_shapes on the fly when setting
-                //    up the system.
-                
-                //    Source
-                number rhs = 0.0;
-                if(Source.data_given())
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
-                
-                //    Time
-                if(pvCornerValueOldTime != NULL)
-                {
-                    //    interpolate old time step
-                    number oldIPVel = 0.0;
-                    for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                        oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
-                    
-                    //    add to rhs
-                    rhs += oldIPVel / dt;
-                }
-                
-                //    loop shape functions
-                for(size_t k = 0; k < scvf.num_sh(); ++k)
-                {
-                    //    Diffusion part
-                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-                    
-                    //    Convective term (no convective terms in the Stokes eq.)
-                    if (! bStokes)
-                    {
-                        sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
-                        
-                        sumVel += vNormStdVelPerDownLen[ip] *
-                        (downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
-                    }
-                    
-                    for(int d2 = 0; d2 < dim; ++d2)
-                    {
-                        if(d2 == d) continue;
-                        
-                        sumVel -= vStdVel[ip][d2] * (scvf.global_grad(k))[d2];
-                    }
-                    
-                    //    Add to rhs
-                    rhs += sumVel * vCornerValue(d, k);
-                    
-                    //    set stab shape
-                    stab_shape_vel(ip, d, d, k) = sumVel / diag;
-                    
-                    for(int d2 = 0; d2 < dim; ++d2)
-                    {
-                        if(d2 == d) continue;
-                        
-                        const number sumVel2 = vStdVel[ip][d] * (scvf.global_grad(k))[d2];
-                        
-                        rhs += sumVel2 * vCornerValue(d2, k);
-                        
-                        stab_shape_vel(ip, d, d2, k) = sumVel2 / diag;
-                    }
-                    
-                    //    Pressure part
-                    number sumP;
-                    
-                    sumP = -1.0 * alpha1 * (scvf.global_grad(k))[d]  / density[ip];
-                    
-                    //    Add to rhs
-                    rhs += sumP * vCornerValue(_P_, k);
-                    
-                    //    set stab shape
-                    stab_shape_p(ip, d, k) = sumP / diag;
-                    
-                    number sumPJump =0.0;
-                    UG_THROW("You must update this as Fileds 2, sump v jump shape to the stab shape");
-                    //stab_shape_p_jump(ip, d, k) = sumPJump/diag;
-                }
-                
-                //    Finally, the can invert this row
-                stab_vel(ip)[d] = rhs / diag;
-                
-            }
-        }
-        else
-        {
-            
-            
-            //    First, we compute the contributions to the diagonal
-            //    Note: - There is no contribution of the upwind vel to the diagonal
-            //            in this case, only for non-diag problems
-            //          - The diag does not depend on the dimension
-            
-            //    the diagonal entry
-            number diag = vViscoPerDiffLenSq[ip];
-            
-            //    Time part
-            if(pvCornerValueOldTime != NULL)
-                diag += 1./dt;
-            
-            //    Convective Term  (no convective terms in the Stokes eq.)
-            if (! bStokes)
-                diag += vNormStdVelPerConvLen[ip];
-            
-
-            
-            //     Loop components of velocity
-            for(int d = 0; d < dim; d++)
-            {
-                //    Now, we can assemble the rhs. This rhs is assembled by all
-                //    terms, that are non-dependent on the ip vel.
-                //    Note, that we can compute the stab_shapes on the fly when setting
-                //    up the system.
-                
-                //    Source
-                number rhs = 0.0;
-                if(Source.data_given())
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
-                //rhs = (  ( density[ip]-density_ref) / density[ip]) * VecProd(Source[ip], normal[ip]) * normal[ip][d];
-                
-                //    Time
-                if(pvCornerValueOldTime != NULL)
-                {
-                    //    interpolate old time step
-                    number oldIPVel = 0.0;
-                    for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                        
-                            oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
-                    //for(int d2 = 0; d2 < dim; d2++)
-                    //oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d2, sh) * normal [ip][d2] * normal[ip][d];
-                    
-                    
-                    //    add to rhs
-                    rhs += oldIPVel / dt;
-                }
-                
-                //    loop shape functions
-                for(size_t k = 0; k < scvf.num_sh(); ++k)
-                {
-                    //    Diffusion part
-                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-                    
-                    //    Convective term (no convective terms in the Stokes eq.)
-                    if (! bStokes)
-                    {
-                        sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
-                        
-                        sumVel += vNormStdVelPerDownLen[ip] *
-                        (downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
-                    }
-                    
-                    for(int d2 = 0; d2 < dim; ++d2)
-                    {
-                        if(d2 == d) continue;
-                        
-                        sumVel -= vStdVel[ip][d2] * (scvf.global_grad(k))[d2];
-                    }
-                    
-                    //    Add to rhs
-                    rhs += sumVel * vCornerValue(d, k);
-                    
-                    //    set stab shape
-                    stab_shape_vel(ip, d, d, k) = sumVel / diag;
-                    
-                    for(int d2 = 0; d2 < dim; ++d2)
-                    {
-                        if(d2 == d) continue;
-                        
-                        const number sumVel2 = vStdVel[ip][d] * (scvf.global_grad(k))[d2];
-                        
-                        rhs += sumVel2 * vCornerValue(d2, k);
-                        
-                        stab_shape_vel(ip, d, d2, k) = sumVel2 / diag;
-                    }
-                    
-                    //    Pressure part
-                    number sumP = 0.0;
-                    if (interface_change[ip])
-                    {
-                        sumP = -1.0 * alpha3 * (scvf.global_grad(k)[d] ) / density[ip];
-                        //sumP += -1.0 * alpha3 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
-                        //sumP += -1.0 * alpha3 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
-                        
-                    }
-                    else
-                    {
-                        sumP =  -1.0 * alpha2 * (scvf.global_grad(k)[d] ) / density[ip];
-                        //sumP += -1.0 * alpha2 * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
-                        //sumP = -1.0 * alpha2 * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
-                    }
-                    
-                    //    Add to rhs
-                    rhs += sumP * vCornerValue(_P_, k);
-                    
-                    //    set stab shape
-                    stab_shape_p(ip, d, k) = sumP / diag;
-                    
-                    number sumPJump =0.0;
-                    
-                    
-                    if (interface_change[ip] )
-                    {
-                        if((phase_2[ip] && jump_shape[k]<0.0) || (!phase_2[ip] && jump_shape[k]>0.0) )
-                        {
-                            //sumPJump =  alpha3 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d] ;
-                            //sumPJump +=  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d])/ density[ip];
-                            sumPJump =  alpha3 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
-                        }
-
-                    }
-                    else
-                    {
-                        if ((phase_2[ip] && jump_shape[k]<0.0) || (!phase_2[ip] && jump_shape[k]>0.0))
-                        {
-                            sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d] ) / density[ip];
-                            //sumPJump =  alpha2 * jump_shape[k] * VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]  / density[ip];
-                            //sumPJump =  alpha2 * jump_shape[k] * (scvf.global_grad(k)[d]  - VecProd(scvf.global_grad(k), normal[k] ) * normal[k][d]) ;
-                        }
-                        
-                    }
-                        
-                    //    Add to rhs
-                    UG_THROW("You must update this as Fileds 2, chnage the jump input");
-                    {
-                        //rhs += sumPJump *(pressure_jump[k]);
-                        
-                        
-                        //stab_shape_p_jump(ip, d, k) = sumPJump/diag;
-                    }
-                    
-                    
-                    
-                    number sumSlipVel = 0.0;
-                    if ((phase_2[ip] && jump_shape[k]<0.0) )
-                        sumSlipVel = vViscoPerDiffLenSq[ip] * scvf.shape(k) * jump_shape[k];
-                    UG_THROW("You must update this as Fileds 2, chnage the slip vel input");
-                    {
-                        //rhs += sumSlipVel * SlipVel[k][d];
-                        //stab_shape_slip_vel(ip, d, d, k) = sumSlipVel/diag;
-                    }
-
-                }
-                
-                //    Finally, the can invert this row
-                stab_vel(ip)[d] = rhs / diag;
-                
-            }
-        }
+		//    First, we compute the contributions to the diagonal
+		//    Note: - There is no contribution of the upwind vel to the diagonal
+		//            in this case, only for non-diag problems
+		//          - The diag does not depend on the dimension
+		
+		//    the diagonal entry
+		number diag = vViscoPerDiffLenSq[ip];
+		
+		//    Time part
+		if(pvCornerValueOldTime != NULL)
+			diag += 1./dt;
+		
+		//    Convective Term  (no convective terms in the Stokes eq.)
+		if (! bStokes)
+			diag += vNormStdVelPerConvLen[ip];
+		
+		//     Loop components of velocity
+		for(int d = 0; d < dim; d++)
+		{
+			//    Now, we can assemble the rhs. This rhs is assembled by all
+			//    terms, that are non-dependent on the ip vel.
+			//    Note, that we can compute the stab_shapes on the fly when setting
+			//    up the system.
+			
+			//    Source
+			number rhs = 0.0;
+			if(Source.data_given())
+				rhs = (   density[ip] / density[ip]) * Source[ip][d];
+			
+			//    Time
+			if(pvCornerValueOldTime != NULL)
+			{
+				//    interpolate old time step
+				number oldIPVel = 0.0;
+				for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+					oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+				
+				//    add to rhs
+				rhs += oldIPVel / dt;
+			}
+			
+			//    loop shape functions
+			for(size_t k = 0; k < scvf.num_sh(); ++k)
+			{
+				//    Diffusion part
+				number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+				
+				//    Convective term (no convective terms in the Stokes eq.)
+				if (! bStokes)
+				{
+					sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+					
+					sumVel += vNormStdVelPerDownLen[ip] *
+					(downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
+				}
+				
+				for(int d2 = 0; d2 < dim; ++d2)
+				{
+					if(d2 == d) continue;
+					
+					sumVel -= vStdVel[ip][d2] * (scvf.global_grad(k))[d2];
+				}
+				
+				//    Add to rhs
+				rhs += sumVel * vCornerValue(d, k);
+				
+				//    set stab shape
+				stab_shape_vel(ip, d, d, k) = sumVel / diag;
+				
+				for(int d2 = 0; d2 < dim; ++d2)
+				{
+					if(d2 == d) continue;
+					
+					const number sumVel2 = vStdVel[ip][d] * (scvf.global_grad(k))[d2];
+					
+					rhs += sumVel2 * vCornerValue(d2, k);
+					
+					stab_shape_vel(ip, d, d2, k) = sumVel2 / diag;
+				}
+				
+				//    Pressure part
+				number sumP;
+				
+				sumP = -1.0 * (scvf.global_grad(k))[d]  / density[ip];
+				
+				//    Add to rhs
+				rhs += sumP * vCornerValue(_P_, k);
+				
+				//    set stab shape
+				stab_shape_p(ip, d, k) = sumP / diag;
+				
+				number sumPJump =0.0;
+				UG_THROW("You must update this as Fileds 2, sump v jump shape to the stab shape");
+			}
+			
+			//    Finally, the can invert this row
+			stab_vel(ip)[d] = rhs / diag;
+			
+		}
     }
 }
 
@@ -2216,18 +1331,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number jump_shape[],
-       const MathVector<dim> normal[],
        const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
-       const LocalVector* pvCornerValueOldTime, number dt, 
-       const number density_ref,
-       const bool multiphase,
-       const bool phase_2[])
+       const LocalVector* pvCornerValueOldTime, number dt)
 {
-    if(multiphase)
-        UG_THROW("Pressure Jump Not implemented for KARIMIAN stabilization.");
     //    abbreviation for pressure
     static const size_t _P_ = dim;
 
@@ -2310,7 +1418,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             //    Source
                 number rhs = 0.0;
                 if(Source.data_given())
-                    rhs = (  ( density[ip]-density_ref) / density[ip]) * Source[ip][d];
+                    rhs = (   density[ip] / density[ip]) * Source[ip][d];
                 
                 
                 if(pvCornerValueOldTime != NULL)
@@ -2441,18 +1549,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number jump_shape[],
-       const MathVector<dim> normal[],
        const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
-       const LocalVector* pvCornerValueOldTime, number dt,
-       const number density_ref,
-       const bool multiphase,
-       const bool phase_2[])
+       const LocalVector* pvCornerValueOldTime, number dt)
 {
-    if(multiphase)
-        UG_THROW("Pressure Jump Not implemented for NoStabiliation stabilization.");
 //    abbreviation for pressure
     static const size_t _P_ = dim;
 
@@ -2543,18 +1644,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number jump_shape[],
-       const MathVector<dim> normal[],
        const number ps[],
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
-       const LocalVector* pvCornerValueOldTime, number dt, 
-       const number density_ref,
-       const bool multiphase,
-       const bool phase_2[])
+       const LocalVector* pvCornerValueOldTime, number dt)
 {
-    if(multiphase)
-        UG_THROW("Pressure Jump Not implemented for  stabilization.");
 //	Some constants
 	static const size_t numIP = FV1Geometry<TElem, dim>::numSCVF;
 	static const size_t numSh = FV1Geometry<TElem, dim>::numSCV;

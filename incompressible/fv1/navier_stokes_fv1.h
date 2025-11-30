@@ -45,7 +45,6 @@
 #include "../incompressible_navier_stokes_base.h"
 #include "../../upwind_interface.h"
 #include "stabilization.h"
-#include "pressure_jump.h"
 #include "../../../MultiphaseFlow/properties_interface.h"
 
 namespace ug{
@@ -174,7 +173,6 @@ class NavierStokesFV1
 
 	///	sets the density
 		void set_density(SmartPtr<CplUserData<number, dim> > user);
-        void set_density_ref(number user){ m_density_ref = user; }
 
 	///	returns density
 		SmartPtr<CplUserData<number, dim> > density() {return m_imDensitySCVF.user_data ();}
@@ -190,10 +188,7 @@ class NavierStokesFV1
         void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
         void set_particle_pressure(SmartPtr<CplUserData<number, dim> > user);
     
-        void set_pressure_jump(SmartPtr<CplUserData<number, dim> > user);
         void set_vol_fraction(SmartPtr<CplUserData<number, dim> > user);
-        void set_jump_shape(SmartPtr<CplUserData<number, dim> > user, const std::string& diffLength);
-        
         void set_interface_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
 
 
@@ -238,10 +233,6 @@ class NavierStokesFV1
 				else UG_THROW("Stabilization must be specified previously.\n");
 			}
 		}
-        void set_interface_value(number user)
-        {
-            m_interface_vol_fraction = user;
-        }
     
     
 			
@@ -631,24 +622,15 @@ class NavierStokesFV1
     
     ///    Data import for Relative velocity
         DataImport<MathVector<dim>, dim> m_imRelativeVelocity;
-        DataImport<MathVector<dim>, dim> m_imDivergenceFlux;
-        DataImport<number, dim> m_imMass;
-    ///    Data import for Particle Pressure term
-        DataImport<number, dim> m_imParticlePressureSCV;
     
     ///    Data import for multiphase flow
-        DataImport<number, dim> m_imJumpShape;
         DataImport<MathVector<dim>, dim> m_imSurfaceNormal;
         DataImport<number, dim> m_imVolumeFraction;
-        number m_interface_vol_fraction = 0.5;
         Interface<dim>* Inter;
 
 	///	Stabilization for velocity in continuity equation
 		SmartPtr<INavierStokesFV1Stabilization<dim> > m_spStab;
     
-    ///    Pressure jump in Pressure field
-        SmartPtr<INavierStokesPressureJump<dim> > m_spPressureJump;
-
 	///	Stabilization for velocity in convective term of momentum equation
 	///	Here, the stabilization is used as an upwinding
 		SmartPtr<INavierStokesFV1Stabilization<dim> > m_spConvStab;
@@ -665,8 +647,6 @@ class NavierStokesFV1
 		using base_type::m_bStokes;
 		using base_type::m_bLaplace;
         using base_type::m_gradDivFactor;
-        number m_density_ref = 0;
-        bool boolGradientPressure = false;
 
 		virtual void init();
 
