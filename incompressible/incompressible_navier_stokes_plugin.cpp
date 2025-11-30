@@ -261,6 +261,7 @@ static void Domain(Registry& reg, string grp)
 			.add_method("velocity_grad", &T::velocity_grad)
             .add_method("pressure", &T::pressure)
             .add_method("pressure_grad", &T::pressure_grad);
+
 		reg.add_class_to_group(name, "IncompressibleNavierStokesBase", tag);
 	}
 

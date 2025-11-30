@@ -248,8 +248,8 @@ class NavierStokesFV1
 	protected:
 
 	using base_type::m_exVelocity;
-    using base_type::m_exVelocity_div;
 	using base_type::m_exVelocityGrad;
+    using base_type::m_exVelocity_ip;
     using base_type::m_exPressure;
     using base_type::m_exPressureGrad;
     
@@ -559,18 +559,6 @@ class NavierStokesFV1
 							  const size_t nip,
 							  bool bDeriv,
 							  std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
-    ///    export value of the velocity
-        template <typename TElem, typename TFVGeom>
-        void ex_div_velocity(MathVector<dim> vValue[],
-                              const MathVector<dim> vGlobIP[],
-                              number time, int si,
-                              const LocalVector& u,
-                              GridObject* elem,
-                              const MathVector<dim> vCornerCoords[],
-                              const MathVector<TFVGeom::dim> vLocIP[],
-                              const size_t nip,
-                              bool bDeriv,
-                              std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
 
 	///	computes the value of the gradient of the velocity
 		template <typename TElem, typename TFVGeom>
@@ -584,6 +572,20 @@ class NavierStokesFV1
 							  const size_t nip,
 							  bool bDeriv,
 							  std::vector<std::vector<MathMatrix<dim,dim> > > vvvDeriv[]);
+	
+    ///    export value of the velocity at ips
+        template <typename TElem, typename TFVGeom>
+        void ex_velocity_ip(MathVector<dim> vValue[],
+                              const MathVector<dim> vGlobIP[],
+                              number time, int si,
+                              const LocalVector& u,
+                              GridObject* elem,
+                              const MathVector<dim> vCornerCoords[],
+                              const MathVector<TFVGeom::dim> vLocIP[],
+                              const size_t nip,
+                              bool bDeriv,
+                              std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
+
     
     ///    export value of the pressure
         template <typename TElem, typename TFVGeom>
@@ -610,8 +612,9 @@ class NavierStokesFV1
                               const size_t nip,
                               bool bDeriv,
                               std::vector<std::vector<MathVector<dim> > > vvvDeriv[]);
-    
-    
+
+	
+	
 		
 	protected:
 	///	Data import for source

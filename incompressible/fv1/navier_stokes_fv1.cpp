@@ -2916,244 +2916,6 @@ ex_nodal_velocity(MathVector<dim> vValue[],
 	}
 };
 
-//    prepares the nodal velocities for the export parameter
-template<typename TDomain>
-template <typename TElem, typename TFVGeom>
-void NavierStokesFV1<TDomain>::
-ex_div_velocity(MathVector<dim> vValue[],
-        const MathVector<dim> vGlobIP[],
-        number time, int si,
-        const LocalVector& u,
-        GridObject* elem,
-        const MathVector<dim> vCornerCoords[],
-        const MathVector<TFVGeom::dim> vLocIP[],
-        const size_t nip,
-        bool bDeriv,
-        std::vector<std::vector<MathVector<dim> > > vvvDeriv[])
-{
-//     Only first order implemented
-    UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
-    
-    if(bDeriv)
-    {
-        for(size_t ip = 0; ip < nip; ++ip)
-            for(size_t c = 0; c < vvvDeriv[ip].size(); ++c)
-                for(size_t sh = 0; sh < vvvDeriv[ip][c].size(); ++sh)
-                    for(size_t d = 0; d < vvvDeriv[ip][c][sh].size(); ++d)
-                        vvvDeriv[ip][c][sh][d] = 0.0;
-
-    }
-
-//     get finite volume geometry
-    static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
-//    reference element
-    typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
-//  reference dimension
-    static const int refDim = ref_elem_type::dim;
-    static const size_t numSCVF = TFVGeom::numSCVF;
-    static const size_t numSh = reference_element_traits<TElem>::reference_element_type::numCorners;
-   
-    if(vLocIP == geo.scvf_local_ips())
-    {
-
-
-    //    check for solutions to pass to stabilization in time-dependent case
-        const LocalVector *pSol = &u, *pOldSol = NULL;
-        number dt = 0.0;
-        if(this->is_time_dependent())
-        {
-        //    get and check current and old solution
-            const LocalVectorTimeSeries* vLocSol = this->local_time_solutions();
-            if(vLocSol->size() != 2)
-                UG_THROW("NavierStokes::add_def_A_elem: "
-                                " Stabilization needs exactly two time points.");
-
-        //    remember local solutions
-            pSol = &vLocSol->solution(0);
-            pOldSol = &vLocSol->solution(1);
-            dt = vLocSol->time(0) - vLocSol->time(1);
-        }
-
-    //    interpolate velocity at ip with standard lagrange interpolation
-        
-        MathVector<dim> StdVel[numSCVF];
-        MathVector<dim> Vel_ip[numSCVF];
-        number Rho_up[numSCVF];
-        number Rho_d[numSCVF];
-       
-        
-        std_vel(  u,  geo,  StdVel, m_imDensitySCV,Rho_up,Rho_d);
-        
-        
-    //    compute stabilized velocities and shapes for continuity equation
-        // \todo: (optional) Here we can skip the computation of shapes, implement?
-        bool interface = false;
-        bool Phase2[numSCVF];
-        
-        number mu_l, rho_l;
-        number mu_g, rho_g;
-        MathVector<dim> Source_l;
-        MathVector<dim> Source_g;
-        
-        if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given())
-        {
-            Inter->template PropertiesJump<TElem>( geo, m_imVolumeFraction, m_imJumpShape, m_imDensitySCV, m_imKinViscositySCV, m_imSourceSCV,numSh, interface, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_l, Source_g, m_interface_vol_fraction);
-            
-            if(interface)
-            {
-                m_spPressureJump->update( &geo, *pSol, StdVel, m_bStokes, m_imSurfaceNormal, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, m_imJumpShape, m_imVolumeFraction, pOldSol, dt, m_density_ref, mu_l, rho_l, Source_l, mu_g, rho_g, Source_g, m_interface_vol_fraction);
-                //const INavierStokesPressureJump<dim>& press_jump = *m_spPressureJump;
-                
-
-            }
-            m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, NULL, m_imDensitySCV, m_imJumpShape.values(), m_imSurfaceNormal.values(), NULL, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt, m_density_ref, interface, Phase2);
-            
-        }
-        else
-            m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, NULL, m_imDensitySCV, NULL, NULL, NULL, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt, m_density_ref, false, NULL);
-        
-        
-        //    get a const (!!) reference to the stabilization
-        const INavierStokesFV1Stabilization<dim>& stab = *m_spStab;
-        
-
-
-        
-    //    Loop Sub Control Volume Faces (SCVF)
-        for (size_t ip = 0; ip < geo.num_scvf(); ++ip)
-        {
-        //     Get current SCVF
-            const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-
-            vValue[ip] = stab.stab_vel(ip);
-
-            if(bDeriv)
-            {
-                //    Loop the shape functions
-                for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                {
-                    
-                    //    Add derivative of stabilized flux w.r.t velocity comp to local matrix
-                    
-                    for(int d1 = 0; d1 < dim; ++d1)
-                    {
-                        if(stab.vel_comp_connected())
-                        {
-                            for(int d2 = 0; d2 < dim; ++d2)
-                            {
-                                vvvDeriv[ip][d2][sh][d1] +=  stab.stab_shape_vel(ip, d1, d2, sh);
-                                
-                            }
-                            
-
-                        }
-                        else
-                        {
-                            vvvDeriv[ip][d1][sh][d1] +=  stab.stab_shape_vel(ip, d1, d1, sh);
-                        }
-                        
-                        //    Add derivative of stabilized flux w.r.t pressure to local matrix
-                        vvvDeriv[ip][_P_][sh][d1] +=  stab.stab_shape_p(ip, d1, sh);
-                        
-                        
-
-                    }
-
-                    
-                }
-            }
-            
-        }
-    }
-//     general case
-    else
-    {
-        std::vector<number> vViscosity(nip);
-        LocalVector* uu = const_cast<LocalVector*>(&u);
-        (*m_imKinViscosity.user_data())(&vViscosity[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uu, NULL);
-
-        
-        const number D = ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
-
-    //    get trial space
-        LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
-
-    //    storage for shape function at ip
-        number vLocShape[numSh];
-
-    //    Reference Mapping
-        MathMatrix<dim, refDim> JTInv;
-        ReferenceMapping<ref_elem_type, dim> mapping(vCornerCoords);
-
-    //    loop ips
-        for(size_t ip = 0; ip < nip; ++ip)
-        {
-        //    evaluate at shapes at ip
-            rTrialSpace.shapes(vLocShape, vLocIP[ip]);
-            
-            number MaxShape = 0.0;
-            size_t node_id = 0;
-            MathVector<dim> stdVel(0.0);
-            bool boolShape = false;
-            
-            if (!m_bStokes)
-            {
-                for(size_t sh = 0; sh < numSh; ++sh)
-                {
-                    
-                    if(vLocShape[sh] > MaxShape)
-                    {
-                        node_id = sh;
-                        MaxShape = vLocShape[sh];
-                        boolShape = true;
-                    }
-                    for(int d = 0; d < dim; ++d)
-                        stdVel[d] += u(d, sh) * vLocShape[sh];
-                    
-
-                }
-
-            }
-            const number ViscScale = vViscosity[ip]/pow(D,2);
-            const number ConvScale = VecLength(stdVel)/D;
-            number inv_scale = ViscScale;
-            if (boolShape) inv_scale += ConvScale;
-
-        //  Loop dimensions
-            for(int d = 0; d < dim; ++d)
-            {
-            //    Loop the shape functions
-                vValue[ip][d] = 0.0;
-                for(size_t sh = 0; sh < numSh; ++sh)
-                {
-                //    Inerpolate the value
-                    vValue[ip][d] += (ViscScale / inv_scale) * u(d, sh) * vLocShape[sh];
-        
-                    if(bDeriv)
-                        vvvDeriv[ip][d][sh] += (ViscScale / inv_scale) * vLocShape[sh];
-                }
-                
-                if ( boolShape)
-                {
-                //    Inerpolate the value
-                    vValue[ip][d] += (ConvScale / inv_scale) * u(d, node_id) ;
-        
-                    if(bDeriv)
-                        vvvDeriv[ip][d][node_id] += (ConvScale / inv_scale) ;
-                }
-
-            }
-            
-            if(bDeriv)
-            {
-                for(size_t sh = 0; sh < numSh; ++sh)
-                {
-                    VecSet(vvvDeriv[ip][_P_][sh],0.0);
-                }
-            }
-        }
-    }
-};
 //	computes the gradient of the velocity for the export parameter
 template<typename TDomain>
 template <typename TElem, typename TFVGeom>
@@ -3373,6 +3135,245 @@ ex_velocity_grad(MathMatrix<dim, dim> vValue[],
 	}
 };
 
+//    computes the velocities at scvf ips for the export parameter
+template<typename TDomain>
+template <typename TElem, typename TFVGeom>
+void NavierStokesFV1<TDomain>::
+ex_velocity_ip(MathVector<dim> vValue[],
+        const MathVector<dim> vGlobIP[],
+        number time, int si,
+        const LocalVector& u,
+        GridObject* elem,
+        const MathVector<dim> vCornerCoords[],
+        const MathVector<TFVGeom::dim> vLocIP[],
+        const size_t nip,
+        bool bDeriv,
+        std::vector<std::vector<MathVector<dim> > > vvvDeriv[])
+{
+//     Only first order implemented
+	UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
+	
+	if(bDeriv)
+	{
+		for(size_t ip = 0; ip < nip; ++ip)
+			for(size_t c = 0; c < vvvDeriv[ip].size(); ++c)
+				for(size_t sh = 0; sh < vvvDeriv[ip][c].size(); ++sh)
+					for(size_t d = 0; d < vvvDeriv[ip][c][sh].size(); ++d)
+						vvvDeriv[ip][c][sh][d] = 0.0;
+
+	}
+
+//     get finite volume geometry
+	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+//    reference element
+	typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
+//  reference dimension
+	static const int refDim = ref_elem_type::dim;
+	static const size_t numSCVF = TFVGeom::numSCVF;
+	static const size_t numSh = reference_element_traits<TElem>::reference_element_type::numCorners;
+   
+	if(vLocIP == geo.scvf_local_ips())
+	{
+
+
+	//    check for solutions to pass to stabilization in time-dependent case
+		const LocalVector *pSol = &u, *pOldSol = NULL;
+		number dt = 0.0;
+		if(this->is_time_dependent())
+		{
+		//    get and check current and old solution
+			const LocalVectorTimeSeries* vLocSol = this->local_time_solutions();
+			if(vLocSol->size() != 2)
+				UG_THROW("NavierStokes::add_def_A_elem: "
+								" Stabilization needs exactly two time points.");
+
+		//    remember local solutions
+			pSol = &vLocSol->solution(0);
+			pOldSol = &vLocSol->solution(1);
+			dt = vLocSol->time(0) - vLocSol->time(1);
+		}
+
+	//    interpolate velocity at ip with standard lagrange interpolation
+		
+		MathVector<dim> StdVel[numSCVF];
+		MathVector<dim> Vel_ip[numSCVF];
+		number Rho_up[numSCVF];
+		number Rho_d[numSCVF];
+	   
+		
+		std_vel(  u,  geo,  StdVel, m_imDensitySCV,Rho_up,Rho_d);
+		
+		
+	//    compute stabilized velocities and shapes for continuity equation
+		// \todo: (optional) Here we can skip the computation of shapes, implement?
+		bool interface = false;
+		bool Phase2[numSCVF];
+		
+		number mu_l, rho_l;
+		number mu_g, rho_g;
+		MathVector<dim> Source_l;
+		MathVector<dim> Source_g;
+		
+		if ( m_imSurfaceNormal.data_given() && m_imJumpShape.data_given())
+		{
+			Inter->template PropertiesJump<TElem>( geo, m_imVolumeFraction, m_imJumpShape, m_imDensitySCV, m_imKinViscositySCV, m_imSourceSCV,numSh, interface, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_l, Source_g, m_interface_vol_fraction);
+			
+			if(interface)
+			{
+				m_spPressureJump->update( &geo, *pSol, StdVel, m_bStokes, m_imSurfaceNormal, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, m_imJumpShape, m_imVolumeFraction, pOldSol, dt, m_density_ref, mu_l, rho_l, Source_l, mu_g, rho_g, Source_g, m_interface_vol_fraction);
+				//const INavierStokesPressureJump<dim>& press_jump = *m_spPressureJump;
+				
+
+			}
+			m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, NULL, m_imDensitySCV, m_imJumpShape.values(), m_imSurfaceNormal.values(), NULL, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt, m_density_ref, interface, Phase2);
+			
+		}
+		else
+			m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, NULL, m_imDensitySCV, NULL, NULL, NULL, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt, m_density_ref, false, NULL);
+		
+		
+		//    get a const (!!) reference to the stabilization
+		const INavierStokesFV1Stabilization<dim>& stab = *m_spStab;
+		
+
+
+		
+	//    Loop Sub Control Volume Faces (SCVF)
+		for (size_t ip = 0; ip < geo.num_scvf(); ++ip)
+		{
+		//     Get current SCVF
+			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+
+			vValue[ip] = stab.stab_vel(ip);
+
+			if(bDeriv)
+			{
+				//    Loop the shape functions
+				for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+				{
+					
+					//    Add derivative of stabilized flux w.r.t velocity comp to local matrix
+					
+					for(int d1 = 0; d1 < dim; ++d1)
+					{
+						if(stab.vel_comp_connected())
+						{
+							for(int d2 = 0; d2 < dim; ++d2)
+							{
+								vvvDeriv[ip][d2][sh][d1] +=  stab.stab_shape_vel(ip, d1, d2, sh);
+								
+							}
+							
+
+						}
+						else
+						{
+							vvvDeriv[ip][d1][sh][d1] +=  stab.stab_shape_vel(ip, d1, d1, sh);
+						}
+						
+						//    Add derivative of stabilized flux w.r.t pressure to local matrix
+						vvvDeriv[ip][_P_][sh][d1] +=  stab.stab_shape_p(ip, d1, sh);
+						
+						
+
+					}
+
+					
+				}
+			}
+			
+		}
+	}
+//     general case
+	else
+	{
+		std::vector<number> vViscosity(nip);
+		LocalVector* uu = const_cast<LocalVector*>(&u);
+		(*m_imKinViscosity.user_data())(&vViscosity[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uu, NULL);
+
+		
+		const number D = ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+
+	//    get trial space
+		LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+
+	//    storage for shape function at ip
+		number vLocShape[numSh];
+
+	//    Reference Mapping
+		MathMatrix<dim, refDim> JTInv;
+		ReferenceMapping<ref_elem_type, dim> mapping(vCornerCoords);
+
+	//    loop ips
+		for(size_t ip = 0; ip < nip; ++ip)
+		{
+		//    evaluate at shapes at ip
+			rTrialSpace.shapes(vLocShape, vLocIP[ip]);
+			
+			number MaxShape = 0.0;
+			size_t node_id = 0;
+			MathVector<dim> stdVel(0.0);
+			bool boolShape = false;
+			
+			if (!m_bStokes)
+			{
+				for(size_t sh = 0; sh < numSh; ++sh)
+				{
+					
+					if(vLocShape[sh] > MaxShape)
+					{
+						node_id = sh;
+						MaxShape = vLocShape[sh];
+						boolShape = true;
+					}
+					for(int d = 0; d < dim; ++d)
+						stdVel[d] += u(d, sh) * vLocShape[sh];
+					
+
+				}
+
+			}
+			const number ViscScale = vViscosity[ip]/pow(D,2);
+			const number ConvScale = VecLength(stdVel)/D;
+			number inv_scale = ViscScale;
+			if (boolShape) inv_scale += ConvScale;
+
+		//  Loop dimensions
+			for(int d = 0; d < dim; ++d)
+			{
+			//    Loop the shape functions
+				vValue[ip][d] = 0.0;
+				for(size_t sh = 0; sh < numSh; ++sh)
+				{
+				//    Inerpolate the value
+					vValue[ip][d] += (ViscScale / inv_scale) * u(d, sh) * vLocShape[sh];
+		
+					if(bDeriv)
+						vvvDeriv[ip][d][sh] += (ViscScale / inv_scale) * vLocShape[sh];
+				}
+				
+				if ( boolShape)
+				{
+				//    Inerpolate the value
+					vValue[ip][d] += (ConvScale / inv_scale) * u(d, node_id) ;
+		
+					if(bDeriv)
+						vvvDeriv[ip][d][node_id] += (ConvScale / inv_scale) ;
+				}
+
+			}
+			
+			if(bDeriv)
+			{
+				for(size_t sh = 0; sh < numSh; ++sh)
+				{
+					VecSet(vvvDeriv[ip][_P_][sh],0.0);
+				}
+			}
+		}
+	}
+};
+//    computes the nodal pressure for the export parameter
 template<typename TDomain>
 template <typename TElem, typename TFVGeom>
 void NavierStokesFV1<TDomain>::
@@ -3486,6 +3487,7 @@ ex_nodal_pressure(number vValue[],
     }
 };
 
+//    computes the gradient of the pressure for the export parameter
 template<typename TDomain>
 template <typename TElem, typename TFVGeom>
 void NavierStokesFV1<TDomain>::
@@ -3670,8 +3672,8 @@ register_func()
     m_imSourceSCV.      set_fct(id, this, &T::template lin_def_sourceSCV<TElem, TFVGeom>);
     
 	m_exVelocity->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_velocity<TElem, TFVGeom>);
-    m_exVelocity_div->template set_fct<T,refDim>(id, this, &T::template ex_div_velocity<TElem, TFVGeom>);
 	m_exVelocityGrad->template set_fct<T,refDim>(id, this, &T::template ex_velocity_grad<TElem, TFVGeom>);
+    m_exVelocity_ip->template set_fct<T,refDim>(id, this, &T::template ex_velocity_ip<TElem, TFVGeom>);
     m_exPressure->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_pressure<TElem, TFVGeom>);
     m_exPressureGrad->template set_fct<T,refDim>(id, this, &T::template ex_pressure_grad<TElem, TFVGeom>);
 }
