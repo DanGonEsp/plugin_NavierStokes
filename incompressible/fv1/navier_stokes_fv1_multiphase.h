@@ -270,10 +270,11 @@ class NavierStokesFV1M
 	protected:
 
 	using base_type::m_exVelocity;
-    using base_type::m_exVelocity_div;
 	using base_type::m_exVelocityGrad;
+	using base_type::m_exVelocity_ip;
     using base_type::m_exPressure;
     using base_type::m_exPressureGrad;
+	
     ///    Export for the PariclePressure
     SmartPtr<DataExport<number,dim> > m_exPsPressure;
     ///    Export for the Particlepressure gradient

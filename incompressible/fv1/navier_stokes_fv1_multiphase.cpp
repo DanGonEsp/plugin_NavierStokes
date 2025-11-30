@@ -4327,8 +4327,8 @@ register_func()
     m_imSourceSCV.      set_fct(id, this, &T::template lin_def_sourceSCV<TElem, TFVGeom>);
     
 	m_exVelocity->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_velocity<TElem, TFVGeom>);
-    m_exVelocity_div->template set_fct<T,refDim>(id, this, &T::template ex_div_velocity<TElem, TFVGeom>);
 	m_exVelocityGrad->template set_fct<T,refDim>(id, this, &T::template ex_velocity_grad<TElem, TFVGeom>);
+	m_exVelocity_ip->template set_fct<T,refDim>(id, this, &T::template ex_div_velocity<TElem, TFVGeom>);
     m_exPressure->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_pressure<TElem, TFVGeom>);
     m_exPressureGrad->template set_fct<T,refDim>(id, this, &T::template ex_pressure_grad<TElem, TFVGeom>);
     m_exVolumeFraction->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_volfraction<TElem, TFVGeom>);
