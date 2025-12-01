@@ -37,6 +37,14 @@
 #include "navier_stokes_base.h"
 #include "upwind.h"
 
+#include "properties_interface.h"
+#include "linker/granular_density_linker.h"
+#include "linker/granular_viscosity_linker.h"
+#include "linker/granular_source_linker.h"
+#include "linker/relative_velocity_linker.h"
+#include "linker/granular_diffusion_linker.h"
+#include "linker/scale_linker.h"
+
 
 using namespace std;
 using namespace ug::bridge;
@@ -141,6 +149,165 @@ static void Dimension(Registry& reg, string grp)
 {
 	string suffix = GetDimensionSuffix<dim>();
 	string tag = GetDimensionTag<dim>();
+	
+//    PropertiesInterface
+	{
+		typedef Interface<dim> T;
+		string name = string("Interface").append(suffix);
+		reg.add_class_<T>(name, grp)
+			.add_method("set_particle_density",  &T::set_particle_density)
+			.add_method("set_air_density",  &T::set_air_density)
+			.add_method("set_fluid_Visc",  &T::set_fluid_Visc)
+			.add_method("set_particle_diameter",  &T::set_particle_diameter)
+			.add_method("set_alpha_max",  &T::set_alpha_max)
+			.add_method("set_alpha_min",  &T::set_alpha_min)
+			.add_method("set_FR",  &T::set_FR)
+			.add_method("set_B_phi",  &T::set_B_phi)
+			.add_method("set_deltaGamma",  &T::set_deltaGamma)
+			.add_method("set_limit",  &T::set_limit)
+			.add_method("set_time_step_factor",  &T::set_time_step_factor)
+			.add_method("set_bool_particle_pressure_force",  &T::set_bool_particle_pressure_force)
+			.add_method("set_bool_consistent_gravity",  &T::set_bool_consistent_gravity)
+			.add_method("set_bool_initialized",  &T::set_bool_initialized)
+			.add_method("set_drag_model",  &T::set_drag_model)
+			.add_method("set_reference_pressure",  &T::set_reference_pressure)
+			.add_method("RelVel_ext",  &T::RelVel_ext)
+			.add_method("RE",  &T::RE)
+			.add_method("CD",  &T::CD)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "Interface", tag);
+	}
+//    Granular Density Linker
+	{
+		typedef GranularDensityLinker<dim> T;
+		typedef DependentUserData<number, dim> TBase;
+		string name = string("GranularDensityLinker").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_volume_fraction", static_cast<void (T::*)(number)>(&T::set_volume_fraction))
+			.add_method("set_volume_fraction", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_volume_fraction))
+			.add_method("set_particle_density",  &T::set_particle_density)
+			.add_method("set_fluid_density",  &T::set_fluid_density)
+			.add_method("set_interface_volume_fraction",  &T::set_interface_volume_fraction)
+			.add_method("set_model",  &T::set_model)
+		
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "GranularDensityLinker", tag);
+	}
+//    GranularViscosityLinker
+	{
+		typedef GranularViscosityLinker<dim> T;
+		typedef DependentUserData<number, dim> TBase;
+		string name = string("GranularViscosityLinker").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_velocity_gradient", &T::set_velocity_gradient)
+			.add_method("set_volume_fraction", static_cast<void (T::*)(number)>(&T::set_volume_fraction))
+			.add_method("set_volume_fraction", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_volume_fraction))
+			.add_method("set_mix_viscosity", static_cast<void (T::*)(number)>(&T::set_mix_viscosity))
+			.add_method("set_mix_viscosity", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_mix_viscosity))
+			.add_method("set_granular_model",  &T::set_granular_model)
+			.add_method("set_particle_density",  &T::set_particle_density)
+			.add_method("set_particle_kinematicVisc",  &T::set_particle_kinematicVisc)
+			.add_method("set_fluid_density",  &T::set_fluid_density)
+			.add_method("set_fluid_Visc",  &T::set_fluid_Visc)
+			.add_method("set_particle_diameter",  &T::set_particle_diameter)
+			.add_method("set_alpha_max",  &T::set_alpha_max)
+			.add_method("set_alpha_min",  &T::set_alpha_min)
+			//.add_method("set_packing_factor",  &T::set_packing_factor)
+			.add_method("set_mix_density", static_cast<void (T::*)(number)>(&T::set_mix_density))
+			.add_method("set_mix_density", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_mix_density))
+			.add_method("set_particle_pressure", static_cast<void (T::*)(number)>(&T::set_particle_pressure))
+			.add_method("set_particle_pressure", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_particle_pressure))
+			.add_method("set_interface_volume_fraction",  &T::set_interface_volume_fraction)
+			.add_method("set_limit",  &T::set_limit)
+			.add_method("set_deltaPs",  &T::set_deltaPs)
+			.add_method("set_deltaI",  &T::set_deltaI)
+			.add_method("set_FricMu_1",  &T::set_FricMu_1)
+			.add_method("set_FricMu_2",  &T::set_FricMu_2)
+			.add_method("set_I_0",  &T::set_I_0)
+			.add_method("set_deltaGamma",  &T::set_deltaGamma)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "GranularViscosityLinker", tag);
+	}
+//    GranularSourceLinker
+	{
+		typedef GranularSourceLinker<dim> T;
+		typedef DependentUserData<MathVector<dim>, dim> TBase;
+		string name = string("GranularSourceLinker").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_mix_density", static_cast<void (T::*)(number)>(&T::set_mix_density))
+			.add_method("set_mix_density", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_mix_density))
+			.add_method("set_particle_density",  &T::set_particle_density)
+			.add_method("set_fluid_density",  &T::set_fluid_density)
+			.add_method("set_gravity",  &T::set_gravity)
+			.add_method("set_cons_gravity",  &T::set_cons_gravity)
+			.add_method("set_phase_parameters", &T::set_phase_parameters)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "GranularSourceLinker", tag);
+	}
+//    RelativeVelocityLinker
+	{
+		typedef RelativeVelocityLinker<dim> T;
+		typedef DependentUserData<MathVector<dim>, dim> TBase;
+		string name = string("RelativeVelocityLinker").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_volume_fraction", static_cast<void (T::*)(number)>(&T::set_volume_fraction))
+			.add_method("set_volume_fraction", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_volume_fraction))
+			.add_method("set_volume_grad", &T::set_volume_grad)
+			.add_method("set_mix_density", static_cast<void (T::*)(number)>(&T::set_mix_density))
+			.add_method("set_mix_density", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_mix_density))
+			.add_method("set_mix_kinematic_viscosity", static_cast<void (T::*)(number)>(&T::set_mix_kinematic_viscosity))
+			.add_method("set_mix_kinematic_viscosity", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_mix_kinematic_viscosity))
+			.add_method("set_einstein_visc", static_cast<void (T::*)(number)>(&T::set_einstein_visc))
+			.add_method("set_einstein_visc", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_einstein_visc))
+			.add_method("set_ps_grad", &T::set_ps_grad)
+			.add_method("set_pressure_grad", &T::set_pressure_grad)
+			.add_method("set_derivative_mask",  &T::set_derivative_mask)
+			.add_method("set_particle_density",  &T::set_particle_density)
+			.add_method("set_fluid_density",  &T::set_fluid_density)
+			.add_method("set_particle_diameter",  &T::set_particle_diameter)
+			.add_method("set_alpha_max",  &T::set_alpha_max)
+			.add_method("set_fluid_viscosity",  &T::set_fluid_viscosity)
+			.add_method("set_gravity",  &T::set_gravity)
+			.add_method("set_vol_limit",  &T::set_vol_limit)
+			.add_method("set_rel_vel",  &T::set_rel_vel)
+			.add_method("set_dragCoeff",  &T::set_dragCoeff)
+			.add_method("activate_relative_vel",  &T::activate_relative_vel)
+			.add_method("set_phase_parameters", &T::set_phase_parameters)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "RelativeVelocityLinker", tag);
+	}
+//    GranularDiffusionLinker
+	{
+		typedef GranularDiffusionLinker<dim> T;
+		typedef DependentUserData<MathMatrix<dim,dim>, dim> TBase;
+		string name = string("GranularDiffusionLinker").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_gamma", static_cast<void (T::*)(number)>(&T::set_gamma))
+			.add_method("set_gamma", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_gamma))
+			.add_method("set_diff_factor",  &T::set_diff_factor)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "GranularDiffusionLinker", tag);
+	}
+//    ScalePressureLinker
+	{
+		typedef ScaleLinker<dim> T;
+		typedef DependentUserData<number, dim> TBase;
+		string name = string("ScaleLinker").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_import_1", static_cast<void (T::*)(number)>(&T::set_import_1))
+			.add_method("set_import_1", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_import_1))
+			.add_method("set_import_2", static_cast<void (T::*)(number)>(&T::set_import_2))
+			.add_method("set_import_2", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_import_2))
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "ScaleLinker", tag);
+	}
 
 //    check whether those classes have already been registered
    {

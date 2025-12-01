@@ -43,7 +43,7 @@
 #include "lib_disc/spatial_disc/user_data/data_import.h"
 
 #include "../../bnd/no_normal_stress_outflow_base.h"
-#include "../../../../MultiphaseFlow/properties_interface.h"
+#include "../../../properties_interface.h"
 
 namespace ug{
 namespace NavierStokes{

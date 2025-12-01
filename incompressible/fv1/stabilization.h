@@ -40,7 +40,7 @@
 #include "../../upwind_interface.h"
 #include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
 #include "lib_disc/spatial_disc/user_data/data_import.h"
-#include "../../../MultiphaseFlow/properties_interface.h"
+#include "../../properties_interface.h"
 
 namespace ug{
 namespace NavierStokes{

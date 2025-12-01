@@ -45,7 +45,7 @@
 #include "../incompressible_navier_stokes_base.h"
 #include "../../upwind_interface.h"
 #include "stabilization.h"
-#include "../../../MultiphaseFlow/properties_interface.h"
+#include "../../properties_interface.h"
 
 namespace ug{
 namespace NavierStokes{
