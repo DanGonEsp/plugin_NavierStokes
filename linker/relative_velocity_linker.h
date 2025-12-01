@@ -456,7 +456,7 @@ class RelativeVelocityLinker
                 
                 W1 = m_Wr*Ratio;
                 size_t iter = 0;
-                Inter->RelVel(W2,  iter,      vEinstVisc,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1.0);
+                Inter->RelVel(W2,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1.0);
                 //Inter->RelVel(W2,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1e-03);
                 //Re = Inter->RE( MU2, vMixDensity, dp,  W2);
                 //Cd = Inter->CD( Re,  Inter->DragModel());
