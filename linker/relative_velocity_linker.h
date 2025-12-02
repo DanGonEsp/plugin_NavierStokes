@@ -445,9 +445,9 @@ class RelativeVelocityLinker
             //number W6 = 0.0;
             //number W7 = 0.0;
             //number Re,Cd;
-            //const number phi=fmin(alpha_max-1e-04, fmax(vVolume,0.0));
-            //Ratio = (1-phi)/((1+pow(phi,1/3))*exp(5*phi/(3*(1-phi))))-vol*0.017811336463534444;
-            //const number Ratio=(1.0-phi)/((1.0+pow(phi,1.0/3.0))*exp(5.0*phi/(3.0*(1.0-phi))));
+            const number phi=fmin(alpha_max-1e-04, fmax(vVolume,0.0));
+            //const number Ratio = (1-phi)/((1+pow(phi,1/3))*exp(5*phi/(3*(1-phi))))-vol*0.017811336463534444;
+            const number Ratio=(1.0-phi)/((1.0+pow(phi,1.0/3.0))*exp(5.0*phi/(3.0*(1.0-phi))));
             const number MU2 = vMixDensity*vMixKinVisc;
             //Cd_phi=Cd;//*pow(Ratio,2)*(1-phi)/(1+pow(phi,1/3));
             //vol_grad=sqrt(VecProd(vVolumeGrad[ip], vVolumeGrad[ip]));
@@ -492,7 +492,7 @@ class RelativeVelocityLinker
             }*/
             if(ff && EvalAndDeriv)
             {
-                printf("W1 = %f,  W2 = %f, Log2 = %f,  W3 = %f, Log3 = %f, phi = %f,  Ratio = %f\n", W1, W2, log10(fabs(W2)), W3, log10(fabs(W3)), phi, Ratio);
+                printf("W1 = %f, phi = %f,  Ratio = %f\n", W1, phi, Ratio);
             }
             
             RelVel=W;
