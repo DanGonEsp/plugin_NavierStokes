@@ -226,6 +226,8 @@ class NavierStokesFV1M
     ///    sets the upwind based on a string identifier
         void set_upwind_vol(const std::string& name)
             {m_spConvUpwind_vol = CreateNavierStokesUpwind<dim>(name);}
+		void set_upwind_rel(const std::string& name)
+			{m_spConvUpwind_rel = CreateNavierStokesUpwind<dim>(name);}
 
 		void set_pac_upwind(bool bPac)
 		{
@@ -572,7 +574,7 @@ class NavierStokesFV1M
         inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, number* StdVol, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do);
     
         template <typename TFVGeom>
-        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_div, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV,  const DataImport<MathVector<dim>, dim>& RelVelSCV, const bool Jac);
+        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_div, MathVector<dim>* StdRelVel_total_t, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV,  const DataImport<MathVector<dim>, dim>& RelVelSCV, const bool m_bStokes, const bool Jac);
     
         template <typename TFVGeom>
         inline void vel_grad(const LocalVector& u, const TFVGeom& geo, MathMatrix<dim,dim>* VelGrad);
@@ -737,8 +739,11 @@ class NavierStokesFV1M
 
 	///	Upwinding for velocity in convective term of momentum equation
 		SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind;
+	///    Upwinding for Relative Velocity in convective term of momentum equation
+		SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind_rel;
     ///    Upwinding for VolFraction in convective term of Transport equation
         SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind_vol;
+
 
 	/// abbreviation for pressure and volume fraction
 		static const size_t _P_ = dim;

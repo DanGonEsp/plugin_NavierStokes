@@ -152,8 +152,9 @@ class RelativeVelocityLinker
                 if(m_BoolRelativeVel )
                 {
                     RelativeVel(RelVel, vPsGrad[ip][Dim-1], m_gravitation, vVolume[ip], vMixDensity[ip], vMixKinVisc[ip], vEinsVisc[ip], m_Wr, m_Cd, rho_a, rho_s, dp, mu_a, alpha_max, Inter,false);
+					W[Dim-1] = RelVel;
                 }
-                W[Dim-1] = RelVel;
+                
                 vRelativeVelocity[ip] = W;
                 
             }
@@ -437,16 +438,16 @@ class RelativeVelocityLinker
             const number Fy = -vPsGrad+m_gravitation * vMixDensity;
             number W = 0.0;
             number W1 = 0.0;
-            number W2 = 0.0;
-            number W3 = 0.0;
+            //number W2 = 0.0;
+            //number W3 = 0.0;
             //number W4 = 0.0;
             //number W5 = 0.0;
             //number W6 = 0.0;
             //number W7 = 0.0;
             //number Re,Cd;
-            const number phi=fmin(alpha_max-1e-04, fmax(vVolume,0.0));
+            //const number phi=fmin(alpha_max-1e-04, fmax(vVolume,0.0));
             //Ratio = (1-phi)/((1+pow(phi,1/3))*exp(5*phi/(3*(1-phi))))-vol*0.017811336463534444;
-            const number Ratio=(1.0-phi)/((1.0+pow(phi,1.0/3.0))*exp(5.0*phi/(3.0*(1.0-phi))));
+            //const number Ratio=(1.0-phi)/((1.0+pow(phi,1.0/3.0))*exp(5.0*phi/(3.0*(1.0-phi))));
             const number MU2 = vMixDensity*vMixKinVisc;
             //Cd_phi=Cd;//*pow(Ratio,2)*(1-phi)/(1+pow(phi,1/3));
             //vol_grad=sqrt(VecProd(vVolumeGrad[ip], vVolumeGrad[ip]));
@@ -456,7 +457,7 @@ class RelativeVelocityLinker
                 
                 W1 = m_Wr*Ratio;
                 size_t iter = 0;
-                Inter->RelVel(W2,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1.0);
+                Inter->RelVel(W1,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1.0);
                 //Inter->RelVel(W2,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1e-03);
                 //Re = Inter->RE( MU2, vMixDensity, dp,  W2);
                 //Cd = Inter->CD( Re,  Inter->DragModel());
@@ -474,7 +475,7 @@ class RelativeVelocityLinker
                 //W6=sqrt((4.0/3.0)*dp*(rho_s/vMixDensity-1.0)*fabs(Fy)/m_Cd);
                 //W7=sqrt((4.0/3.0)*dp*(rho_s/vMixDensity-1.0)*fabs(Fy)/m_Cd);
                 
-                W = -W2;//fmin(W1,W2);
+                W = -W1;//fmin(W1,W2);
                 //if(phi>0.1) ff= true;
                 //VecScale(W, vol,W);
                 

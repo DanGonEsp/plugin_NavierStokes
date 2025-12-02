@@ -881,38 +881,42 @@ update(const FV1Geometry<TElem, dim>* geo,
     number RHO_do[numIp];
     number Ratio_rho_up[numIp];
     number Ratio_rho_do[numIp];
-    for(size_t ip = 0; ip < numIp; ++ip)
-    {
-        const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
-        //VecSet(RhoGrad[ip], 0.0);
-        //VecSet(ViscGrad[ip], 0.0);
-        //DenMomentum[ip] = 0.0;
-        RHO_up[ip] = 0.0;
-        RHO_do[ip] = 0.0;
-        Ratio_rho_up[ip] = 0.0;
-        //const number Val = +VecTwoNorm(vStdVel[ip]) / (downwind_conv_length(ip) + upwind_conv_length(ip));
-        for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-        {
-            //VecScaleAppend(RhoGrad[ip], densitySCV[sh], scvf.global_grad(sh));
-            //VecScaleAppend(ViscGrad[ip], kinViscoSCV[sh]*densitySCV[sh], scvf.global_grad(sh));
-            //DenMomentum[ip] += Val * (downwind_shape_sh(ip, sh) - upwind_shape_sh(ip, sh)) * densitySCV[sh];
-            if (! bStokes)
-            {
-                RHO_up[ip] += upwind_shape_sh(ip, sh) * densitySCV[sh];
-                RHO_do[ip] += downwind_shape_sh(ip, sh) * densitySCV[sh];
-            }
-        }
-        Ratio_rho_up[ip] = RHO_up[ip] * downwind_conv_length(ip) / ( RHO_up[ip] * downwind_conv_length(ip) + RHO_do[ip] * upwind_conv_length(ip));
-        Ratio_rho_do[ip] = 1.0 - Ratio_rho_up[ip];
-        for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-        {
-            for(int d = 0; d < dim; d++)
-            {
-                Vel[ip][d] += vCornerValue(d, sh)*(Ratio_rho_up[ip] * upwind_shape_sh(ip, sh) + Ratio_rho_do[ip] * downwind_shape_sh(ip, sh));
-            }
-        }
-        //DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip]);
-    }
+	number Ratio[numIp];
+	if (! bStokes)
+	{
+		for(size_t ip = 0; ip < numIp; ++ip)
+		{
+			const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+			//VecSet(RhoGrad[ip], 0.0);
+			//VecSet(ViscGrad[ip], 0.0);
+			//DenMomentum[ip] = 0.0;
+			RHO_up[ip] = 0.0;
+			RHO_do[ip] = 0.0;
+			Ratio_rho_up[ip] = 0.0;
+			//const number Val = +VecTwoNorm(vStdVel[ip]) / (downwind_conv_length(ip) + upwind_conv_length(ip));
+			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+			{
+				//VecScaleAppend(RhoGrad[ip], densitySCV[sh], scvf.global_grad(sh));
+				//VecScaleAppend(ViscGrad[ip], kinViscoSCV[sh]*densitySCV[sh], scvf.global_grad(sh));
+				//DenMomentum[ip] += Val * (downwind_shape_sh(ip, sh) - upwind_shape_sh(ip, sh)) * densitySCV[sh];
+
+				RHO_up[ip] += upwind_shape_sh(ip, sh) * densitySCV[sh];
+				RHO_do[ip] += downwind_shape_sh(ip, sh) * densitySCV[sh];
+			}
+			Ratio[ip] = 1.0-pow(fmin(RHO_up[ip] , RHO_do[ip]) / fmax (RHO_up[ip] , RHO_do[ip]), 2.0);
+			
+			Ratio_rho_up[ip] = RHO_up[ip] * downwind_conv_length(ip) / ( RHO_up[ip] * downwind_conv_length(ip) + RHO_do[ip] * upwind_conv_length(ip));
+			Ratio_rho_do[ip] = 1.0 - Ratio_rho_up[ip];
+			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+			{
+				for(int d = 0; d < dim; d++)
+				{
+					Vel[ip][d] += vCornerValue(d, sh)*(Ratio_rho_up[ip] * upwind_shape_sh(ip, sh) + Ratio_rho_do[ip] * downwind_shape_sh(ip, sh));
+				}
+			}
+			//DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip]);
+		}
+	}
     
 
     bool boolSource = (SourceSCV.data_given()) ? true : false;
@@ -1040,7 +1044,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     if (! bStokes)
                     {
                         //sumVel += densitySCV[k] * vNormStdVelPerConvLen[ip] * (upwind_shape_sh(ip, k) - downwind_shape_sh(ip, k) );
-                        sumVel += vNormStdVelPerConvLen[ip] * (Ratio_rho_up[ip] * upwind_shape_sh(ip, k) + Ratio_rho_do[ip] * downwind_shape_sh(ip, k));
+                        sumVel += vNormStdVelPerConvLen[ip] * ( Ratio[ip]*upwind_shape_sh(ip, k)  +  (1.0-Ratio[ip])*(Ratio_rho_up[ip] * upwind_shape_sh(ip, k) + Ratio_rho_do[ip] * downwind_shape_sh(ip, k)));
                         //sumVel += vNormStdVelPerConvLen[ip] * densitySCV[k]  * upwind_shape_sh(ip, k);
                         
                         //sumVel += -DenMomentum[ip]*scvf.shape(k) * ;
