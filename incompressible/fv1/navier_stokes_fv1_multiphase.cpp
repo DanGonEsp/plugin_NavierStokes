@@ -91,12 +91,13 @@ void NavierStokesFV1M<TDomain>::init()
     m_imDensitySCVF.set_comp_lin_defect(false);
     m_imDensitySCVF_old.set_comp_lin_defect(false);
     m_imDensitySCV.set_comp_lin_defect(false);
+	m_imDensitySCV_old.set_comp_lin_defect(false);
     
     m_imSourceSCVF.set_comp_lin_defect(false);
     m_imSourceSCV.set_comp_lin_defect(false);
     
     //m_imKinViscosity.set_comp_lin_defect(false);
-    m_imKinViscositySCV.set_comp_lin_defect(false);
+    m_imKinViscosity_old.set_comp_lin_defect(false);
     
     m_imSurfaceNormal.set_comp_lin_defect(false);
     
@@ -107,10 +108,11 @@ void NavierStokesFV1M<TDomain>::init()
     this->register_import(m_imSourceSCV);
     this->register_import(m_imSourceSCVF);
     this->register_import(m_imKinViscosity);
-    this->register_import(m_imKinViscositySCV);
+    this->register_import(m_imKinViscosity_old);
     this->register_import(m_imDensitySCVF);
     this->register_import(m_imDensitySCVF_old);
     this->register_import(m_imDensitySCV);
+	this->register_import(m_imDensitySCV_old);
     this->register_import(m_imSurfaceNormal);
     
     this->register_import(m_imRelativeVelocitySCV);
@@ -154,7 +156,7 @@ void NavierStokesFV1M<TDomain>::
 set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > data)
 {
     m_imKinViscosity.set_data(data);
-    m_imKinViscositySCV.set_data(data);
+    m_imKinViscosity_old.set_data(data);
 }
 
 template<typename TDomain>
@@ -164,6 +166,7 @@ set_density(SmartPtr<CplUserData<number, dim> > data)
     m_imDensitySCVF.set_data(data);
     m_imDensitySCVF_old.set_data(data);
     m_imDensitySCV.set_data(data);
+	m_imDensitySCV_old.set_data(data);
 }
 
 
@@ -259,6 +262,11 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
     if(!m_imDensitySCV.data_given())
         UG_THROW("NavierStokes::prep_elem_loop:"
                  " Density has not been set, but is required.");
+	if(this->is_time_dependent())
+		if(!m_imDensitySCV_old.data_given() || !m_imDensitySCVF_old.data_given())
+			UG_THROW("NavierStokes::prep_elem_loop:"
+					 " Density old has not been set, but is required in Stabilization.");
+		
     
     //    check, that convective upwinding has been set
     if(m_spConvUpwind_vol.invalid())
@@ -280,7 +288,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
         const MathVector<refDim>* vSCVip = geo.scv_local_ips();
         const size_t numSCVip = geo.num_scv_ips();
         m_imKinViscosity.template set_local_ips<refDim>(vSCVFip,numSCVFip);
-        m_imKinViscositySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
+		m_imKinViscosity_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
         m_imDensitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDensitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         m_imSourceSCV.template set_local_ips<refDim>(vSCVip,numSCVip);
@@ -290,6 +298,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
         m_imRelativeVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
+		m_imDensitySCV_old.template set_local_ips<refDim>(vSCVip,numSCVip,1,true);
 
     }
     
@@ -325,7 +334,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
         const MathVector<refDim>* vSCVip = geo.scv_local_ips();
         const size_t numSCVip = geo.num_scv_ips();
         m_imKinViscosity.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
-        m_imKinViscositySCV.template set_local_ips<refDim>(vSCVip,numSCVip,true);
+		m_imKinViscosity_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
         m_imDensitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
         m_imDensitySCV.template set_local_ips<refDim>(vSCVip,numSCVip,true);
         m_imSourceSCV.template set_local_ips<refDim>(vSCVip,numSCVip);
@@ -337,6 +346,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
         
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
+		m_imDensitySCV_old.template set_local_ips<refDim>(vSCVip,numSCVip,1,true);
         
     }
     
@@ -345,8 +355,8 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
     const size_t numSCVFip = geo.num_scvf_ips();
     const MathVector<dim>* vSCVip = geo.scv_global_ips();
     const size_t numSCVip = geo.num_scv_ips();
+	
     m_imKinViscosity.set_global_ips(vSCVFip, numSCVFip);
-    m_imKinViscositySCV.set_global_ips(vSCVip, numSCVip);
     m_imDensitySCVF.set_global_ips(vSCVFip, numSCVFip);
     m_imDensitySCV.set_global_ips(vSCVip, numSCVip);
     m_imSourceSCV.set_global_ips(vSCVip, numSCVip);
@@ -357,7 +367,11 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
     
     m_imDiffusion.set_global_ips(vSCVFip, numSCVFip);
     if(this->is_time_dependent())
-        m_imDensitySCVF_old.set_global_ips(vSCVFip, numSCVFip);
+	{
+		m_imDensitySCVF_old.set_global_ips(vSCVFip, numSCVFip);
+		m_imKinViscosity_old.set_global_ips(vSCVFip, numSCVFip);
+		m_imDensitySCV_old.set_global_ips(vSCVip, numSCVip);
+	}
 
 }
 
@@ -420,14 +434,14 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         Inter->Ps( Ps, DPs, VelocityGrad, u, _C_, numSh, true);
     
 
-	m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+	m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
     
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
         //	compute stabilized velocities and shapes for convection upwind
         if(m_spConvStab.valid())
             if(m_spConvStab != m_spStab)
-                m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+                m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
     }
     //    get a const (!!) reference to the stabilization
     const INavierStokesFV1Stabilization<dim>& stab = *m_spStab;
@@ -979,13 +993,13 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     //	compute stabilized velocities and shapes for continuity equation
     // \todo: (optional) Here we can skip the computation of shapes, implement?
 
-	m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+	m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
         //	compute stabilized velocities and shapes for convection upwind
         if(m_spConvStab.valid())
             if(m_spConvStab != m_spStab)
-                m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+                m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
 		
     }
     
@@ -2431,7 +2445,7 @@ ex_div_velocity(MathVector<dim> vValue[],
     //    compute stabilized velocities and shapes for continuity equation
         // \todo: (optional) Here we can skip the computation of shapes, implement?
 
-		m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+		m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
         
         
         //    get a const (!!) reference to the stabilization

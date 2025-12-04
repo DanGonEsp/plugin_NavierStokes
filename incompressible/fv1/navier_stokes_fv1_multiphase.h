@@ -714,12 +714,13 @@ class NavierStokesFV1M
 
 	///	Data import for kinematic viscosity
 		DataImport<number, dim> m_imKinViscosity;
-        DataImport<number, dim> m_imKinViscositySCV;
+        DataImport<number, dim> m_imKinViscosity_old;
 
 	///	Data import for density
 		DataImport<number, dim> m_imDensitySCVF;
         DataImport<number, dim> m_imDensitySCVF_old;
 		DataImport<number, dim> m_imDensitySCV;
+		DataImport<number, dim> m_imDensitySCV_old;
     
     ///    Data import for Diffusion
         DataImport<MathMatrix<dim,dim>, dim> m_imDiffusion;

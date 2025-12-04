@@ -132,10 +132,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> vStdVel[],
        const bool bStokes,
        const DataImport<number, dim>& kinVisco,
-       const DataImport<number, dim>& kinViscoSCV,
+       const DataImport<number, dim>& kinVisco_old,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
+	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
 	   const MathVector<dim> vStdRelVel[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
@@ -454,10 +455,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> vStdVel[],
        const bool bStokes,
        const DataImport<number, dim>& kinVisco,
-       const DataImport<number, dim>& kinViscoSCV,
+       const DataImport<number, dim>& kinVisco_old,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
+	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
 	   const MathVector<dim> vStdRelVel[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
@@ -829,10 +831,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> vStdVel[],
        const bool bStokes,
        const DataImport<number, dim>& kinVisco,
-       const DataImport<number, dim>& kinViscoSCV,
+       const DataImport<number, dim>& kinVisco_old,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
+	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
 	   const MathVector<dim> vStdRelVel[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
@@ -871,6 +874,77 @@ update(const FV1Geometry<TElem, dim>* geo,
             }
         }
     }
+	
+	//    compute diffusion length
+	this->compute_diff_length(*geo);
+
+	MathVector<dim> vStdVel_ip_old[numIp];
+	
+	
+	if(pvCornerValueOldTime != NULL )
+	{
+		for(size_t ip = 0; ip < numIp; ++ip)
+		{
+			const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+			
+			VecSet(vStdVel_ip_old[ip],0.0);
+			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+				for(int d = 0; d < dim; d++)
+					vStdVel_ip_old[ip][d] += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+		}
+		
+		if ( !bStokes )
+		{
+			
+			this->compute_upwind(geo, vStdVel_ip_old);
+			this->compute_downwind(geo, vStdVel_ip_old);
+			
+
+			for(size_t ip = 0; ip < numIp; ++ip)
+			{
+				const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+				
+				number vViscoPerDiffLenSq_old = kinVisco_old[ip] * diff_length_sq_inv(ip);
+				number vNormStdVelPerConvLen_old = VecTwoNorm(vStdVel_ip_old[ip]) / upwind_conv_length(ip);
+				
+				number Rho_up = 0.0;
+				number Rho_do = 0.0;
+
+
+				for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+				{
+					Rho_up += upwind_shape_sh(ip, sh) * densitySCV_old[sh];
+					Rho_do += downwind_shape_sh(ip, sh) * densitySCV_old[sh];
+				}
+				number Ratio_rho = 0.0*pow(fmin(Rho_up , Rho_do) / fmax (Rho_up , Rho_do), 2.0);
+				
+				number R_rho_up = Rho_up * downwind_conv_length(ip) / ( Rho_up * downwind_conv_length(ip) + Rho_do * upwind_conv_length(ip));
+				number Ratio_rho_do = 1.0 - R_rho_up;
+				
+				MathVector<dim> Vel_ip;
+				VecSet(Vel_ip,0.0);
+				for(int d = 0; d < dim; d++)
+				{
+					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+					{
+						Vel_ip[d] += (Ratio_rho*upwind_shape_sh(ip, sh)  +  (1.0-Ratio_rho)*(R_rho_up * upwind_shape_sh(ip, sh) + Ratio_rho_do * downwind_shape_sh(ip, sh))) * (*pvCornerValueOldTime)(d, sh);
+					}
+					
+				}
+				number diag_old = vViscoPerDiffLenSq_old + vNormStdVelPerConvLen_old;
+				VecScaleAdd(vStdVel_ip_old[ip], vViscoPerDiffLenSq_old/diag_old, vStdVel_ip_old[ip], vNormStdVelPerConvLen_old/diag_old,Vel_ip);
+				
+				
+			}
+			
+
+			
+		}
+
+	}
+	
+	
+	
     
     //    compute upwind and downwind (no convective terms for the Stokes eq. => no upwind)
     if (! bStokes)
@@ -885,9 +959,6 @@ update(const FV1Geometry<TElem, dim>* geo,
 		}*/
 			
     }
-    
-    //    compute diffusion length
-    this->compute_diff_length(*geo);
     
     //MathVector<dim> RhoGrad[numIp];
     //MathVector<dim> ViscGrad[numIp];
@@ -948,17 +1019,10 @@ update(const FV1Geometry<TElem, dim>* geo,
     for(size_t ip = 0; ip < numIp; ++ip)
     {
         const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
-        const typename FV1Geometry<TElem, dim>::SCV& scvFrom = geo->scv(scvf.from());
-        const typename FV1Geometry<TElem, dim>::SCV& scvTo   = geo->scv(scvf.to());
-        
-        const int from = scvFrom.node_id();
-        const int to = scvTo.node_id();
         
 		vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
 		if(boolSource) SOURCE[ip] = Source[ip];
 		
-
-        
         if(!bStokes)
         {
             vNormStdVelPerConvLen[ip] = VecTwoNorm(vStdVel[ip]) / upwind_conv_length(ip);
@@ -1043,15 +1107,10 @@ update(const FV1Geometry<TElem, dim>* geo,
 
                 
                 //    Time
-                if(pvCornerValueOldTime != NULL && density_old.data_given())
+                if(pvCornerValueOldTime != NULL)
                 {
-                    //    interpolate old time step
-                    number oldIPVel = 0.0;
-                    for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                        oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
-                    
                     //    add to rhs
-                    rhs += (density_old[ip] / density[ip])* oldIPVel / dt;
+                    rhs += (density_old[ip] / density[ip]) * vStdVel_ip_old[ip][d]/ dt;
                 }
                 
                 //    loop shape functions
@@ -1162,10 +1221,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> vStdVel[],
        const bool bStokes,
        const DataImport<number, dim>& kinVisco,
-       const DataImport<number, dim>& kinViscoSCV,
+       const DataImport<number, dim>& kinVisco_old,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
+	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
 	   const MathVector<dim> vStdRelVel[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
@@ -1371,10 +1431,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> vStdVel[],
        const bool bStokes,
        const DataImport<number, dim>& kinVisco,
-       const DataImport<number, dim>& kinViscoSCV,
+       const DataImport<number, dim>& kinVisco_old,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
+	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
 	   const MathVector<dim> vStdRelVel[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
@@ -1591,10 +1652,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> vStdVel[],
        const bool bStokes,
        const DataImport<number, dim>& kinVisco,
-       const DataImport<number, dim>& kinViscoSCV,
+       const DataImport<number, dim>& kinVisco_old,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
+	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
 	   const MathVector<dim> vStdRelVel[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
@@ -1688,10 +1750,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const MathVector<dim> vStdVel[],
        const bool bStokes,
        const DataImport<number, dim>& kinVisco,
-       const DataImport<number, dim>& kinViscoSCV,
+       const DataImport<number, dim>& kinVisco_old,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
+	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
 	   const MathVector<dim> vStdRelVel[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
