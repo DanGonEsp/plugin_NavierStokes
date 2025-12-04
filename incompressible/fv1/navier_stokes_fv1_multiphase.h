@@ -184,8 +184,6 @@ class NavierStokesFV1M
         SmartPtr<CplUserData<MathVector<dim>, dim> > source() {return m_imSourceSCV.user_data ();}
     
         void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
-        void set_divergence_rel_vel(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
-        void set_mass_change(SmartPtr<CplUserData<number, dim> > user);
         void set_diffusion(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > user);
     
         void set_vol_fraction(SmartPtr<CplUserData<number, dim> > user);
@@ -199,14 +197,16 @@ class NavierStokesFV1M
 	///	sets stabilization based on string identifier
 		void set_stabilization(const std::string& name)
 			{m_spStab = CreateNavierStokesStabilization<dim>(name);
-			 if(m_spConvUpwind.valid()) m_spStab->set_upwind(m_spConvUpwind);}
+			 if(m_spConvUpwind.valid()) m_spStab->set_upwind(m_spConvUpwind);
+			 if(m_spConvUpwind_rel.valid()) m_spStab->set_upwind_rel(m_spConvUpwind_rel);}
 
 	///	sets stabilization and diff length method based on string identifier (only for Schneider-Raw stabilizations)
 		void set_stabilization(const std::string& name, const std::string& diffLength)
 			{SmartPtr<INavierStokesSRFV1Stabilization<dim> > spStab = CreateNavierStokesStabilization<dim>(name);
 			 spStab->set_diffusion_length(diffLength);
 			 m_spStab = spStab;
-			 if(m_spConvUpwind.valid()) m_spStab->set_upwind(m_spConvUpwind);}
+			 if(m_spConvUpwind.valid()) m_spStab->set_upwind(m_spConvUpwind);
+			 if(m_spConvUpwind_rel.valid()) m_spStab->set_upwind_rel(m_spConvUpwind_rel);}
 			 
     /// returns stabilization	
 		SmartPtr<INavierStokesFV1Stabilization<dim> > stabilization(){ return m_spStab;}
@@ -227,7 +227,8 @@ class NavierStokesFV1M
         void set_upwind_vol(const std::string& name)
             {m_spConvUpwind_vol = CreateNavierStokesUpwind<dim>(name);}
 		void set_upwind_rel(const std::string& name)
-			{m_spConvUpwind_rel = CreateNavierStokesUpwind<dim>(name);}
+			{m_spConvUpwind_rel = CreateNavierStokesUpwind<dim>(name);
+			if(m_spStab.valid() && m_spStab->upwind_rel().invalid()) m_spStab->set_upwind_rel(m_spConvUpwind_rel);}
 
 		void set_pac_upwind(bool bPac)
 		{
@@ -571,7 +572,7 @@ class NavierStokesFV1M
 		inline number peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
                                    const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
         template <typename TFVGeom>
-        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, number* StdVol, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do);
+        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, number* StdVol, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do, number* ConvRatio);
     
         template <typename TFVGeom>
         inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_div, MathVector<dim>* StdRelVel_total_t, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV,  const DataImport<MathVector<dim>, dim>& RelVelSCV, const bool m_bStokes, const bool Jac);

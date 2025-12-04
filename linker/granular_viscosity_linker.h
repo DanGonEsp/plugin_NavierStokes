@@ -203,13 +203,10 @@ class GranularViscosityLinker
                         
                         break;
                     case 2:
-                        //Einstein_viscosity(viscosity_granular_aux,VolFraction, mu_a, alpha_max, m_limit);
                         viscosity_granular_aux= vMixViscosity[ip];
                         
                         break;
                     case 3:
-                        //Einstein_viscosity(mu_eins_aux, VolFraction, mu_a, alpha_max, m_limit);
-                        //mu_eins_aux = vMixViscosity[ip];
                         Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux);
 
                         viscosity_granular_aux = vMixViscosity[ip] + mu_sand_aux ;
@@ -217,7 +214,6 @@ class GranularViscosityLinker
                         break;
                     case 4:
                         
-                        //Einstein_viscosity(mu_eins_aux, VolFraction, mu_a, alpha_max, m_limit);
                         if (VolFraction>interface_volume_fraction)
                             Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux);
                         
@@ -291,7 +287,6 @@ class GranularViscosityLinker
             number mu_sand[nip];
             number mu_sand_aux;
             
-            number limit[nip];
             for(size_t ip = 0; ip < nip; ++ip)
             {
                 mu_sand_aux=0;
@@ -299,7 +294,6 @@ class GranularViscosityLinker
 
                 VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
 
-                limit[ip]=1.0;
 
                 switch (m_model) {
                     case 0:
@@ -319,8 +313,6 @@ class GranularViscosityLinker
                         break;
                     case 3:
 
-                        //Einstein_viscosity(mu_eins_aux, VolFraction, mu_a, alpha_max, m_limit);
-                        //mu_eins_aux = vMixViscosity[ip];
                         Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux);
 
                         viscosity_granular_aux = vMixViscosity[ip]+mu_sand_aux ;
@@ -332,8 +324,6 @@ class GranularViscosityLinker
                         break;
                     case 4:
                         
-                        //Einstein_viscosity(mu_eins_aux, VolFraction, mu_a, alpha_max, m_limit);
-                        //mu_eins_aux = vMixViscosity[ip];
                         if (VolFraction>interface_volume_fraction)
                             Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux);
                         
@@ -352,8 +342,7 @@ class GranularViscosityLinker
                 }
                 if(viscosity_granular_aux>m_limit)
                 {
-                    viscosity_granular_aux = m_limit;
-                    limit[ip] = 0.0;
+					UG_THROW("Granular viscosity diverged");
                 }
                 viscosity_granular[ip]=viscosity_granular_aux;
                 vValue[ip]=viscosity_granular[ip]/vMixDensity[ip];
@@ -456,7 +445,7 @@ class GranularViscosityLinker
                             break;
                     }
                     
-                    mu_dev = limit[ip]*mu_dev/vMixDensity[ip];
+                    mu_dev = mu_dev/vMixDensity[ip];
                 
                     
                     for(size_t fct = 0; fct < m_spDVolumeFraction->num_fct(); ++fct)
@@ -560,6 +549,29 @@ class GranularViscosityLinker
                     }
                 }
             }*/
+		//  Derivatives of MixViscosity
+			
+			if(m_spDMixViscosity.valid() && !m_spDMixViscosity->zero_derivative() && (m_model== 2  || m_model== 3 || m_model== 4) )
+			{
+				for(size_t ip = 0; ip < nip; ++ip)
+				{
+					
+					for(size_t fct = 0; fct < m_spDMixViscosity->num_fct(); ++fct)
+					{
+					//    get derivative of volume fraction w.r.t. to all functions
+						const number* vDMixViscosity = m_spDMixViscosity->deriv(s_MU_, ip, fct);
+
+					//    get common fct id for this function
+						const size_t commonFct = this->input_common_fct(_MU_, fct);
+
+					//    loop all shapes and set the derivative
+						for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
+						{
+							vvvDeriv[ip][commonFct][sh] += vDMixViscosity[sh] / vMixDensity[ip];
+						}
+					}
+				}
+			}
             
         //  Derivatives of ParticlePressure
             
@@ -581,7 +593,7 @@ class GranularViscosityLinker
                             deriv1 = 1.0;//VolFraction * pow(  mu_eins[ip] , 2) / pow(  mu_eins[ip] + (1-VolFraction)*mu_sand[ip]  ,2);
                             mu_dev=   (deriv1 * dmu1  +  deriv2 * dmu2 );
                             
-                            mu_dev = limit[ip] * mu_dev / vMixDensity[ip];
+                            mu_dev = mu_dev / vMixDensity[ip];
                             
                             break;
                         case 4:
@@ -590,7 +602,7 @@ class GranularViscosityLinker
                             deriv1 = 1.0;
                             mu_dev=   (deriv1 * dmu1  +  deriv2 * dmu2 );
                             
-                            mu_dev = limit[ip] * mu_dev / vMixDensity[ip];
+                            mu_dev = mu_dev / vMixDensity[ip];
                             break;
                         default:
                             UG_THROW("Error in GranularViscosityLinker model= 2, 3")
@@ -638,14 +650,14 @@ class GranularViscosityLinker
                             DevGamma( Dmu1,  gamma[ip], mu_sand[ip],  vParticlePressure[ip], vVelocityGrad[ip], mu_a, rho_s, dp, FricMu_1,  FricMu_2,  I_0,  deltaGamma,  deltaPs,  deltaI, Inter);
                             //deriv1 =  VolFraction * pow(  mu_eins[ip] , 2) / pow(  mu_eins[ip] + (1-VolFraction)*mu_sand[ip]  ,2);
                             deriv1=1.0;
-                            MatScale(Mu_deriv, limit[ip] * deriv1 / vMixDensity[ip] ,Dmu1);
+                            MatScale(Mu_deriv, deriv1 / vMixDensity[ip] ,Dmu1);
                             
                             break;
                         case 4:
                             if ( VolFraction>interface_volume_fraction)
                                 DevGamma( Dmu1,  gamma[ip], mu_sand[ip],  vParticlePressure[ip], vVelocityGrad[ip], mu_a, rho_s, dp, FricMu_1,  FricMu_2,  I_0,  deltaGamma,  deltaPs,  deltaI, Inter);
                             deriv1 =  1.0;
-                            MatScale(Mu_deriv, limit[ip] * deriv1 / vMixDensity[ip] ,Dmu1);
+                            MatScale(Mu_deriv, deriv1 / vMixDensity[ip] ,Dmu1);
                             break;
                         default:
                             UG_THROW("Error in GranularViscosityLinker model= 2, 3")
@@ -706,13 +718,6 @@ class GranularViscosityLinker
             const number MU = (phi*mu_2+(1-phi)*mu_1);
             if(std::isnan(MU)) UG_THROW("Error in Linear ViscosityLinker: NaN");
             return MU;
-        }
-        static void Einstein_viscosity(number& ss, const number phi, const number mu_a, const number alpha_max, const number limit)
-        {
-
-            ss= (phi < alpha_max)? mu_a*pow(1.0-phi/alpha_max,-2.5*alpha_max) : limit;
-            
-            if(std::isnan(ss)) UG_THROW("Error in Einstein ViscosityLinker: Value = NaN" <<"  Volume Fraction = "<<phi<<".");
         }
         
         static void Granular_viscosity_1(number& mu_s, const MathMatrix<dim,dim> VelocityGrad, const number Ps, const number rho_s, const number dp, const number FricMu_1, const number FricMu_2, const number I_0, const number deltaGamma, const number deltaPs, const number deltaI, number& gamma)
@@ -815,7 +820,7 @@ class GranularViscosityLinker
 
 
             mu_s=mu_friction*Ps/gamma+mu_a;
-            Einstein_viscosity(mu_einstein, vol, mu_a, alpha_max, 1e5);
+            //Einstein_viscosity(mu_einstein, vol, mu_a, alpha_max, 1e5);
             
             fac=pow(vol,power);
             

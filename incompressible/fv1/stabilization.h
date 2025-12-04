@@ -82,7 +82,8 @@ class INavierStokesFV1Stabilization
 	///	constructor
 		INavierStokesFV1Stabilization()
 		:	m_numScvf(0), m_numSh(0),
-			m_spUpwind(NULL)
+			m_spUpwind(NULL),
+			m_spUpwind_rel(NULL)
 		{
 			m_vUpdateFunc.clear();
 		}
@@ -93,12 +94,22 @@ class INavierStokesFV1Stabilization
 			m_spUpwind = spUpwind;
 			m_spConstUpwind = spUpwind;
 		}
+	///	sets the upwind method
+		void set_upwind_rel(SmartPtr<INavierStokesUpwind<dim> > spUpwind_rel)
+		{
+			m_spUpwind_rel = spUpwind_rel;
+			m_spConstUpwind_rel = spUpwind_rel;
+		}
 
 	///	returns the upwind
 		const ConstSmartPtr<INavierStokesUpwind<dim> >& upwind() const {return m_spConstUpwind;}
+	///	returns the upwind
+		const ConstSmartPtr<INavierStokesUpwind<dim> >& upwind_rel() const {return m_spConstUpwind_rel;}
 		
 	/// returns if the upwind pointer is valid
 		bool upwind_valid() const {return m_spConstUpwind.valid();}
+	/// returns if the upwind pointer is valid
+		bool upwind_valid_rel() const {return m_spConstUpwind_rel.valid();}
     
 
 	///	set the FV1 Geometry type to use for next updates
@@ -119,6 +130,7 @@ class INavierStokesFV1Stabilization
 			m_numSh = geo.num_sh();
 		//	set sizes in upwind
 			if(m_spUpwind.valid()) m_spUpwind->template set_geometry_type<TFVGeom>();
+			if(m_spUpwind_rel.valid()) m_spUpwind_rel->template set_geometry_type<TFVGeom>();
 		}
     
         void set_phase_parameters(Interface<dim>* user)
@@ -152,6 +164,24 @@ class INavierStokesFV1Stabilization
 		{
 			UG_NSSTAB_ASSERT(m_spUpwind.valid(), "No upwind object");
 			m_spUpwind->update_downwind(geo, vStdVel);
+		};
+	
+	///	computes the upwind shapes for relative vel
+		template <typename TFVGeom>
+		void compute_upwind_rel(const TFVGeom& geo,
+							const MathVector<dim> vStdVel[])
+		{
+			UG_NSSTAB_ASSERT(m_spUpwind_rel.valid(), "No upwind object");
+			m_spUpwind_rel->update_upwind(geo, vStdVel);
+		};
+
+	///	computes the downwind shapes
+		template <typename TFVGeom>
+		void compute_downwind_rel(const TFVGeom& geo,
+							  const MathVector<dim> vStdVel[])
+		{
+			UG_NSSTAB_ASSERT(m_spUpwind_rel.valid(), "No upwind object");
+			m_spUpwind_rel->update_downwind(geo, vStdVel);
 		};
     
 		
@@ -196,6 +226,15 @@ class INavierStokesFV1Stabilization
 			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
 			return m_vvvStabShapePressure[scvf][compOut][sh];
 		}
+	
+	///	computed stab shape for pressure.
+		number stab_shape_c(size_t scvf, size_t compOut, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvStabShapeVolume[scvf][compOut][sh];
+		}
     
 
 
@@ -209,12 +248,14 @@ class INavierStokesFV1Stabilization
 		            const DataImport<number, dim>& density,
                     const DataImport<number, dim>& density_old,
                     const DataImport<number, dim>& densitySCV,
-                    const number ps[],
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCV,
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
 		            const LocalVector* pvCornerValueOldTime, number dt)
 			{(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel,
-											bStokes, kinVisco, kinViscoSCV, density, density_old, densitySCV, ps, Source, SourceSCV,
+											bStokes, kinVisco, kinViscoSCV, density, density_old, densitySCV, ps, vStdRelVel, RelVelSCV, Source, SourceSCV,
 											pvCornerValueOldTime, dt);}
 
 	/////////////////////////////////////////
@@ -252,6 +293,14 @@ class INavierStokesFV1Stabilization
 			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
 			return m_vvvStabShapePressure[scvf][compOut][sh];
 		}
+	///	computed stab shape for volume fraction.
+		number& stab_shape_c(size_t scvf, size_t compOut, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvStabShapeVolume[scvf][compOut][sh];
+		}
 
 
 	/////////////////////////////////////////
@@ -277,6 +326,9 @@ class INavierStokesFV1Stabilization
 
 	///	stab shapes w.r.t pressure
 		number m_vvvStabShapePressure[maxNumSCVF][dim][maxNumSH];
+	
+	///	stab shapes w.r.t VolumeFraction
+		number m_vvvStabShapeVolume[maxNumSCVF][dim][maxNumSH];
     
     
 
@@ -287,6 +339,11 @@ class INavierStokesFV1Stabilization
 		SmartPtr<INavierStokesUpwind<dim> > m_spUpwind;
 	///	Upwind object (if set), the same as m_spUpwind, but as a const
 		ConstSmartPtr<INavierStokesUpwind<dim> > m_spConstUpwind;
+	
+	///	Upwind object (if set)
+		SmartPtr<INavierStokesUpwind<dim> > m_spUpwind_rel;
+	///	Upwind object (if set), the same as m_spUpwind, but as a const
+		ConstSmartPtr<INavierStokesUpwind<dim> > m_spConstUpwind_rel;
     
 	
 	//////////////////////////
@@ -305,6 +362,8 @@ class INavierStokesFV1Stabilization
                                                 const DataImport<number, dim>& density_old,
                                                 const DataImport<number, dim>& densitySCV,
                                                 const number ps[],
+											    const MathVector<dim> vStdRelVel[],
+											    const DataImport<MathVector<dim>, dim>& RelVelSCV,
                                                 const DataImport<MathVector<dim>, dim>& Source,
                                                 const DataImport<MathVector<dim>, dim>& SourceSCV,
 												const LocalVector* pvCornerValueOldTime, number dt);
@@ -414,6 +473,60 @@ class INavierStokesSRFV1Stabilization
 			UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
 			return this_type::upwind()->downwind_shape_ip(scvf, scvf2);
 		}
+	
+	/////////////////////////////////////////
+	// forward methods of Upwind relative Velocity
+	/////////////////////////////////////////
+
+	///	Convection Length
+		number upwind_conv_length_rel(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->upwind_conv_length(scvf);
+		}
+
+	///	Convection Length
+		number downwind_conv_length_rel(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->downwind_conv_length(scvf);
+		}
+
+	///	upwind shape for corner vel
+		number upwind_shape_sh_rel(size_t scvf, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->upwind_shape_sh(scvf, sh);
+		}
+
+	///	upwind shape for corner vel
+		number downwind_shape_sh_rel(size_t scvf, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->downwind_shape_sh(scvf, sh);
+		}
+
+	///	returns if upwind shape w.r.t. ip vel is non-zero
+		bool non_zero_shape_ip_rel() const
+		{
+			UG_LOG("Debug 5.5 ");
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->non_zero_shape_ip();
+		}
+
+	///	upwind shapes for ip vel
+		number upwind_shape_ip_rel(size_t scvf, size_t scvf2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->upwind_shape_ip(scvf, scvf2);
+		}
+
+	///	upwind shapes for ip vel
+		number downwind_shape_ip_rel(size_t scvf, size_t scvf2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->downwind_shape_ip(scvf, scvf2);
+		}
     
 
 	//////////////////////////
@@ -503,7 +616,9 @@ class NavierStokesFIELDSStabilization
 					const DataImport<number, dim>& density,
                     const DataImport<number, dim>& density_old,
                     const DataImport<number, dim>& densitySCV,
-                    const number ps[],
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCV,
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
 		            const LocalVector* pvCornerValueOldTime, number dt);
@@ -524,7 +639,9 @@ class NavierStokesFIELDSStabilization
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& density_old,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number ps[],
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCV,
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt);
@@ -595,7 +712,9 @@ class NavierStokesFLOWStabilization
 					const DataImport<number, dim>& density,
                     const DataImport<number, dim>& density_old,
                     const DataImport<number, dim>& densitySCV,
-                    const number ps[],
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCV,
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt);
@@ -616,7 +735,9 @@ class NavierStokesFLOWStabilization
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& density_old,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number ps[],
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCV,
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
 											 const LocalVector* pvCornerValueOldTime, number dt);
@@ -652,6 +773,7 @@ class NavierStokesFIELDS_2_Stabilization
         using base_type::diff_length_sq_inv;
         using base_type::stab_shape_vel;
         using base_type::stab_shape_p;
+		using base_type::stab_shape_c;
         using base_type::stab_vel;
         using base_type::set_vel_comp_connected;
     
@@ -663,6 +785,15 @@ class NavierStokesFIELDS_2_Stabilization
         using base_type::non_zero_shape_ip;
         using base_type::upwind_shape_ip;
         using base_type::downwind_shape_ip;
+	
+	//    functions from rel upwind
+		using base_type::upwind_conv_length_rel;
+		using base_type::downwind_conv_length_rel;
+		using base_type::upwind_shape_sh_rel;
+		using base_type::downwind_shape_sh_rel;
+		using base_type::non_zero_shape_ip_rel;
+		using base_type::upwind_shape_ip_rel;
+		using base_type::downwind_shape_ip_rel;
     
     
         using base_type::Inter;
@@ -689,7 +820,9 @@ class NavierStokesFIELDS_2_Stabilization
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& density_old,
                     const DataImport<number, dim>& densitySCV,
-                    const number ps[],
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCV,
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt);
@@ -711,7 +844,9 @@ class NavierStokesFIELDS_2_Stabilization
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& density_old,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number ps[],
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCV,
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt);
@@ -781,7 +916,9 @@ class NavierStokesVISCOSITY_Stabilization
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& density_old,
                     const DataImport<number, dim>& densitySCV,
-                    const number ps[],
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCV,
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt);
@@ -802,7 +939,9 @@ class NavierStokesVISCOSITY_Stabilization
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& density_old,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number ps[],
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCV,
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt);
@@ -874,7 +1013,9 @@ class NavierStokesKARIMIANStabilization
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& density_old,
                     const DataImport<number, dim>& densitySCV,
-                    const number ps[],
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCV,
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt);
@@ -895,7 +1036,9 @@ class NavierStokesKARIMIANStabilization
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& density_old,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number ps[],
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCV,
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt);
@@ -964,7 +1107,9 @@ class NavierStokesNOStabilization
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& density_old,
                     const DataImport<number, dim>& densitySCV,
-                    const number ps[],
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCV,
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
                     const LocalVector* pvCornerValueOldTime, number dt);
@@ -985,7 +1130,9 @@ class NavierStokesNOStabilization
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& density_old,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number ps[],
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCV,
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt);
@@ -1042,7 +1189,9 @@ class NavierStokesFV1WithoutStabilization
 					const DataImport<number, dim>& density,
                     const DataImport<number, dim>& density_old,
                     const DataImport<number, dim>& densitySCV,
-                    const number ps[],
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCV,
                     const DataImport<MathVector<dim>, dim>& Source,
                     const DataImport<MathVector<dim>, dim>& SourceSCV,
 					const LocalVector* pvCornerValueOldTime, number dt);
@@ -1065,6 +1214,8 @@ class NavierStokesFV1WithoutStabilization
                                              const DataImport<number, dim>& density_old,
                                              const DataImport<number, dim>& densitySCV,
                                              const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCV,
                                              const DataImport<MathVector<dim>, dim>& Source,
                                              const DataImport<MathVector<dim>, dim>& SourceSCV,
                                              const LocalVector* pvCornerValueOldTime, number dt);

@@ -136,7 +136,9 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number ps[],
+	   const number ps[],
+	   const MathVector<dim> vStdRelVel[],
+	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt)
@@ -456,7 +458,9 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number ps[],
+	   const number ps[],
+	   const MathVector<dim> vStdRelVel[],
+	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt)
@@ -829,7 +833,9 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number ps[],
+	   const number ps[],
+	   const MathVector<dim> vStdRelVel[],
+	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt)
@@ -843,6 +849,8 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     //    abbreviation for pressure
     static const size_t _P_ = dim;
+	//    abbreviation for VolumeFraction
+	static const size_t _C_ = dim+1;
     
     //    Some constants
     static const size_t numIp = FV1Geometry<TElem, dim>::numSCVF;
@@ -859,6 +867,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     stab_shape_vel(ip, d2, d1, k) = 0.0;
                 }
                 stab_shape_p(ip, d1, k) = 0.0;
+				stab_shape_c(ip, d1, k) = 0.0;
             }
         }
     }
@@ -868,6 +877,13 @@ update(const FV1Geometry<TElem, dim>* geo,
     {
         this->compute_upwind(geo, vStdVel);
         this->compute_downwind(geo, vStdVel);
+		
+		/*if(RelVelSCV.data_given())
+		{
+			this->compute_upwind_rel(geo, vStdRelVel);
+			this->compute_downwind_rel(geo, vStdRelVel);
+		}*/
+			
     }
     
     //    compute diffusion length
@@ -875,7 +891,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     
     //MathVector<dim> RhoGrad[numIp];
     //MathVector<dim> ViscGrad[numIp];
-    MathVector<dim> Vel[numIp];
+    //MathVector<dim> Vel[numIp];
     //number DenMomentum[numIp];
     number RHO_up[numIp];
     number RHO_do[numIp];
@@ -903,17 +919,18 @@ update(const FV1Geometry<TElem, dim>* geo,
 				RHO_up[ip] += upwind_shape_sh(ip, sh) * densitySCV[sh];
 				RHO_do[ip] += downwind_shape_sh(ip, sh) * densitySCV[sh];
 			}
-			Ratio[ip] = 1.0-pow(fmin(RHO_up[ip] , RHO_do[ip]) / fmax (RHO_up[ip] , RHO_do[ip]), 2.0);
+			Ratio[ip] = pow(fmin(RHO_up[ip] , RHO_do[ip]) / fmax (RHO_up[ip] , RHO_do[ip]), 2.0);
+			//if(Ratio[ip] < 0.8)printf("Ratio[%zu] = %f \n", ip,Ratio[ip]);
 			
 			Ratio_rho_up[ip] = RHO_up[ip] * downwind_conv_length(ip) / ( RHO_up[ip] * downwind_conv_length(ip) + RHO_do[ip] * upwind_conv_length(ip));
 			Ratio_rho_do[ip] = 1.0 - Ratio_rho_up[ip];
-			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+			/*for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
 			{
 				for(int d = 0; d < dim; d++)
 				{
 					Vel[ip][d] += vCornerValue(d, sh)*(Ratio_rho_up[ip] * upwind_shape_sh(ip, sh) + Ratio_rho_do[ip] * downwind_shape_sh(ip, sh));
 				}
-			}
+			}*/
 			//DenMomentum[ip]=VecProd(RhoGrad[ip],vStdVel[ip]);
 		}
 	}
@@ -926,6 +943,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     MathVector<dim> SOURCE[numIp];
     
     number vNormStdVelPerConvLen[numIp];
+	number vNormRelVelPerConvLen[numIp];
     
     for(size_t ip = 0; ip < numIp; ++ip)
     {
@@ -936,14 +954,23 @@ update(const FV1Geometry<TElem, dim>* geo,
         const int from = scvFrom.node_id();
         const int to = scvTo.node_id();
         
-		vViscoPerDiffLenSq[ip] = density[ip]*kinVisco[ip] * diff_length_sq_inv(ip);
+		vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
 		if(boolSource) SOURCE[ip] = Source[ip];
 		
 
         
         if(!bStokes)
         {
-            vNormStdVelPerConvLen[ip] = VecTwoNorm(vStdVel[ip]) * density[ip] / upwind_conv_length(ip);
+            vNormStdVelPerConvLen[ip] = VecTwoNorm(vStdVel[ip]) / upwind_conv_length(ip);
+			
+			/*if(RelVelSCV.data_given())
+			{
+				const number rhos = Inter->Density_max();
+				const number alpha_max = Inter->Alpha_max();
+				vNormRelVelPerConvLen[ip] = (rhos/alpha_max) * VecTwoNorm(vStdRelVel[ip]) / (upwind_conv_length_rel(ip) + downwind_conv_length_rel(ip));
+
+			}*/
+			
         }
 
 
@@ -981,8 +1008,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             number diag = vViscoPerDiffLenSq[ip];
             
             //    Time part
-            /*if(pvCornerValueOldTime != NULL)
-                diag += density[ip]/dt;*/
+            if(pvCornerValueOldTime != NULL)
+                diag += 1./dt;
             
             //    Convective Term  (no convective terms in the Stokes eq.)
             if (! bStokes)
@@ -1016,7 +1043,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 
                 
                 //    Time
-                /*if(pvCornerValueOldTime != NULL && density_old.data_given())
+                if(pvCornerValueOldTime != NULL && density_old.data_given())
                 {
                     //    interpolate old time step
                     number oldIPVel = 0.0;
@@ -1024,8 +1051,8 @@ update(const FV1Geometry<TElem, dim>* geo,
                         oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
                     
                     //    add to rhs
-                    rhs += density_old[ip] * oldIPVel / dt;
-                }*/
+                    rhs += (density_old[ip] / density[ip])* oldIPVel / dt;
+                }
                 
                 //    loop shape functions
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
@@ -1045,7 +1072,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     {
                         //sumVel += densitySCV[k] * vNormStdVelPerConvLen[ip] * (upwind_shape_sh(ip, k) - downwind_shape_sh(ip, k) );
                         sumVel += vNormStdVelPerConvLen[ip] * ( Ratio[ip]*upwind_shape_sh(ip, k)  +  (1.0-Ratio[ip])*(Ratio_rho_up[ip] * upwind_shape_sh(ip, k) + Ratio_rho_do[ip] * downwind_shape_sh(ip, k)));
-                        //sumVel += vNormStdVelPerConvLen[ip] * densitySCV[k]  * upwind_shape_sh(ip, k);
+                        //sumVel += vNormStdVelPerConvLen[ip] 	 * upwind_shape_sh(ip, k);
                         
                         //sumVel += -DenMomentum[ip]*scvf.shape(k) * ;
                     }
@@ -1059,7 +1086,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     
                     //    Pressure part
-					number sumP = -1.0 * scvf.global_grad(k)[d]  ;// - 1.0 * scvf.shape(k) *
+					number sumP = -1.0 * scvf.global_grad(k)[d] / density[ip]  ;// - 1.0 * scvf.shape(k) *
                     
                     
                     
@@ -1073,6 +1100,17 @@ update(const FV1Geometry<TElem, dim>* geo,
                      
                         
                     stab_shape_p(ip, d, k) += sumP / diag;
+					
+					/*if (! bStokes && RelVelSCV.data_given())
+					{
+						//    Pressure part
+						number SumRelVel =  vNormRelVelPerConvLen[ip] * RelVelSCV[k][d] * (downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k) );
+						//    Add to rhs
+						rhs += SumRelVel * vCornerValue(_C_, k);
+						
+						//    set stab shape
+						stab_shape_c(ip, d, k) += SumRelVel / diag;
+					}*/
                     
                     
                     
@@ -1128,7 +1166,9 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number ps[],
+	   const number ps[],
+	   const MathVector<dim> vStdRelVel[],
+	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt)
@@ -1335,7 +1375,9 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number ps[],
+	   const number ps[],
+	   const MathVector<dim> vStdRelVel[],
+	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt)
@@ -1553,7 +1595,9 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number ps[],
+	   const number ps[],
+	   const MathVector<dim> vStdRelVel[],
+	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt)
@@ -1648,7 +1692,9 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& density_old,
        const DataImport<number, dim>& densitySCV,
-       const number ps[],
+	   const number ps[],
+	   const MathVector<dim> vStdRelVel[],
+	   const DataImport<MathVector<dim>, dim>& RelVelSCV,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt)
