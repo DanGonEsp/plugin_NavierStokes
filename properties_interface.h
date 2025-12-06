@@ -174,7 +174,7 @@ class Interface
             iter = i;
             Rel = w2;
 
-            if(std::isnan(Rel) || Rel<0.0) UG_THROW("Error in RelativeVelocityLinker: Relative Vel.");
+            if(std::isnan(Rel) || Rel<0.0) UG_THROW("Error in RelativeVelocityLinker: Relative Vel = "<< Rel <<".");
         }
         number RE(const number mu_a1, const number rho_a1, const number dp1, const number w1)
         {
@@ -1012,6 +1012,7 @@ class Interface
         number Density_s(){ return rho_s;}
         number Density_a(){ return rho_a;}
         number Density_max(){ return (rho_s-rho_a) * alpha_max + rho_a;}
+		number Viscosity_a(){ return mu_a;}
         number Alpha_max(){ return alpha_max;}
         number DT(){ return m_dt;}
         number ReferencePressure(){ return m_P0;}

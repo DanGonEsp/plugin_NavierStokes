@@ -340,10 +340,6 @@ class GranularViscosityLinker
                                        " model= 0, 1 , 2, 3, 4")
                         break;
                 }
-                if(viscosity_granular_aux>m_limit)
-                {
-					UG_THROW("Granular viscosity diverged");
-                }
                 viscosity_granular[ip]=viscosity_granular_aux;
                 vValue[ip]=viscosity_granular[ip]/vMixDensity[ip];
             
@@ -979,16 +975,16 @@ class GranularViscosityLinker
         {
             set_particle_pressure(make_sp(new ConstUserNumber<dim>(val)));
         }
-        void set_mix_viscosity(SmartPtr<CplUserData<number, dim> > data)
+        void set_eins_viscosity(SmartPtr<CplUserData<number, dim> > data)
         {
             m_spMixViscosity = data;
             m_spDMixViscosity = data.template cast_dynamic<DependentUserData<number, dim> >();
             base_type::set_input(_MU_, data, data);
         }
 
-        void set_mix_viscosity(number val)
+        void set_eins_viscosity(number val)
         {
-            set_mix_viscosity(make_sp(new ConstUserNumber<dim>(val)));
+			set_eins_viscosity(make_sp(new ConstUserNumber<dim>(val)));
         }
 
     protected:

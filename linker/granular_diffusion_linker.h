@@ -35,6 +35,7 @@
 #define __H__UG__LIB_DISC__SPATIAL_DISC__GRANULAR_DIFFUSION_LINKER__
 
 #include "lib_disc/spatial_disc/user_data/linker/linker.h"
+#include "../properties_interface.h"
 
 namespace ug{
 
@@ -68,10 +69,11 @@ class GranularDiffusionLinker
     public:
     GranularDiffusionLinker() :
             m_spGamma(NULL), m_spDGamma(NULL),
-            m_Diff_factor(0.0)
+            m_Diff_factor(0.0),
+			m_BoolConsKinVisc(true)
         {
         //    this linker needs exactly four input
-            this->set_num_input(1);
+            this->set_num_input(3);
         }
 
         // function for evaluation at single ip?
@@ -115,18 +117,39 @@ class GranularDiffusionLinker
                              const MathMatrix<refDim, dim>* vJT = NULL) const
         {
             std::vector<number> vGamma(nip);
+			std::vector<MathMatrix<dim,dim> > vVelocityGrad(nip);
+			std::vector<number> vMixViscosity(nip);
 
             (*m_spGamma)(&vGamma[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
-
+			(*m_spVelocityGrad)(&vVelocityGrad[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
+			(*m_spMixViscosity)(&vMixViscosity[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
+			const number nu_a = (Inter-> Viscosity_a()) / Inter->Density_a();
 
             for(size_t ip = 0; ip < nip; ++ip)
             {
                 
                 MathMatrix<dim,dim> Diff;
                 MatSet(Diff,0.0);
-                
-                MatDiagSet(Diff,m_Diff_factor * vGamma[ip]);
-                vValue[ip]=Diff;
+				if (m_BoolConsKinVisc)
+				{
+					MatDiagSet(Diff,m_Diff_factor * nu_a * vGamma[ip]);
+					vValue[ip]=Diff;
+				}
+				else
+				{
+					number gamma=0.0;
+					// compute inner sum
+					for(int d1 = 0; d1 < dim; ++d1)
+					{
+						for(int d2 = 0; d2 < dim; ++d2)
+						{
+							gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2);
+						}
+					}
+					
+					MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
+					vValue[ip]=Diff;
+				}
 
             }
         }
@@ -148,10 +171,13 @@ class GranularDiffusionLinker
         
             
             int s_GAMMA_ = base_type::series_id(_GAMMA_, s);
-            
+			int s_DV_  = base_type::series_id(_DV_ , s);
+			int s_MU_ = base_type::series_id(_MU_, s);
            
         //    get the data of the ip series
-            const number* vGamma = m_spGamma->values(s_GAMMA_);
+            const number* 				vGamma 			= m_spGamma->values(s_GAMMA_);
+			const MathMatrix<dim,dim>*  vVelocityGrad	= m_spVelocityGrad->values(s_DV_);
+			const number*               vMixViscosity	= m_spMixViscosity->values(s_MU_);
 
             //number viscosity_granular;
             //number VolFraction;
@@ -164,13 +190,37 @@ class GranularDiffusionLinker
             }
             //VolFraction=;
             VolFraction=fmin(1.0, fmax(VolFraction/nip,0));*/
+			
+			const number nu_a = (Inter-> Viscosity_a()) / Inter->Density_a();
             for(size_t ip = 0; ip < nip; ++ip)
             {
                                 
                 MathMatrix<dim,dim> Diff;
                 MatSet(Diff,0.0);
-                MatDiagSet(Diff,m_Diff_factor * vGamma[ip]);
-                vValue[ip]=Diff;
+				if(m_BoolConsKinVisc)
+				{
+					MatDiagSet(Diff,m_Diff_factor * nu_a * vGamma[ip]);
+					vValue[ip]=Diff;
+				}
+				else
+				{
+					
+					number gamma=0.0;
+					// compute inner sum
+					for(int d1 = 0; d1 < dim; ++d1)
+					{
+						for(int d2 = 0; d2 < dim; ++d2)
+						{
+							gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2);
+						}
+					}
+					
+					gamma =sqrt((0.5*gamma));
+					
+					MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
+					
+					vValue[ip]=Diff;
+				}
             }
             
             
@@ -302,13 +352,44 @@ class GranularDiffusionLinker
         {
             set_gamma(make_sp(new ConstUserNumber<dim>(val)));
         }
+	
+	/// set velocity gradient import
+		void set_velocity_gradient(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> > data)
+		{
+			m_spVelocityGrad = data;
+			m_spDVelocityGrad = data.template cast_dynamic<DependentUserData<MathMatrix<dim,dim>, dim> >();
+			base_type::set_input(_DV_, data, data);
+		}
+	
+		void set_mix_viscosity(SmartPtr<CplUserData<number, dim> > data)
+		{
+			m_spMixViscosity = data;
+			m_spDMixViscosity = data.template cast_dynamic<DependentUserData<number, dim> >();
+			base_type::set_input(_MU_, data, data);
+		}
+
+		void set_mix_viscosity(number val)
+		{
+			set_mix_viscosity(make_sp(new ConstUserNumber<dim>(val)));
+		}
+	
         void set_diff_factor(float R)
         {
-            if(R <= 0.0)
+            if(R < 0.0)
                 UG_THROW("GranularDiffusionLinker:  Diffusion Factor must be greater or equal zero.");
             m_Diff_factor = R;
             
         }
+		void const_kinematic_visc(bool R) {
+			m_BoolConsKinVisc = R;
+		}
+
+		void set_phase_parameters(Interface<dim>* user)
+		{
+			if (!user->valid())
+				UG_THROW("Interface parameters has not been initialized");
+			Inter = user;
+		}
 
     protected:
          //  variables for storing imports
@@ -317,9 +398,22 @@ class GranularDiffusionLinker
             static const size_t _GAMMA_ = 0;
             SmartPtr<CplUserData<number, dim> > m_spGamma;
             SmartPtr<DependentUserData<number, dim> > m_spDGamma;
-    
+	
+		///    import for velocity gradient
+			static const size_t _DV_ = 1;
+			SmartPtr<CplUserData<MathMatrix<dim,dim>, dim>> m_spVelocityGrad;
+			SmartPtr<DependentUserData<MathMatrix<dim,dim>,dim> > m_spDVelocityGrad;
+	
+		///    import for volume fraction
+			static const size_t _MU_ = 2;
+			SmartPtr<CplUserData<number, dim> > m_spMixViscosity;
+			SmartPtr<DependentUserData<number, dim> > m_spDMixViscosity;
+	
+			Interface<dim>* Inter;
+	
     protected:
             float m_Diff_factor;
+			bool m_BoolConsKinVisc;
     
 };
 

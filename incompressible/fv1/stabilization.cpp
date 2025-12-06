@@ -848,7 +848,8 @@ update(const FV1Geometry<TElem, dim>* geo,
         UG_THROW("Not implemented for ip velocities depending on other ip.");
     }
     
-    
+	number power = 3.0;
+	number factor = 0.0;
     
     //    abbreviation for pressure
     static const size_t _P_ = dim;
@@ -916,7 +917,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 					Rho_up += upwind_shape_sh(ip, sh) * densitySCV_old[sh];
 					Rho_do += downwind_shape_sh(ip, sh) * densitySCV_old[sh];
 				}
-				number Ratio_rho = 0.0*pow(fmin(Rho_up , Rho_do) / fmax (Rho_up , Rho_do), 2.0);
+				number Ratio_rho = factor*pow(fmin(Rho_up , Rho_do) / fmax (Rho_up , Rho_do), power);
 				
 				number R_rho_up = Rho_up * downwind_conv_length(ip) / ( Rho_up * downwind_conv_length(ip) + Rho_do * upwind_conv_length(ip));
 				number Ratio_rho_do = 1.0 - R_rho_up;
@@ -990,7 +991,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 				RHO_up[ip] += upwind_shape_sh(ip, sh) * densitySCV[sh];
 				RHO_do[ip] += downwind_shape_sh(ip, sh) * densitySCV[sh];
 			}
-			Ratio[ip] = pow(fmin(RHO_up[ip] , RHO_do[ip]) / fmax (RHO_up[ip] , RHO_do[ip]), 2.0);
+			Ratio[ip] = factor*pow(fmin(RHO_up[ip] , RHO_do[ip]) / fmax (RHO_up[ip] , RHO_do[ip]), power);
 			//if(Ratio[ip] < 0.8)printf("Ratio[%zu] = %f \n", ip,Ratio[ip]);
 			
 			Ratio_rho_up[ip] = RHO_up[ip] * downwind_conv_length(ip) / ( RHO_up[ip] * downwind_conv_length(ip) + RHO_do[ip] * upwind_conv_length(ip));
@@ -1110,15 +1111,15 @@ update(const FV1Geometry<TElem, dim>* geo,
                 if(pvCornerValueOldTime != NULL)
                 {
                     //    add to rhs
-                    rhs += (density_old[ip] / density[ip]) * vStdVel_ip_old[ip][d]/ dt;
+                    rhs +=  vStdVel_ip_old[ip][d]/ dt; //(density_old[ip] / density[ip])
                 }
                 
                 //    loop shape functions
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
                 {
                     //    Diffusion part
-                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-                    //number sumVel = vViscoPerDiffLenSq[ip] * (densitySCV[k] / density[ip]) * scvf.shape(k);
+                    //number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+                    number sumVel = vViscoPerDiffLenSq[ip] * (densitySCV[k] / density[ip]) * scvf.shape(k);
                     //number sumVel = vViscoPerDiffLenSq[ip] *(densitySCV[k])  * scvf.shape(k);
                     
                     //sumVel += -2.0 * kinVisco[ip] * (densitySCV[k]/density[ip]) * VecProd( RhoGrad[ip], scvf.global_grad(k));
