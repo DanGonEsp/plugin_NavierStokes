@@ -133,7 +133,6 @@ class GranularDiffusionLinker
 				if (m_BoolConsKinVisc)
 				{
 					MatDiagSet(Diff,m_Diff_factor * nu_a * vGamma[ip]);
-					vValue[ip]=Diff;
 				}
 				else
 				{
@@ -148,8 +147,8 @@ class GranularDiffusionLinker
 					}
 					
 					MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
-					vValue[ip]=Diff;
 				}
+				vValue[ip]=Diff;
 
             }
         }
@@ -200,7 +199,6 @@ class GranularDiffusionLinker
 				if(m_BoolConsKinVisc)
 				{
 					MatDiagSet(Diff,m_Diff_factor * nu_a * vGamma[ip]);
-					vValue[ip]=Diff;
 				}
 				else
 				{
@@ -219,8 +217,9 @@ class GranularDiffusionLinker
 					
 					MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
 					
-					vValue[ip]=Diff;
+					
 				}
+				vValue[ip]=Diff;
             }
             
             

@@ -137,7 +137,7 @@ class Interface
             }
             
             if(std::isnan(ss) || ss<0.0) UG_THROW("Error in Einstein ViscosityLinker: Value = NaN" <<"  Volume Fraction = "<<phi<<".");
-            if(phi > alpha_max) UG_LOG("Phi > phi_max in Einstein Viscosity\n");
+            //if(phi > alpha_max) UG_LOG("Phi > phi_max in Einstein Viscosity\n");
         }
     
         number RelVel_ext(const number mu_a1, const number rho_a1, const number dp1, const number rho_s1, const number g1, const number E1)

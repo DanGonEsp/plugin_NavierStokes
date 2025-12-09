@@ -882,7 +882,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 	MathVector<dim> vStdVel_ip_old[numIp];
 	
 	
-	if(pvCornerValueOldTime != NULL )
+	/*if(pvCornerValueOldTime != NULL )
 	{
 		for(size_t ip = 0; ip < numIp; ++ip)
 		{
@@ -891,7 +891,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 			VecSet(vStdVel_ip_old[ip],0.0);
 			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
 				for(int d = 0; d < dim; d++)
-					vStdVel_ip_old[ip][d] += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+					vStdVel_ip_old[ip][d] +=  scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
 		}
 		
 		if ( !bStokes )
@@ -942,7 +942,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 			
 		}
 
-	}
+	}*/
 	
 	
 	
@@ -1073,8 +1073,8 @@ update(const FV1Geometry<TElem, dim>* geo,
             number diag = vViscoPerDiffLenSq[ip];
             
             //    Time part
-            if(pvCornerValueOldTime != NULL)
-                diag += 1./dt;
+            /*if(pvCornerValueOldTime != NULL)
+                diag += 1./dt;*/
             
             //    Convective Term  (no convective terms in the Stokes eq.)
             if (! bStokes)
@@ -1108,18 +1108,18 @@ update(const FV1Geometry<TElem, dim>* geo,
 
                 
                 //    Time
-                if(pvCornerValueOldTime != NULL)
+                /*if(pvCornerValueOldTime != NULL)
                 {
                     //    add to rhs
                     rhs +=  vStdVel_ip_old[ip][d]/ dt; //(density_old[ip] / density[ip])
-                }
+                }*/
                 
                 //    loop shape functions
                 for(size_t k = 0; k < scvf.num_sh(); ++k)
                 {
                     //    Diffusion part
-                    //number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-                    number sumVel = vViscoPerDiffLenSq[ip] * (densitySCV[k] / density[ip]) * scvf.shape(k);
+                    number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+                    //number sumVel = vViscoPerDiffLenSq[ip] * (densitySCV[k] / density[ip]) * scvf.shape(k);
                     //number sumVel = vViscoPerDiffLenSq[ip] *(densitySCV[k])  * scvf.shape(k);
                     
                     //sumVel += -2.0 * kinVisco[ip] * (densitySCV[k]/density[ip]) * VecProd( RhoGrad[ip], scvf.global_grad(k));

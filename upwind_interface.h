@@ -401,7 +401,7 @@ upwind_rel_momentum(const size_t scvf,
 			   const LocalVector& CornerValues,
 			   const size_t _val_,
                const MathVector<dim> vRelVelCorners[],
-			   const number factor) const
+			   const number rho_s) const
 {
 //    reset result
     MathVector<dim> momentum; VecSet(momentum, 0.0);
@@ -409,7 +409,7 @@ upwind_rel_momentum(const size_t scvf,
 //    add corner shapes
     for(size_t sh = 0; sh < num_sh(); ++sh)
         for(int d = 0; d < dim; ++d)
-			momentum[d] += factor * upwind_shape_sh(scvf, sh) * CornerValues(_val_, sh) * vRelVelCorners[sh][d];
+			momentum[d] += rho_s * upwind_shape_sh(scvf, sh) * CornerValues(_val_, sh) * vRelVelCorners[sh][d];
 
 //    done if only depending on shapes
     if(!non_zero_shape_ip()) return momentum;

@@ -727,6 +727,7 @@ class NavierStokesFV1M
     
     ///    Data import for Relative velocity
         DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
+		DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCVF;
     
     ///    Data import for multiphase flow
         DataImport<MathVector<dim>, dim> m_imSurfaceNormal;
