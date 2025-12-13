@@ -186,7 +186,7 @@ class NavierStokesFV1M
         void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_diffusion(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > user);
     
-        void set_vol_fraction(SmartPtr<CplUserData<number, dim> > user);
+        void set_average_gamma(SmartPtr<CplUserData<number, dim> > user);
         void set_interface_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
 
 
@@ -578,7 +578,7 @@ class NavierStokesFV1M
         inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_div, MathVector<dim>* StdRelVel_total_t, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV,  const DataImport<MathVector<dim>, dim>& RelVelSCV, const bool m_bStokes, const bool Jac);
     
         template <typename TFVGeom>
-        inline void vel_grad(const LocalVector& u, const TFVGeom& geo, MathMatrix<dim,dim>* VelGrad);
+        inline void vel_grad(const LocalVector& u, const TFVGeom& geo, number* Gamma);
 
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>
@@ -728,6 +728,9 @@ class NavierStokesFV1M
     ///    Data import for Relative velocity
         DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
 		DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCVF;
+	
+	///    Data import for Nodal ShearRate
+		DataImport<number, dim> m_imAverageGammaSCV;
     
     ///    Data import for multiphase flow
         DataImport<MathVector<dim>, dim> m_imSurfaceNormal;

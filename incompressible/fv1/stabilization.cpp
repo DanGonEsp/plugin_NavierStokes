@@ -849,7 +849,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     }
     
 	number power = 3.0;
-	number factor = 0.0;
+	number factor = 0.2;
     
     //    abbreviation for pressure
     static const size_t _P_ = dim;

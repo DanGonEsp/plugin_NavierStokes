@@ -162,13 +162,6 @@ set_interface_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 
 template<typename TDomain>
 void NavierStokesFV1<TDomain>::
-set_vol_fraction(SmartPtr<CplUserData<number, dim> > data)
-{
-    m_imVolumeFraction.set_data(data);
-}
-
-template<typename TDomain>
-void NavierStokesFV1<TDomain>::
 set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 {
     m_imRelativeVelocity.set_data(data);

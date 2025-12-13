@@ -91,7 +91,6 @@ class GranularViscosityLinker
             deltaI(1e-3),
             deltaPs(1.48e-04),
             deltaGamma(1e-4),
-            m_limit(1e6),
             interface_volume_fraction(0.5)
         {
         //    this linker needs exactly four input
@@ -184,14 +183,12 @@ class GranularViscosityLinker
             number mu_sand[nip];
             number mu_sand_aux;
             
-            number limit[nip];
             for(size_t ip = 0; ip < nip; ++ip)
             {
                 mu_sand_aux=0;
                 //mu_eins_aux=mu_a;
                 
                 VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
-                limit[ip]=1.0;
 
                 switch (m_model) {
                     case 0:
@@ -231,11 +228,7 @@ class GranularViscosityLinker
                                        " model= 0, 1 , 2, 3")
                         break;
                 }
-                if(viscosity_granular_aux>m_limit)
-                {
-                    viscosity_granular_aux = m_limit;
-                    limit[ip] = 0.0;
-                }
+				if(std::isnan(viscosity_granular_aux) || viscosity_granular_aux<0.0) UG_THROW("Error ViscosityLinker: Value = NaN" <<".");
                 viscosity_granular[ip]=viscosity_granular_aux;
                 vValue[ip]=viscosity_granular[ip]/vMixDensity[ip];
 
@@ -340,6 +333,7 @@ class GranularViscosityLinker
                                        " model= 0, 1 , 2, 3, 4")
                         break;
                 }
+				if(std::isnan(viscosity_granular_aux) || viscosity_granular_aux<0.0) UG_THROW("Error ViscosityLinker: Value = NaN" <<".");
                 viscosity_granular[ip]=viscosity_granular_aux;
                 vValue[ip]=viscosity_granular[ip]/vMixDensity[ip];
             
@@ -571,7 +565,7 @@ class GranularViscosityLinker
             
         //  Derivatives of ParticlePressure
             
-            if(m_spDParticlePressure.valid() && !m_spDParticlePressure->zero_derivative() && (m_model== 3  || m_model== 4) )
+            /*if(m_spDParticlePressure.valid() && !m_spDParticlePressure->zero_derivative() && (m_model== 3  || m_model== 4) )
             {
                 for(size_t ip = 0; ip < nip; ++ip)
                 {
@@ -622,7 +616,7 @@ class GranularViscosityLinker
                         }
                     }
                 }
-            }
+            }*/
         
         //  Derivatives of velocity gradient
             
@@ -1049,9 +1043,6 @@ class GranularViscosityLinker
             void set_interface_volume_fraction(float R) {
                 interface_volume_fraction = R;
             }
-            void set_limit(float R) {
-                m_limit = R;
-            }
             void set_deltaPs(float R) {
                 deltaPs = R;
             }
@@ -1073,7 +1064,7 @@ class GranularViscosityLinker
         protected:
 
             int m_model;
-            float rho_s, nu_s, rho_a, mu_a, I_0, FricMu_1, FricMu_2, dp, alpha_max, alpha_min, deltaI, deltaPs, deltaGamma, m_limit;
+            float rho_s, nu_s, rho_a, mu_a, I_0, FricMu_1, FricMu_2, dp, alpha_max, alpha_min, deltaI, deltaPs, deltaGamma;
             float interface_volume_fraction; //m_packing_factor;
     
 };

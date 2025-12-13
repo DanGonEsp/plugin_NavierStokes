@@ -84,25 +84,13 @@ class Interface
             
         }
 
-        void Ps(number* ParticlePressure, number* DCParticlePressure, const MathMatrix<dim,dim> VelocityGrad[], const LocalVector& u, const size_t _C_, const size_t numSH, const bool deriv)
+        void Ps(number* ParticlePressure, number* DCParticlePressure, const number Gamma[], const LocalVector& u, const size_t _C_, const size_t numSH, const bool deriv)
         {
             
             for(size_t sh = 0; sh < numSH; ++sh)
             {
-                number gamma=0.0;
+				number gamma=Gamma[sh];
                 const number phi=fmin(1.0, fmax(u(_C_,sh),0));
-                
-                
-                // compute inner sum
-                for(int d1 = 0; d1 < dim; ++d1)
-                {
-                    for(int d2 = 0; d2 < dim; ++d2)
-                    {
-                        gamma += pow(VelocityGrad[sh](d1,d2) + VelocityGrad[sh](d2,d1),2);
-                    }
-                }
-                gamma =sqrt(pow(deltaGamma,2)+(0.5*gamma));
-                
                 
                 //Stokes number
                 const number St=gamma*rho_s*pow(dp,2)/mu_a;
@@ -113,7 +101,7 @@ class Interface
                 const number pa = mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
                 
                 ParticlePressure[sh] = fmax(pff+pa,0.0);
-                if(deriv)
+                if(deriv || DCParticlePressure==NULL)
                 {
                     number dpff =(phi > alpha_min) ? pff *(2*phi+3*alpha_max-5*alpha_min)/((  phi-alpha_min)*(alpha_max-phi)) : 0.0;
                     
@@ -143,7 +131,7 @@ class Interface
         number RelVel_ext(const number mu_a1, const number rho_a1, const number dp1, const number rho_s1, const number g1, const number E1)
         {
             number Vel; size_t iter;
-            RelVel(Vel, iter,  mu_a1,  rho_a1, dp1,  rho_s1,  g1,  E1);
+            RelVel(Vel, iter,  mu_a1,  rho_a1, rho_a1, dp1,  rho_s1,  g1,  E1);
             number Re = RE(mu_a1,rho_a1,dp1,Vel);
             number cd = CD(Re,  drag_model);
             printf("Ws = %f\n",Vel);
@@ -152,7 +140,7 @@ class Interface
             return Vel;
             
         }
-        void RelVel(number& Rel, size_t& iter, const number mu_a1, const number rho_a1, const number dp1, const number rho_s1, const number g1, const number E1)
+        void RelVel(number& Rel, size_t& iter, const number mu_mix, const number rho_mix, const number rho_a, const number dp1, const number rho_s, const number g1, const number E1)
         {
             size_t mod = drag_model;
             size_t i=0;
@@ -164,9 +152,9 @@ class Interface
             {
                 
                 w1=w2;
-                re=RE(mu_a1,rho_a1,dp1,w1);
+                re=RE(mu_mix,rho_mix,dp1,w1);
                 c = CD(re,mod);
-                w2 = sqrt((4.0/3.0)*dp1*(rho_s1/rho_a1-1.0)*g1/c);
+                w2 = sqrt((4.0/3.0)*dp1*(rho_s-rho_a)*g1/ (c*rho_mix));
                 e = 100.0 * fabs(w2-w1)/w2;
                 i=i+1;
                 if(i > 40) UG_THROW("Error in RelativeVelocityLinker: Reached " << i <<" iterations in RelVel. Vel = "  << w2 <<"   Error = "<<e<<".");

@@ -435,7 +435,7 @@ class RelativeVelocityLinker
         }
         static void RelativeVel(number& RelVel, const number vPsGrad, const number m_gravitation, const number vVolume, const number vMixDensity, const number vMixKinVisc, const number vEinstVisc, const number m_Wr, const number m_Cd, const number rho_a, const number rho_s, const number dp, const number mu_a, const number alpha_max, Interface<dim>* Inter, bool EvalAndDeriv)
         {
-            const number Fy = -vPsGrad+m_gravitation * vMixDensity;
+			const number gy = -vPsGrad/(rho_s-rho_a) + m_gravitation;
             number W = 0.0;
             number W1 = 0.0;
             //number W2 = 0.0;
@@ -452,12 +452,13 @@ class RelativeVelocityLinker
             //Cd_phi=Cd;//*pow(Ratio,2)*(1-phi)/(1+pow(phi,1/3));
             //vol_grad=sqrt(VecProd(vVolumeGrad[ip], vVolumeGrad[ip]));
             bool ff= false;
-            if( Fy < 0.0 )
+            if( gy < 0.0 )
             {
                 
                 W1 = m_Wr*Ratio;
                 size_t iter = 0;
-                Inter->RelVel(W1,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1.0);
+                Inter->RelVel(W1,  iter,    MU2,   rho_a, rho_a, dp, rho_s,  fabs(gy), 5.0);
+
                 //Inter->RelVel(W2,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1e-03);
                 //Re = Inter->RE( MU2, vMixDensity, dp,  W2);
                 //Cd = Inter->CD( Re,  Inter->DragModel());
