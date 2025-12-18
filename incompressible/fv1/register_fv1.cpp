@@ -202,6 +202,25 @@ static void DomainAlgebra(Registry& reg, string grp)
 		.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "ParticlePressureFV1", tag);
 	}
+	// MeanNormal
+	{
+		string name = string("SlipVelocity").append(suffix);
+		typedef SlipVelocity<TFct> T;
+		typedef CplUserData<number, dim> TBase;
+		typedef INewtonUpdate TBase2;
+		reg.add_class_<T, TBase,TBase2>(name, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
+				.add_method("set_source", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_source), "", "Source")
+				.add_method("set_source", static_cast<void (T::*)(number)>(&T::set_source), "", "F_x")
+				.add_method("set_source", static_cast<void (T::*)(number,number)>(&T::set_source), "", "F_x, F_y")
+				.add_method("set_source", static_cast<void (T::*)(number,number,number)>(&T::set_source), "", "F_x, F_y, F_z")
+			#ifdef UG_FOR_LUA
+				.add_method("set_source", static_cast<void (T::*)(const char*)>(&T::set_source), "", "Source Vector")
+			#endif
+				.add_method("update", &T::update)
+		.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "SlipVelocity", tag);
+	}
 
 }
 

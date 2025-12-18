@@ -123,7 +123,7 @@ class GranularDiffusionLinker
             (*m_spGamma)(&vGamma[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 			(*m_spVelocityGrad)(&vVelocityGrad[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 			(*m_spMixViscosity)(&vMixViscosity[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
-			const number nu_a = (Inter-> Viscosity_a()) / Inter->Density_a();
+			const number mu_a = Inter-> Viscosity_a() * Inter->Density_a();
 
             for(size_t ip = 0; ip < nip; ++ip)
             {
@@ -132,7 +132,7 @@ class GranularDiffusionLinker
                 MatSet(Diff,0.0);
 				if (m_BoolConsKinVisc)
 				{
-					MatDiagSet(Diff,m_Diff_factor * nu_a * vGamma[ip]);
+					MatDiagSet(Diff,m_Diff_factor * mu_a * vGamma[ip]);
 				}
 				else
 				{
@@ -142,10 +142,10 @@ class GranularDiffusionLinker
 					{
 						for(int d2 = 0; d2 < dim; ++d2)
 						{
-							gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2);
+							gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2.0);
 						}
 					}
-					
+					gamma =sqrt((0.5*gamma));
 					MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
 				}
 				vValue[ip]=Diff;
@@ -190,7 +190,7 @@ class GranularDiffusionLinker
             //VolFraction=;
             VolFraction=fmin(1.0, fmax(VolFraction/nip,0));*/
 			
-			const number nu_a = (Inter-> Viscosity_a()) / Inter->Density_a();
+			const number mu_a = Inter-> Viscosity_a() * Inter->Density_a();
             for(size_t ip = 0; ip < nip; ++ip)
             {
                                 
@@ -198,7 +198,7 @@ class GranularDiffusionLinker
                 MatSet(Diff,0.0);
 				if(m_BoolConsKinVisc)
 				{
-					MatDiagSet(Diff,m_Diff_factor * nu_a * vGamma[ip]);
+					MatDiagSet(Diff,m_Diff_factor * mu_a * vGamma[ip]);
 				}
 				else
 				{

@@ -52,7 +52,7 @@ SmartPtr<INavierStokesSRFV1Stabilization<dim> > CreateNavierStokesStabilization(
     if(n == "fields") return SmartPtr<NavierStokesFIELDSStabilization<dim> >(new NavierStokesFIELDSStabilization<dim>());
     if(n == "flow") return SmartPtr<NavierStokesFLOWStabilization<dim> >(new NavierStokesFLOWStabilization<dim>());
     if(n == "fields_2") return SmartPtr<NavierStokesFIELDS_2_Stabilization<dim> >(new NavierStokesFIELDS_2_Stabilization<dim>());
-    if(n == "viscosity") return SmartPtr<NavierStokesVISCOSITY_Stabilization<dim> >(new NavierStokesVISCOSITY_Stabilization<dim>());
+    if(n == "flow_2") return SmartPtr<NavierStokesFLOW_2_Stabilization<dim> >(new NavierStokesFLOW_2_Stabilization<dim>());
     if(n == "karimian") return SmartPtr<NavierStokesKARIMIANStabilization<dim> >(new NavierStokesKARIMIANStabilization<dim>());
     if(n == "no") return SmartPtr<NavierStokesNOStabilization<dim> >(new NavierStokesNOStabilization<dim>());
     
@@ -849,7 +849,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     }
     
 	number power = 3.0;
-	number factor = 0.2;
+	number factor = 0.0;
     
     //    abbreviation for pressure
     static const size_t _P_ = dim;
@@ -1210,13 +1210,13 @@ void NavierStokesFIELDS_2_Stabilization<3>::register_func()
     register_func<Hexahedron>();
 }
 /////////////////////////////////////////////////////////////////////////////
-// FIELDS 3
+// FLOW 2
 /////////////////////////////////////////////////////////////////////////////
 
 template <int TDim>
 template <typename TElem>
 void
-NavierStokesVISCOSITY_Stabilization<TDim>::
+NavierStokesFLOW_2_Stabilization<TDim>::
 update(const FV1Geometry<TElem, dim>* geo,
        const LocalVector& vCornerValue,
        const MathVector<dim> vStdVel[],
@@ -1234,173 +1234,339 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
        const LocalVector* pvCornerValueOldTime, number dt)
 {
-    if( non_zero_shape_ip())
-    {
-        UG_THROW("Not implemented for ip velocities depending on other ip.");
-    }
-    //    abbreviation for pressure
-    static const size_t _P_ = dim;
-    
-    //    Some constants
-    static const size_t numIp = FV1Geometry<TElem, dim>::numSCVF;
-    static const size_t numSh = FV1Geometry<TElem, dim>::numSCV;
-    
-    //    compute upwind and downwind (no convective terms for the Stokes eq. => no upwind)
-    if (! bStokes)
-    {
-        this->compute_upwind(geo, vStdVel);
-        this->compute_downwind(geo, vStdVel);
-    }
-    
-    //    compute diffusion length
-    this->compute_diff_length(*geo);
-    
-    //    cache values
-    number vViscoPerDiffLenSq[numIp];
-    
-    number vNormStdVelPerConvLen[numIp];
-    number vNormStdVelPerDownLen[numIp];
-    
-    for(size_t ip = 0; ip < numIp; ++ip)
-    {
+	//	abbreviation for pressure
+	static const size_t _P_ = dim;
+	//	Some constants
+	static const size_t numIp = FV1Geometry<TElem, dim>::numSCVF;
+	static const size_t numSh = FV1Geometry<TElem, dim>::numSCV;
+	
+	//	compute upwind and downwind (no convective terms for the Stokes eq. => no upwind)
+	if (! bStokes)
+	{
+		this->compute_upwind(geo, vStdVel);
+		this->compute_downwind(geo, vStdVel);
+	}
+	
+	
+	//	compute diffusion length
+	this->compute_diff_length(*geo);
+	
+	//	cache values
+	number vViscoPerDiffLenSq[numIp];
+	for(size_t ip = 0; ip < numIp; ++ip)
 		vViscoPerDiffLenSq[ip] = kinVisco[ip] * diff_length_sq_inv(ip);
-        
-        if(!bStokes)
-        {
-            const number norm = VecTwoNorm(vStdVel[ip]);
-            vNormStdVelPerConvLen[ip] = norm / upwind_conv_length(ip);
-            vNormStdVelPerDownLen[ip] = norm / (downwind_conv_length(ip) + upwind_conv_length(ip));
-            
-        }
-
-
-    }
-    
-    
-    
-    
-    //    Find out if upwinded velocities depend on other ip velocities. In that case
-    //    we have to solve a matrix system. Else the system is diagonal and we can
-    //    compute the inverse directly
-    
-    //    diagonal case (i.e. upwind vel depend only on corner vel or no upwind)
-
-    //    Loop integration points
-    for(size_t ip = 0; ip < numIp; ++ip)
-    {
-        //    get SubControlVolumeFace
-        const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
-        
-		//    First, we compute the contributions to the diagonal
-		//    Note: - There is no contribution of the upwind vel to the diagonal
-		//            in this case, only for non-diag problems
-		//          - The diag does not depend on the dimension
-		
-		//    the diagonal entry
-		number diag = vViscoPerDiffLenSq[ip];
-		
-		//    Time part
-		if(pvCornerValueOldTime != NULL)
-			diag += 1./dt;
-		
-		//    Convective Term  (no convective terms in the Stokes eq.)
-		if (! bStokes)
-			diag += vNormStdVelPerConvLen[ip];
-		
-		//     Loop components of velocity
-		for(int d = 0; d < dim; d++)
+	
+	number vNormStdVelPerConvLen[numIp];
+	number vNormStdVelPerDownLen[numIp];
+	if(!bStokes)
+		for(size_t ip = 0; ip < numIp; ++ip)
 		{
-			//    Now, we can assemble the rhs. This rhs is assembled by all
-			//    terms, that are non-dependent on the ip vel.
-			//    Note, that we can compute the stab_shapes on the fly when setting
-			//    up the system.
-			
-			//    Source
-			number rhs = 0.0;
-			if(Source.data_given())
-				rhs = (   density[ip] / density[ip]) * Source[ip][d];
-			
-			//    Time
-			if(pvCornerValueOldTime != NULL)
-			{
-				//    interpolate old time step
-				number oldIPVel = 0.0;
-				for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-					oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
-				
-				//    add to rhs
-				rhs += oldIPVel / dt;
-			}
-			
-			//    loop shape functions
-			for(size_t k = 0; k < scvf.num_sh(); ++k)
-			{
-				//    Diffusion part
-				number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
-				
-				//    Convective term (no convective terms in the Stokes eq.)
-				if (! bStokes)
-				{
-					sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
-					
-					sumVel += vNormStdVelPerDownLen[ip] *
-					(downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
-				}
-				
-				for(int d2 = 0; d2 < dim; ++d2)
-				{
-					if(d2 == d) continue;
-					
-					sumVel -= vStdVel[ip][d2] * (scvf.global_grad(k))[d2];
-				}
-				
-				//    Add to rhs
-				rhs += sumVel * vCornerValue(d, k);
-				
-				//    set stab shape
-				stab_shape_vel(ip, d, d, k) = sumVel / diag;
-				
-				for(int d2 = 0; d2 < dim; ++d2)
-				{
-					if(d2 == d) continue;
-					
-					const number sumVel2 = vStdVel[ip][d] * (scvf.global_grad(k))[d2];
-					
-					rhs += sumVel2 * vCornerValue(d2, k);
-					
-					stab_shape_vel(ip, d, d2, k) = sumVel2 / diag;
-				}
-				
-				//    Pressure part
-				number sumP;
-				
-				sumP = -1.0 * (scvf.global_grad(k))[d]  / density[ip];
-				
-				//    Add to rhs
-				rhs += sumP * vCornerValue(_P_, k);
-				
-				//    set stab shape
-				stab_shape_p(ip, d, k) = sumP / diag;
-				
-				number sumPJump =0.0;
-				UG_THROW("You must update this as Fileds 2, sump v jump shape to the stab shape");
-			}
-			
-			//    Finally, the can invert this row
-			stab_vel(ip)[d] = rhs / diag;
-			
+			const number norm = VecTwoNorm(vStdVel[ip]);
+			vNormStdVelPerConvLen[ip] = norm / upwind_conv_length(ip);
+			vNormStdVelPerDownLen[ip] = norm / (downwind_conv_length(ip) + upwind_conv_length(ip));
 		}
-    }
+	
+	//	Find out if upwinded velocities depend on other ip velocities. In that case
+	//	we have to solve a matrix system. Else the system is diagonal and we can
+	//	compute the inverse directly
+	
+	//	diagonal case (i.e. upwind vel depend only on corner vel or no upwind)
+	if(bStokes || !non_zero_shape_ip())
+	{
+		//	Loop integration points
+		for(size_t ip = 0; ip < numIp; ++ip)
+		{
+			//	get SubControlVolumeFace
+			const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+			
+			//	First, we compute the contributions to the diagonal
+			//	Note: - There is no contribution of the upwind vel to the diagonal
+			//		    in this case, only for non-diag problems
+			//		  - The diag does not depend on the dimension
+			
+			//	the diagonal entry
+			number diag = vViscoPerDiffLenSq[ip];
+			
+			//	Time part
+			if(pvCornerValueOldTime != NULL)
+				diag += 1./dt;
+			
+			//	Convective Term  (no convective terms in the Stokes eq.)
+			if (! bStokes)
+				diag += vNormStdVelPerConvLen[ip];
+			
+			// 	Loop components of velocity
+			for(int d = 0; d < dim; d++)
+			{
+				//	Now, we can assemble the rhs. This rhs is assembled by all
+				//	terms, that are non-dependent on the ip vel.
+				//	Note, that we can compute the stab_shapes on the fly when setting
+				//	up the system.
+				
+				//	Source
+				number rhs = 0.0;
+				if(Source.data_given())
+					rhs = (   density[ip] / density[ip]) * Source[ip][d];
+				
+				//	Time
+				if(pvCornerValueOldTime != NULL)
+				{
+					//	interpolate old time step
+					number oldIPVel = 0.0;
+					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+						oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+					
+					//	add to rhs
+					rhs += oldIPVel / dt;
+				}
+				
+				//	loop shape functions
+				for(size_t k = 0; k < scvf.num_sh(); ++k)
+				{
+					//	Diffusion part
+					number sumVel = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+					
+					//	Convective term (no convective terms in the Stokes eq.)
+					if (! bStokes)
+					{
+						sumVel += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+						
+						sumVel += vNormStdVelPerDownLen[ip] *
+						(downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
+					}
+					
+					for(int d2 = 0; d2 < dim; ++d2)
+					{
+						if(d2 == d) continue;
+						
+						sumVel -= vStdVel[ip][d2] * (scvf.global_grad(k))[d2];
+					}
+					
+					//	Add to rhs
+					rhs += sumVel * vCornerValue(d, k);
+					
+					//	set stab shape
+					stab_shape_vel(ip, d, d, k) = sumVel / diag;
+					
+					for(int d2 = 0; d2 < dim; ++d2)
+					{
+						if(d2 == d) continue;
+						
+						const number sumVel2 = vStdVel[ip][d] * (scvf.global_grad(k))[d2];
+						
+						rhs += sumVel2 * vCornerValue(d2, k);
+						
+						stab_shape_vel(ip, d, d2, k) = sumVel2 / diag;
+					}
+					
+					//	Pressure part
+					const number sumP = -1.0 * (scvf.global_grad(k))[d]  / density[ip];
+					
+					//	Add to rhs
+					rhs += sumP * vCornerValue(_P_, k);
+					
+					//	set stab shape
+					stab_shape_p(ip, d, k) = sumP / diag;
+				}
+				
+				//	Finally, the can invert this row
+				stab_vel(ip)[d] = rhs / diag;
+			}
+		}
+	}
+	/// need to solve system
+	else
+	{
+		// 	For the FLOW stabilization, there is no connection between the
+		//	velocity components. Thus we can solve a system of size=numIP for
+		//	each component of the velocity separately. This results in smaller
+		//	matrices, that we have to invert.
+		
+		//	First, we have to assemble the Matrix, that includes all connections
+		//	between the ip velocity component. Note, that in this case the
+		//	matrix is non-diagonal and we must invert it.
+		//	The Matrix is the same for all dim-components. Thus we invert it only
+		//	once.
+		
+		//	size of the system
+		static const size_t N = numIp;
+		
+		//	a fixed size matrix
+		DenseMatrix< FixedArray2<number, N, N> > mat;
+		
+		//	reset all values of the matrix to zero
+		mat = 0.0;
+		
+		//	Loop integration points
+		for(size_t ip = 0; ip < numIp; ++ip)
+		{
+			//	Time part
+			if(pvCornerValueOldTime != NULL)
+				mat(ip, ip) += 1./dt;
+			
+			//	Diffusion part
+			mat(ip, ip) += vViscoPerDiffLenSq[ip];
+			
+			//	Convective Term (standard)
+			mat(ip, ip) += vNormStdVelPerConvLen[ip];
+			
+			for(size_t ip2 = 0; ip2 < numIp; ++ip2)
+			{
+				//	Convective Term by upwind
+				mat(ip, ip2) -= upwind_shape_ip(ip, ip2) * vNormStdVelPerConvLen[ip];
+				
+				//	correction of divergence error
+				mat(ip,ip2) += vNormStdVelPerDownLen[ip] *
+				(upwind_shape_ip(ip, ip2) - downwind_shape_ip(ip, ip2));
+			}
+		}
+		
+		//	we now create a matrix, where we store the inverse matrix
+		typename block_traits<DenseMatrix< FixedArray2<number, N, N> > >::inverse_type inv;
+		
+		//	get the inverse
+		if(!GetInverse(inv, mat))
+			UG_THROW("Could not compute inverse.");
+		
+		
+		//	create vectors
+		DenseVector< FixedArray1<number, N> > contVel[dim][numSh];
+		DenseVector< FixedArray1<number, N> > contP[numSh];
+		DenseVector< FixedArray1<number, N> > xP;
+		DenseVector< FixedArray1<number, N> > xVel;
+		
+		//	Now, we can create several vector that describes the contribution of the
+		//	corner velocities. For each of this contribution
+		//	components, we will apply the inverted matrix to get the stab_shapes
+		
+		//	Loop integration points
+		for(int d = 0; d < dim; ++d)
+		{
+			for(size_t ip = 0; ip < numIp; ++ip)
+			{
+				//	get SubControlVolumeFace
+				const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+				
+				//	loop shape functions
+				for(size_t k = 0; k < numSh; ++k)
+				{
+					//	Pressure part
+					contP[k][ip] = -1.0 * (scvf.global_grad(k))[d] / density[ip];
+					
+					//	Diffusion part
+					contVel[d][k][ip] = vViscoPerDiffLenSq[ip] * scvf.shape(k);
+					
+					//	Convection part
+					contVel[d][k][ip] += vNormStdVelPerConvLen[ip] * upwind_shape_sh(ip, k);
+					
+					//	terms for correction of divergence error
+					contVel[d][k][ip] += vNormStdVelPerDownLen[ip] *
+					(downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
+					
+					
+					for(int d2 = 0; d2 < dim; ++d2)
+					{
+						if(d2 == d) continue;
+						
+						contVel[d][k][ip] -= vStdVel[ip][d2]
+						* (scvf.global_grad(k))[d2];
+						
+						contVel[d2][k][ip] = vStdVel[ip][d]
+						* (scvf.global_grad(k))[d2];
+					}
+				}
+			} // end ip
+			
+			//	compute all stab_shapes
+			for(size_t k = 0; k < numSh; ++k)
+			{
+				//	apply for pressure stab_shape
+				MatMult(xP, 1.0, inv, contP[k]);
+				
+				//	write stab_shape for pressure
+				//\todo: can we optimize this, e.g. without copy?
+				for(size_t ip = 0; ip < numIp; ++ip)
+					stab_shape_p(ip, d, k) = xP[ip];
+				
+				//	compute vel stab_shapes
+				for(int d2 = 0; d2 < dim; ++d2)
+				{
+					//	apply for vel stab_shape
+					MatMult(xVel, 1.0, inv, contVel[d2][k]);
+					
+					//	write stab_shape for vel
+					//\todo: can we optimize this, e.g. without copy?
+					for(size_t ip = 0; ip < numIp; ++ip)
+						stab_shape_vel(ip, d, d2, k) = xVel[ip];
+				}
+			}
+			
+			//	Finally, we can compute the values of the stabilized velocity for each
+			//	integration point
+			
+			//	vector of all contributions
+			DenseVector< FixedArray1<number, N> > f;
+			
+			//	sum up all contributions of vel and p for rhs.
+			f = 0.0;
+			for(size_t k = 0; k < numSh; ++k)
+			{
+				//	add velocity contribution
+				for(int d2 = 0; d2 < dim; ++d2)
+					VecScaleAdd(f, 1.0, f, vCornerValue(d2, k), contVel[d2][k]);
+				
+				//	add pressure contribution
+				VecScaleAdd(f, 1.0, f, vCornerValue(_P_, k), contP[k]);
+			}
+			
+			//	Loop integration points
+			for(size_t ip = 0; ip < numIp; ++ip)
+			{
+				//	get SubControlVolumeFace
+				const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
+				
+				//	Source
+				if(Source.data_given())
+					f[ip] += (   density[ip] / density[ip]) * Source[ip][d];
+				
+				//	Time
+				if(pvCornerValueOldTime != NULL)
+				{
+					//	interpolate old time step
+					//	\todo: Is this ok? Or do we need the old stabilized vel ?
+					number oldIPVel = 0.0;
+					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+						oldIPVel += scvf.shape(sh) * (*pvCornerValueOldTime)(d, sh);
+					
+					//	add to rhs
+					f[ip] += oldIPVel / dt;
+				}
+			}
+			
+			//	invert the system for all contributions
+			DenseVector< FixedArray1<number, N> > x;
+			MatMult(x, 1.0, inv, f);
+			
+			//	write values in data structure
+			//\todo: can we optimize this, e.g. without copy?
+			for(size_t ip = 0; ip < numIp; ++ip)
+			{
+				//	write stab_shape for vel
+				stab_vel(ip)[d] = x[ip];
+			}
+		} // end dim
+		
+	} // end switch for non-diag
 }
 
 template <>
-void NavierStokesVISCOSITY_Stabilization<1>::register_func()
+void NavierStokesFLOW_2_Stabilization<1>::register_func()
 {
     register_func<RegularEdge>();
 }
 
 template <>
-void NavierStokesVISCOSITY_Stabilization<2>::register_func()
+void NavierStokesFLOW_2_Stabilization<2>::register_func()
 {
     register_func<RegularEdge>();
     register_func<Triangle>();
@@ -1408,7 +1574,7 @@ void NavierStokesVISCOSITY_Stabilization<2>::register_func()
 }
 
 template <>
-void NavierStokesVISCOSITY_Stabilization<3>::register_func()
+void NavierStokesFLOW_2_Stabilization<3>::register_func()
 {
     register_func<RegularEdge>();
     register_func<Triangle>();
@@ -1840,7 +2006,7 @@ template class INavierStokesSRFV1Stabilization<2>;
 template class NavierStokesFIELDSStabilization<2>;
 template class NavierStokesFLOWStabilization<2>;
 template class NavierStokesFIELDS_2_Stabilization<2>;
-template class NavierStokesVISCOSITY_Stabilization<2>;
+template class NavierStokesFLOW_2_Stabilization<2>;
 template class NavierStokesKARIMIANStabilization<2>;
 
 template SmartPtr<INavierStokesSRFV1Stabilization<2> >CreateNavierStokesStabilization<2>(const std::string& name);
@@ -1851,7 +2017,7 @@ template class INavierStokesSRFV1Stabilization<3>;
 template class NavierStokesFIELDSStabilization<3>;
 template class NavierStokesFLOWStabilization<3>;
 template class NavierStokesFIELDS_2_Stabilization<3>;
-template class NavierStokesVISCOSITY_Stabilization<3>;
+template class NavierStokesFLOW_2_Stabilization<3>;
 template class NavierStokesKARIMIANStabilization<3>;
 
 template SmartPtr<INavierStokesSRFV1Stabilization<3> >CreateNavierStokesStabilization<3>(const std::string& name);

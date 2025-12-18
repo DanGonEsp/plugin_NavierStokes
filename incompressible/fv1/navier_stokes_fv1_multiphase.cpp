@@ -96,7 +96,7 @@ void NavierStokesFV1M<TDomain>::init()
     m_imSourceSCVF.set_comp_lin_defect(false);
     m_imSourceSCV.set_comp_lin_defect(false);
     
-    //m_imKinViscosity.set_comp_lin_defect(false);
+    m_imKinViscosity.set_comp_lin_defect(false);
     m_imKinViscosity_old.set_comp_lin_defect(false);
     
     m_imSurfaceNormal.set_comp_lin_defect(false);
@@ -3529,7 +3529,12 @@ ex_nodal_particle_pressure(number vValue[],
 
     }
 //  get finite volume geometry
-    static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+	TFVGeom& geo = GeomProvider<TFVGeom>::get();
+	try{
+		geo.update(elem, vCornerCoords, &(this->subset_handler()));
+	}
+	UG_CATCH_THROW("NavierStokes::prep_elem:"
+				   " Cannot update Finite Volume Geometry.");
 
 //    reference element
     typedef typename reference_element_traits<TElem>::reference_element_type
@@ -3539,6 +3544,9 @@ ex_nodal_particle_pressure(number vValue[],
 
 //    number of shape functions
     static const size_t numSH =    ref_elem_type::numCorners;
+	
+	const bool constantPs = true;
+	number Volume = 0.0;
 	number Gamma[numSH];
 	number Ps[numSH];
 	number DPs[numSH];
@@ -3561,8 +3569,19 @@ ex_nodal_particle_pressure(number vValue[],
 	{
 		vel_grad(  u,  geo,  Gamma);
 	}
-    
-    Inter->Ps( Ps, DPs, Gamma, u, _C_, numSH, bDeriv);
+	
+	if(constantPs)
+	{
+		for(size_t sh = 0; sh < numSH; ++sh)
+		{
+			const typename TFVGeom::SCV& scv = geo.scv(sh);
+			Volume += scv.volume();
+		}
+		if(Volume<1e-08) UG_THROW("Volume =: 0	"<<"  NumSh ="<<numSH<<".");
+		
+	}
+	Inter->Ps( Ps, DPs, Gamma, u, _C_, numSH, bDeriv);
+
     
 //    FV1M SCVF ip
     if(vLocIP == geo.scvf_local_ips())
@@ -3576,13 +3595,29 @@ ex_nodal_particle_pressure(number vValue[],
         //    compute pressure at ip
             vValue[ip] = 0.0;
             for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                vValue[ip] += Ps[sh] * scvf.shape(sh);
+			{
+				if (constantPs)
+				{
+					const typename TFVGeom::SCV& scv = geo.scv(sh);
+					vValue[ip] += Ps[sh] * scv.volume() / Volume;
+				}
+				else
+					vValue[ip] += Ps[sh] * scvf.shape(sh);
+			}
 
         //    compute derivative w.r.t. to unknowns iff needed
             if(bDeriv)
             {
                 for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                    vvvDeriv[ip][_C_][sh] = DPs[sh] * scvf.shape(sh);
+				{
+					if (constantPs)
+					{
+						const typename TFVGeom::SCV& scv = geo.scv(sh);
+						vvvDeriv[ip][_C_][sh] = DPs[sh] * scv.volume()/Volume;
+					}
+					else
+						vvvDeriv[ip][_C_][sh] = DPs[sh] * scvf.shape(sh);
+				}
 
             }
         }
@@ -3599,15 +3634,30 @@ ex_nodal_particle_pressure(number vValue[],
         //    get corner of SCV
             const size_t co = scv.node_id();
 
-        //    solution at ip
-            vValue[ip] = Ps[co];
-
-        //    set derivatives if needed
-            if(bDeriv)
-            {
-                for(size_t sh = 0; sh < scv.num_sh(); ++sh)
-                    vvvDeriv[ip][_C_][sh] = (sh==co) ? DPs[sh] : 0.0;
-            }
+		//    solution at ip
+			if (constantPs)
+			{
+				vValue[ip] = 0.0;
+				for(size_t sh = 0; sh < numSH; ++sh)
+				{
+					const typename TFVGeom::SCV& scv = geo.scv(sh);
+					vValue[ip] += Ps[sh] * scv.volume() / Volume;
+				}
+			}
+			else
+				vValue[ip] = Ps[co];
+		//    set derivatives if needed
+			if(bDeriv)
+			{
+				for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+					if (constantPs)
+					{
+						const typename TFVGeom::SCV& scv = geo.scv(sh);
+						vvvDeriv[ip][_C_][sh] =  DPs[sh] * scv.volume() / Volume;
+					}
+					else
+						vvvDeriv[ip][_C_][sh] = (sh==co) ? DPs[sh] : 0.0;
+			}
         }
     }
 //     general case
@@ -3628,16 +3678,31 @@ ex_nodal_particle_pressure(number vValue[],
         //    compute concentration at ip
             vValue[ip] = 0.0;
             for(size_t sh = 0; sh < numSH; ++sh)
-                vValue[ip] += Ps[sh] * vShape[sh];
+			{
+				if(constantPs)
+				{
+					const typename TFVGeom::SCV& scv = geo.scv(sh);
+					vValue[ip] += Ps[sh] * scv.volume() / Volume;
+				}
+				else
+					vValue[ip] += Ps[sh] * vShape[sh];
+			}
+		//    compute derivative w.r.t. to unknowns iff needed
+		//    \todo: maybe store shapes directly in vvvDeriv
+			if(bDeriv)
+			{
+				for(size_t sh = 0; sh < numSH; ++sh)
+				{
+					if (constantPs)
+					{
+						const typename TFVGeom::SCV& scv = geo.scv(sh);
+						vvvDeriv[ip][_C_][sh] = DPs[sh] * scv.volume()/Volume;
+					}
+					else
+						vvvDeriv[ip][_C_][sh] = DPs[sh] * vShape[sh];
+				}
 
-        //    compute derivative w.r.t. to unknowns iff needed
-        //    \todo: maybe store shapes directly in vvvDeriv
-            if(bDeriv)
-            {
-                for(size_t sh = 0; sh < numSH; ++sh)
-                    vvvDeriv[ip][_C_][sh] = DPs[sh] * vShape[sh];
-
-            }
+			}
         }
     }
 };

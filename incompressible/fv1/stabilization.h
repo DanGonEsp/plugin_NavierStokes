@@ -864,14 +864,14 @@ class NavierStokesFIELDS_2_Stabilization
 };
 
 /////////////////////////////////////////////////////////////////////////////
-// FIELDS  3
+// FLOW  2
 /////////////////////////////////////////////////////////////////////////////
 
 /**
  * Implementation of the FIELDS stabilization
  */
 template <int TDim>
-class NavierStokesVISCOSITY_Stabilization
+class NavierStokesFLOW_2_Stabilization
     : public INavierStokesSRFV1Stabilization<TDim>
 {
     public:
@@ -879,7 +879,7 @@ class NavierStokesVISCOSITY_Stabilization
         typedef INavierStokesSRFV1Stabilization<TDim> base_type;
 
     ///    This class
-        typedef NavierStokesVISCOSITY_Stabilization<TDim> this_type;
+        typedef NavierStokesFLOW_2_Stabilization<TDim> this_type;
 
     ///    Dimension
         static const int dim = TDim;
@@ -890,6 +890,7 @@ class NavierStokesVISCOSITY_Stabilization
         using base_type::diff_length_sq_inv;
         using base_type::stab_shape_vel;
         using base_type::stab_shape_p;
+		using base_type::stab_shape_c;
         using base_type::stab_vel;
         using base_type::set_vel_comp_connected;
     
@@ -902,9 +903,22 @@ class NavierStokesVISCOSITY_Stabilization
         using base_type::upwind_shape_ip;
         using base_type::downwind_shape_ip;
 
+	
+	//    functions from rel upwind
+		using base_type::upwind_conv_length_rel;
+		using base_type::downwind_conv_length_rel;
+		using base_type::upwind_shape_sh_rel;
+		using base_type::downwind_shape_sh_rel;
+		using base_type::non_zero_shape_ip_rel;
+		using base_type::upwind_shape_ip_rel;
+		using base_type::downwind_shape_ip_rel;
+	
+	
+		using base_type::Inter;
+	
     public:
     ///    constructor
-        NavierStokesVISCOSITY_Stabilization()
+        NavierStokesFLOW_2_Stabilization()
         {
         //    vel comp not coupled
             set_vel_comp_connected(true);
