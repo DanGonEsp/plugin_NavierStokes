@@ -206,7 +206,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 	{
 		string name = string("SlipVelocity").append(suffix);
 		typedef SlipVelocity<TFct> T;
-		typedef CplUserData<number, dim> TBase;
+		typedef CplUserData<MathVector<dim>, dim> TBase;
 		typedef INewtonUpdate TBase2;
 		reg.add_class_<T, TBase,TBase2>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")

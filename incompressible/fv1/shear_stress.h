@@ -46,6 +46,7 @@
 #include "lib_grid/tools/periodic_boundary_manager.h"
 #include "lib_grid/algorithms/attachment_util.h"
 #include "../../properties_interface.h"
+#include "common/math/ugmath.h"
 
 #ifdef UG_FOR_LUA
 #include "bindings/lua/lua_user_data.h"
@@ -86,7 +87,6 @@ class ShearStressFV1
 
     /// attachment accessor
     typedef PeriodicAttachmentAccessor<Vertex,ANumber > aVertexNumber;
-    typedef Grid::AttachmentAccessor<elem_type,ANumber > aElementNumber;
 
     /// element iterator
     typedef typename TGridFunction::template dim_traits<dim>::const_iterator ElemIterator;
@@ -431,7 +431,6 @@ class ParticlePressureFV1
 
 	/// attachment accessor
 	typedef PeriodicAttachmentAccessor<Vertex,ANumber > aVertexNumber;
-	typedef Grid::AttachmentAccessor<elem_type,ANumber > aElementNumber;
 
 	/// element iterator
 	typedef typename TGridFunction::template dim_traits<dim>::const_iterator ElemIterator;
@@ -762,7 +761,7 @@ concept derived from grid_function_user_data.h
  */
 template <typename TGridFunction>
 class SlipVelocity
-:     public StdUserData<SlipVelocity<TGridFunction>, number, TGridFunction::dim>,
+:     public StdUserData<SlipVelocity<TGridFunction>, MathVector<TGridFunction::dim>, TGridFunction::dim>,
 	  virtual public INewtonUpdate
 {
 	///    domain type
@@ -788,12 +787,12 @@ class SlipVelocity
 	typedef typename TGridFunction::template dim_traits<dim>::grid_base_object elem_type;
 
 	/// MathVector<dim> attachment
-	//        typedef MathVector<dim> vecDim;
-	//        typedef Attachment<vecDim> AMathVectorDim;
+	typedef MathVector<dim> vecDim;
+	typedef Attachment<vecDim> AMathVectorDim;
 
 	/// attachment accessor
 	typedef PeriodicAttachmentAccessor<Vertex,ANumber > aVertexNumber;
-	typedef Grid::AttachmentAccessor<elem_type,ANumber > aElementNumber;
+	typedef PeriodicAttachmentAccessor<Vertex,AMathVectorDim > aVertexDimVector;
 
 	/// element iterator
 	typedef typename TGridFunction::template dim_traits<dim>::const_iterator ElemIterator;
@@ -803,9 +802,13 @@ class SlipVelocity
 
 		  private:
 
-	//    ShearRate attachment accessor (interpolated ShearRate in vertices)
-	ANumber m_aSR;
-	aVertexNumber m_shear_rate;
+	//    Normal attachment accessor (average normal in vertices)
+	AMathVectorDim m_aNormal;
+	aVertexDimVector m_normal;
+	
+	//    Normal attachment accessor (average normal in vertices)
+	//AMathVectorDim m_aTang;
+	//aVertexDimVector m_tang;
 
 	//  volume attachment accessor
 	ANumber m_aVol;
@@ -819,6 +822,9 @@ class SlipVelocity
 
 	//  grid
 	grid_type* m_grid;
+	
+	number m_limit = 1e-04;
+	number m_theta_cr = 34.0*3.1416/180.0;
 
 		  private:
 
@@ -827,6 +833,10 @@ class SlipVelocity
 	Interface<dim>* Inter;
 
 		  public:
+	void set_theta(number data)
+	{
+		m_theta_cr = data;
+	}
 	/////////// Source
 
 	void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
@@ -903,20 +913,23 @@ class SlipVelocity
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
 		set_source(0.0);
-		grid.template attach_to<Vertex>(m_aSR);
+		grid.template attach_to<Vertex>(m_aNormal);
+		//grid.template attach_to<Vertex>(m_aTang);
 		grid.template attach_to<Vertex>(m_aVol);
-		m_shear_rate.access(grid,m_aSR);
+		m_normal.access(grid,m_aNormal);
+		//m_tang.access(grid,m_aTang);
 		m_vol.access(grid,m_aVol);
 		// set all values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_shear_rate, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		this->update();
 	}
 
 	virtual ~SlipVelocity(){};
 
 	template <int refDim>
-	inline void evaluate(number vValue[],
+	inline void evaluate(MathVector<dim> vValue[],
 						 const MathVector<dim> vGlobIP[],
 						 number time, int si,
 						 GridObject* elem,
@@ -960,16 +973,10 @@ class SlipVelocity
 				LocalFiniteElementProvider::get<dim>(roid, LFEID(LFEID::LAGRANGE, dim, 1));
 
 		std::vector<number> shapes;
-		number Ps[numVertices];
-		number Gamma[numVertices];
-		for (size_t sh=0;sh<numVertices;sh++)
-			Gamma[sh] = m_shear_rate[vVrt[sh]];
-		
-		//Inter->Ps( Ps, NULL, Gamma, *u, _C_, numVertices, false);
-		
 		for (size_t ip=0;ip<nip;ip++)
 		{
-			number value = 0.0;
+			MathVector<dim> normal = 0.0;
+			MathVector<dim> tang = 0.0;
 			MathVector<refDim> LocalCoord_aux;
 			for(int d = 0; d < refDim; ++d)
 				LocalCoord_aux[d]=vLocIP[ip][d];
@@ -977,9 +984,47 @@ class SlipVelocity
 			
 			
 			for (size_t sh=0;sh<numVertices;sh++)
-				value += Gamma[sh]*shapes[sh];
+				for(int d = 0; d < refDim; ++d)
+				{
+					normal[d] += m_normal[vVrt[sh]][d]*shapes[sh];
+					//tang[d] += m_tang[vVrt[sh]][d]*shapes[sh];
+				}
+			number normal_mag =  VecTwoNorm(normal);
+			if(normal_mag<m_limit)
+			{
+				VecSet(normal,0.0);
+				normal[dim-1] = -1.0;
+			}
+			else
+				VecScale(normal,normal,1.0/normal_mag);
 			
-			vValue[ip] = value;
+			number tang_mag =  0.0;
+			for(int d = 0; d < refDim-1; ++d)
+				tang_mag += pow(normal[d],2.0);
+			tang_mag = sqrt(tang_mag);
+	
+			VecSet(tang,0.0);
+			if(tang_mag>m_limit)
+			{
+				for(int d = 0; d < refDim-1; ++d)
+					tang[d] = normal[d]*cos(m_theta_cr) / tang_mag;
+				tang[dim-1] = -sin(m_theta_cr);
+			}
+
+			
+			
+			
+		
+
+			
+			//number theta = acos(VecProd(normal,UnitK));
+			
+			
+			//tang[dim-1] = -sin(theta);
+			//vValue[ip] = tang;
+			vValue[ip] = tang;
+			
+			
 			
 		}
 		
@@ -989,7 +1034,7 @@ class SlipVelocity
 
 	void update(){
 		//    get domain
-		printf("Updating Velocity Grad... \n");
+		printf("Updating Slip Velocity... \n");
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1003,9 +1048,10 @@ class SlipVelocity
 		typedef typename domain_type::position_accessor_type position_accessor_type;
 		const position_accessor_type& posAcc = domain.position_accessor();
 
-		// set volume and p values to zero
+		// set volume, tang and normal values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_shear_rate, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		// compute pressure in vertices by averaging
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
 			ElemIterator iter = m_u->template begin<elem_type>(si);
@@ -1023,38 +1069,34 @@ class SlipVelocity
 					number scvVol = geo.scv(i).volume();
 					m_vol[vVrt[i]]+=scvVol;
 					
-					MathMatrix<dim,dim> VelGrad; MatSet(VelGrad,0.0);
+					MathVector<dim> GradC; VecSet(GradC,0.0);
+					MathVector<dim> Normal; VecSet(Normal,0.0);
 					
 					//    sum up contributions of each shape
 					for(size_t sh = 0; sh < numVertices; ++sh)
 					{
+						m_u->dof_indices(elem->vertex(sh), _C_, multInd);
+						//    read value of index from vector
+						number uVal = DoFRef(*m_u,multInd[0]);
+						
 						//  Loop dimensions for derivative
 						for(int d1 = 0; d1 <dim; ++d1)
 						{
-							m_u->dof_indices(elem->vertex(sh), d1, multInd);
-							//    read value of index from vector
-							number uVal = DoFRef(*m_u,multInd[0]);
-						//  Loop dimensions for direction
-							for(int d2 = 0; d2 < dim; ++d2)
-							{
-								VelGrad(d1, d2) += uVal*geo.scv(i).global_grad(sh)[d2];
-							}
+							GradC[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
 						}
 					}
-					number gamma=0.0;
-					// compute inner sum
-					for(int d1 = 0; d1 < dim; ++d1)
+					number grad_c_mag = VecTwoNorm(GradC);
+					if(grad_c_mag<m_limit)
 					{
-						for(int d2 = 0; d2 < dim; ++d2)
-						{
-							gamma += pow((VelGrad(d1,d2) + VelGrad(d2,d1)),2);
-						}
+						VecSet(Normal,0.0);
+						Normal[dim-1] = 1.0;
 					}
+					else
+						VecScale(Normal,GradC,-1.0/grad_c_mag);
 					
-					gamma =sqrt((0.5*gamma));
+					for(int d1 = 0; d1 <dim; ++d1)
+						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol;
 					
-					
-					m_shear_rate[vVrt[i]] += gamma * scvVol;
 					
 				}
 			}
@@ -1068,7 +1110,32 @@ class SlipVelocity
 			{
 				Vertex* vrt = *iter;
 				if (pbm && pbm->is_slave(vrt)) continue;
-					m_shear_rate[vrt] /= m_vol[vrt];
+				for(int d1 = 0; d1 <dim; ++d1)
+					m_normal[vrt][d1] /= m_vol[vrt];
+				/*MathVector<dim> tang; VecSet(tang,0.0);
+				if(dim == 2)
+				{
+					number ss;
+					if(fabs(m_normal[vrt][0])<m_limit)
+						ss = 1.0;
+					else
+						ss = (m_normal[vrt][0]*m_normal[vrt][1]>0.0)? 1.0 : -1.0;
+					
+					tang[0] =   ss * m_normal[vrt][1];
+					tang[1] = - fabs(m_normal[vrt][0]);
+				}
+				else if (dim == 3)
+				{
+					tang[0] = -m_normal[vrt][0]*m_normal[vrt][1];
+					tang[1] = -m_normal[vrt][1]*m_normal[vrt][2];
+					tang[2] =  m_normal[vrt][0]*m_normal[vrt][0] + m_normal[vrt][1]*m_normal[vrt][1];
+					UG_THROW("SlipVelocity: Works only for Dim = 2");
+				}
+				else UG_THROW("SlipVelocity: Works only for Dim = 2 , 3");
+
+				//VecScale(tang, tang,1.0/VecTwoNorm(tang));
+				m_tang[vrt] = tang;*/
+				
 			}
 		}
 	}
@@ -1077,18 +1144,18 @@ class SlipVelocity
 	static const size_t max_number_of_ips = 20;
 
 		  public:
-	virtual void operator() (number& value,
+	virtual void operator() (MathVector<dim>& value,
 							 const MathVector<dim>& globIP,
 							 number time, int si) const
 	{
-		UG_THROW("LevelSetUserData: Need element.");
+		UG_THROW("SlipVel: Need element.");
 	}
 
-	virtual void operator() (number vValue[],
+	virtual void operator() (MathVector<dim> vValue[],
 							 const MathVector<dim> vGlobIP[],
 							 number time, int si, const size_t nip) const
 	{
-		UG_THROW("LevelSetUserData: Need element.");
+		UG_THROW("SlipVel: Need element.");
 	}
 
 	virtual void compute(LocalVector* u, GridObject* elem,
