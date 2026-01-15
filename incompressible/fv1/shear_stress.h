@@ -800,7 +800,7 @@ class SlipVelocity
 	/// vertex iterator
 	typedef typename TGridFunction::template traits<Vertex>::const_iterator VertexIterator;
 
-		  private:
+private:
 
 	//    Normal attachment accessor (average normal in vertices)
 	AMathVectorDim m_aNormal;
@@ -823,10 +823,11 @@ class SlipVelocity
 	//  grid
 	grid_type* m_grid;
 	
-	number m_limit = 1e-04;
+	number m_limit = 1e-03;
 	number m_theta_cr = 34.0*3.1416/180.0;
+	number m_vel = 0.15;
 
-		  private:
+private:
 
 	///    Data import for source
 	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imSource;
@@ -835,67 +836,21 @@ class SlipVelocity
 		  public:
 	void set_theta(number data)
 	{
-		m_theta_cr = data;
+		m_theta_cr = data*3.1416/180.0;
 	}
-	/////////// Source
-
-	void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+	void set_vel(number data)
 	{
-		m_imSource = data;
+		m_vel = data;
 	}
-
-	void set_source(number f_x)
+	
+	void set_phase_parameters(Interface<dim>* user)
 	{
-		SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
-		for (int i=0;i<dim;i++){
-			f->set_entry(i, f_x);
-		}
-		set_source(f);
+		if (!user->valid())
+			UG_THROW("Interface parameters has not been initialized");
+		Inter = user;
 	}
 
-	void set_source(number f_x, number f_y)
-	{
-		if (dim!=2){
-			UG_THROW("NavierStokes: Setting source vector of dimension 2"
-					" to a Discretization for world dim " << dim);
-		} else {
-			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
-			f->set_entry(0, f_x);
-			f->set_entry(1, f_y);
-			set_source(f);
-		}
-	}
-
-	void set_source(number f_x, number f_y, number f_z)
-	{
-		if (dim<3){
-			UG_THROW("NavierStokes: Setting source vector of dimension 3"
-					" to a Discretization for world dim " << dim);
-		}
-		else
-		{
-			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
-			f->set_entry(0, f_x);
-			f->set_entry(1, f_y);
-			f->set_entry(2, f_z);
-			set_source(f);
-		}
-	}
-
-#ifdef UG_FOR_LUA
-	void set_source(const char* fctName)
-	{
-		set_source(LuaUserDataFactory<MathVector<dim>, dim>::create(fctName));
-	}
-#endif
-	  void set_phase_parameters(Interface<dim>* user)
-	  {
-		  if (!user->valid())
-			  UG_THROW("Interface parameters has not been initialized");
-		  Inter = user;
-	  }
-
-		  public:
+public:
 	/// constructor
 	SlipVelocity(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
 		
@@ -912,7 +867,6 @@ class SlipVelocity
 		grid_type& grid = *domain.grid();
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
-		set_source(0.0);
 		grid.template attach_to<Vertex>(m_aNormal);
 		//grid.template attach_to<Vertex>(m_aTang);
 		grid.template attach_to<Vertex>(m_aVol);
@@ -946,6 +900,7 @@ class SlipVelocity
 		ReferenceObjectID roid = elem->reference_object_id();
 
 		const size_t numVertices = element->num_vertices();
+		const size_t MaxVertices = domain_traits<dim>::MaxNumVerticesOfElem;
 		//    get domain of grid function
 		const domain_type& domain = *m_u->domain().get();
 
@@ -956,8 +911,8 @@ class SlipVelocity
 //        position_accessor_type aaPos = m_u->domain()->position_accessor();
 
 		// coord and vertex array
-		MathVector<dim> coCoord[domain_traits<dim>::MaxNumVerticesOfElem];
-		Vertex* vVrt[domain_traits<dim>::MaxNumVerticesOfElem];
+		MathVector<dim> coCoord[numVertices];
+		Vertex* vVrt[numVertices];
 		DimFV1Geometry<dim> geo;
 
 		for(size_t i = 0; i < numVertices; ++i){
@@ -971,16 +926,41 @@ class SlipVelocity
 		// Lagrange 1 trial space
 		const LocalShapeFunctionSet<dim>& lagrange1 =
 				LocalFiniteElementProvider::get<dim>(roid, LFEID(LFEID::LAGRANGE, dim, 1));
+		const LocalShapeFunctionSet<refDim>& rTrialSpace =
+				LocalFiniteElementProvider::get<refDim>(roid, LFEID(LFEID::LAGRANGE, dim, 1));
 
 		std::vector<number> shapes;
+		
+
+	//    storage for shape function at ip
+		MathVector<refDim> vLocGrad[numVertices];
+		MathVector<refDim> locGrad;
+
+	//    Reference Mapping
+		MathMatrix<dim, refDim> JTInv;
+		
+		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
 		for (size_t ip=0;ip<nip;ip++)
 		{
 			MathVector<dim> normal = 0.0;
+			MathVector<dim> GradC = 0.0;
 			MathVector<dim> tang = 0.0;
 			MathVector<refDim> LocalCoord_aux;
 			for(int d = 0; d < refDim; ++d)
 				LocalCoord_aux[d]=vLocIP[ip][d];
 			lagrange1.shapes(shapes,LocalCoord_aux[ip]);
+			
+			
+		//    evaluate at shapes at ip
+			rTrialSpace.grads(vLocGrad, vLocIP[ip]);
+		//    compute grad at ip
+			VecSet(locGrad, 0.0);
+			for(size_t sh = 0; sh < numVertices; ++sh)
+				VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
+
+		//    compute global grad
+			mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
+			MatVecMult(GradC, JTInv, locGrad);
 			
 			
 			for (size_t sh=0;sh<numVertices;sh++)
@@ -990,6 +970,7 @@ class SlipVelocity
 					//tang[d] += m_tang[vVrt[sh]][d]*shapes[sh];
 				}
 			number normal_mag =  VecTwoNorm(normal);
+			number gradc_mag =  VecTwoNorm(GradC);
 			if(normal_mag<m_limit)
 			{
 				VecSet(normal,0.0);
@@ -1004,24 +985,21 @@ class SlipVelocity
 			tang_mag = sqrt(tang_mag);
 	
 			VecSet(tang,0.0);
-			if(tang_mag>m_limit)
+			if(tang_mag>m_limit && gradc_mag > m_limit)
 			{
 				for(int d = 0; d < refDim-1; ++d)
 					tang[d] = normal[d]*cos(m_theta_cr) / tang_mag;
 				tang[dim-1] = -sin(m_theta_cr);
 			}
-
 			
-			
-			
+			number theta = acos(normal[dim-1]);
+			number slope = fabs(tan(theta));
+			number Value = slope - tan(m_theta_cr);
+			Value = (Value + fabs(Value))/2.0;
+			Value /= sqrt(1.0 + pow(slope,2.0));
 		
 
-			
-			//number theta = acos(VecProd(normal,UnitK));
-			
-			
-			//tang[dim-1] = -sin(theta);
-			//vValue[ip] = tang;
+			VecScale(tang,tang,m_vel*Value);
 			vValue[ip] = tang;
 			
 			
@@ -1140,10 +1118,10 @@ class SlipVelocity
 		}
 	}
 
-		  private:
+private:
 	static const size_t max_number_of_ips = 20;
 
-		  public:
+public:
 	virtual void operator() (MathVector<dim>& value,
 							 const MathVector<dim>& globIP,
 							 number time, int si) const

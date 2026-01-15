@@ -184,6 +184,7 @@ class NavierStokesFV1M
         SmartPtr<CplUserData<MathVector<dim>, dim> > source() {return m_imSourceSCV.user_data ();}
     
         void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
+		void set_slip_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_diffusion(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > user);
     
         void set_average_gamma(SmartPtr<CplUserData<number, dim> > user);
@@ -728,6 +729,8 @@ class NavierStokesFV1M
     ///    Data import for Relative velocity
         DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
 		DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCVF;
+	///    Data import for Slip velocity
+		DataImport<MathVector<dim>, dim> m_imSlipVelocitySCVF;
 	
 	///    Data import for Nodal ShearRate
 		DataImport<number, dim> m_imAverageGammaSCV;

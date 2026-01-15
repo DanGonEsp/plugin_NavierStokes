@@ -210,13 +210,8 @@ static void DomainAlgebra(Registry& reg, string grp)
 		typedef INewtonUpdate TBase2;
 		reg.add_class_<T, TBase,TBase2>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
-				.add_method("set_source", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_source), "", "Source")
-				.add_method("set_source", static_cast<void (T::*)(number)>(&T::set_source), "", "F_x")
-				.add_method("set_source", static_cast<void (T::*)(number,number)>(&T::set_source), "", "F_x, F_y")
-				.add_method("set_source", static_cast<void (T::*)(number,number,number)>(&T::set_source), "", "F_x, F_y, F_z")
-			#ifdef UG_FOR_LUA
-				.add_method("set_source", static_cast<void (T::*)(const char*)>(&T::set_source), "", "Source Vector")
-			#endif
+				.add_method("set_theta", static_cast<void (T::*)(number)>(&T::set_theta), "", "Theta")
+				.add_method("set_vel", static_cast<void (T::*)(number)>(&T::set_vel), "", "Vel")
 				.add_method("update", &T::update)
 		.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "SlipVelocity", tag);
@@ -294,6 +289,7 @@ static void Domain(Registry& reg, string grp)
             .add_method("set_upwind_vol",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind_vol))
 			.add_method("set_upwind_rel",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind_rel))
             .add_method("set_relative_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_relative_velocity), "", "RelativeVel")
+			.add_method("set_slip_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_slip_velocity), "", "SlipVel")
             .add_method("set_diffusion", static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> >)>(&T::set_diffusion), "", "Diffusion")
 			.add_method("set_average_gamma", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_average_gamma), "", "AverageGamma")
             .add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")

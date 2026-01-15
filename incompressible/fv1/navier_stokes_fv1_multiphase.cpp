@@ -103,6 +103,7 @@ void NavierStokesFV1M<TDomain>::init()
     
     m_imRelativeVelocitySCV.set_comp_lin_defect(false);
 	m_imRelativeVelocitySCVF.set_comp_lin_defect(false);
+	m_imSlipVelocitySCVF.set_comp_lin_defect(false);
     m_imDiffusion.set_comp_lin_defect(false);
     
     //	register imports
@@ -118,6 +119,7 @@ void NavierStokesFV1M<TDomain>::init()
     
     this->register_import(m_imRelativeVelocitySCV);
 	this->register_import(m_imRelativeVelocitySCVF);
+	this->register_import(m_imSlipVelocitySCVF);
     this->register_import(m_imDiffusion);
     
     m_imSourceSCV.set_rhs_part();
@@ -193,6 +195,12 @@ set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 {
     m_imRelativeVelocitySCV.set_data(data);
 	m_imRelativeVelocitySCVF.set_data(data);
+}
+template<typename TDomain>
+void NavierStokesFV1M<TDomain>::
+set_slip_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+{
+	m_imSlipVelocitySCVF.set_data(data);
 }
 
 //////// Diffusion
@@ -306,6 +314,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
         
         m_imRelativeVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
 		m_imRelativeVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
+		m_imSlipVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
 		m_imDensitySCV_old.template set_local_ips<refDim>(vSCVip,numSCVip,1,true);
@@ -353,7 +362,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
         
         m_imRelativeVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
 		m_imRelativeVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
-        
+		m_imSlipVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
         
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
@@ -376,6 +385,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
     
     m_imRelativeVelocitySCV.set_global_ips(vSCVip, numSCVip);
 	m_imRelativeVelocitySCVF.set_global_ips(vSCVFip, numSCVFip);
+	m_imSlipVelocitySCVF.set_global_ips(vSCVFip, numSCVFip);
     
     m_imDiffusion.set_global_ips(vSCVFip, numSCVFip);
     if(this->is_time_dependent())
