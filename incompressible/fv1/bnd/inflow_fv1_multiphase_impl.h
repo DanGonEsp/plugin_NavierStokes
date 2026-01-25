@@ -60,7 +60,7 @@ add(SmartPtr<CplUserData<MathVector<dim>, dim> > user, const char* subsetsBND)
 {
 	const std::vector<std::string>& vFctName = m_spMaster->symb_fcts();
 	if(vFctName.empty())
-		UG_THROW("NavierStokesInflow::add: Symbolic names for"
+		UG_THROW("NavierStokesInflowMultiphase::add: Symbolic names for"
 				" velocity, pressure and VolFraction not set. Please set them first.");
 
 	std::string innerSubsets;

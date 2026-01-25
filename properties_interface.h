@@ -98,7 +98,7 @@ class Interface
                 //Permanent contact pressure
                 const number pff=(phi >= alpha_min) ? Fr *pow(  phi-alpha_min,3) /pow(alpha_max-phi,5) : 0.0;
                 //Dynamic pressure
-                const number pa = mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
+                const number pa = 0.0*mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
                 
                 ParticlePressure[sh] = fmax(pff+pa,0.0);
                 if(deriv || DCParticlePressure==NULL)

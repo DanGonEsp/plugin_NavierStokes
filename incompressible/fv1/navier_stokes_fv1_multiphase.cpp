@@ -476,6 +476,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     {
         Vel_ip[ip] = stab.stab_vel(ip);
 		VecAppend(StdRelVel_total_t[ip], stab.stab_vel(ip));
+		if(m_imSlipVelocitySCVF.data_given())
+			VecAppend(StdRelVel_total_t[ip], m_imSlipVelocitySCVF[ip]);
     }
 	
     
@@ -1064,6 +1066,9 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     {
         Vel_ip[ip] = stab.stab_vel(ip);
         VecAppend(StdRelVel_total_t[ip], stab.stab_vel(ip));
+		if(m_imSlipVelocitySCVF.data_given())
+			VecAppend(StdRelVel_total_t[ip], m_imSlipVelocitySCVF[ip]);
+			
     }
     
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
