@@ -122,6 +122,8 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 	if(!m_imDensity.data_given() || !m_imDensityCoor.data_given())
 		UG_THROW("NavierStokesNoNormalStressOutflowFV1M::prep_elem_loop:"
 						" Density has not been set, but is required.\n");
+	if(Inter == NULL)
+		UG_THROW("NavierStokesNoNormalStressOutflowFV1M: Interface parameters have not been set");
 
 //	extract indices of boundary
 	this->extract_scheduled_data();
@@ -696,7 +698,33 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
 
 //     loop registered boundary segments
     typename std::vector<int>::const_iterator subsetIter;
-    if(m_imSource.data_given())
+	if(Inter->boolConsistentGravity())
+	{
+		size_t ip = 0;
+		for(subsetIter = m_vBndSubSetIndex.begin();
+			subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
+		{
+			//    get subset index corresponding to boundary
+			const int bndSubset = *subsetIter;
+			
+			//    get the list of the ip's:
+			if(geo.num_bf(bndSubset) == 0) continue;
+			const std::vector<BF>& vBF = geo.bf(bndSubset);
+			
+			MathVector<dim> Gravity; VecSet(Gravity,0.0); Gravity[dim-1]=-9.81;
+			
+			//     loop the boundary faces
+			typename std::vector<BF>::const_iterator bf;
+			for(bf = vBF.begin(); bf != vBF.end(); ++bf, ++ip)
+			{
+				number pgh = m_imDensity[ip]*VecDot(bf->global_ip(),Gravity);
+				
+				for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
+					d(d1, bf->node_id()) += - pgh * bf->normal ()[d1];
+			}
+		}
+	}
+    else if(m_imSource.data_given())
     {
         size_t ip = 0;
         for(subsetIter = m_vBndSubSetIndex.begin();
@@ -719,32 +747,7 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
             }
         }
     }
-    if(Inter->boolConsistentGravity())
-    {
-        size_t ip = 0;
-        for(subsetIter = m_vBndSubSetIndex.begin();
-            subsetIter != m_vBndSubSetIndex.end(); ++subsetIter)
-        {
-            //    get subset index corresponding to boundary
-            const int bndSubset = *subsetIter;
-            
-            //    get the list of the ip's:
-            if(geo.num_bf(bndSubset) == 0) continue;
-            const std::vector<BF>& vBF = geo.bf(bndSubset);
-            
-            MathVector<dim> Gravity; VecSet(Gravity,0.0); Gravity[dim-1]=-9.81;
-            
-            //     loop the boundary faces
-            typename std::vector<BF>::const_iterator bf;
-            for(bf = vBF.begin(); bf != vBF.end(); ++bf, ++ip)
-            {
-                number pgh = m_imDensity[ip]*VecDot(bf->global_ip(),Gravity);
-                
-                for(size_t d1 = 0; d1 < (size_t) dim; ++d1)
-                    d(d1, bf->node_id()) += - pgh * bf->normal ()[d1];
-            }
-        }
-    }
+
     
 }
 

@@ -258,12 +258,12 @@ class NavierStokesNoNormalStressOutflowFV1M
         std::vector<MathVector<dim> > m_vLocCoor;
         std::vector<MathVector<dim> > m_vGloCoor;
     
-        Interface<dim>* Inter;
+        Interface<dim>* Inter = NULL;
     public:
         void set_phase_parameters(Interface<dim>* user)
         {
             if (!user->valid())
-                UG_THROW("Interface parameters has not been initialized");
+                UG_THROW("NoNormalStressOutflowB Multiphase:Interface parameters has not been initialized");
             Inter = user;
         }
 

@@ -243,7 +243,7 @@ class NavierStokesFV1M
         void set_phase_parameters(Interface<dim>* user)
         {
             if(m_spStab.invalid())
-                UG_THROW("Stabilization has not been set.");
+                UG_THROW("Stabilization has not been set or must me set before.");
             if (!user->valid())
                 UG_THROW("Interface parameters has not been initialized");
             m_spStab->set_phase_parameters(user);
@@ -737,7 +737,7 @@ class NavierStokesFV1M
     
     ///    Data import for multiphase flow
         DataImport<MathVector<dim>, dim> m_imSurfaceNormal;
-        Interface<dim>* Inter;
+        Interface<dim>* Inter = NULL;
 
 	///	Stabilization for velocity in continuity equation
 		SmartPtr<INavierStokesFV1Stabilization<dim> > m_spStab;

@@ -292,7 +292,8 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
     //    init convection stabilization for element type
     if(m_spConvUpwind_vol.valid())
         m_spConvUpwind_vol->template set_geometry_type<TFVGeom >();
-    
+	if(Inter == NULL)
+		UG_THROW("NavierStokes Multiphase: Interface parameters have not been set");
     
     
     //	set local positions for imports
@@ -1833,6 +1834,7 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
         }
 
     }*/
+	printf("Bug 6R\n");
     
 }
 
