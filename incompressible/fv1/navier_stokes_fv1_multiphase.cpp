@@ -1834,7 +1834,6 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
         }
 
     }*/
-	printf("Bug 6R\n");
     
 }
 
@@ -2712,6 +2711,9 @@ ex_velocity_grad(MathMatrix<dim, dim> vValue[],
     
     bool m_scvf=false;
     bool m_scv=false;
+	
+	for(size_t ip = 0; ip < nip; ++ip)
+		MatSet(vValue[ip], 0.0);
 
     if ( nip==0 || !(vGlobIP!=NULL && vLocIP!=NULL && vCornerCoords!=NULL))
 	{
@@ -2791,10 +2793,6 @@ ex_velocity_grad(MathMatrix<dim, dim> vValue[],
                     {
                         vValue[ip](d1, d2) += u(d1, sh)*scv.global_grad(sh)[d2];
                         //vValue[ip](d1, d2) += (m_imDensitySCV[sh] / m_imDensitySCV[ip]) * u(d1, sh)*scv.global_grad(sh)[d2];
-                        if(std::isnan(vValue[ip](d1, d2)))
-                        {
-                            UG_LOG("Error SCV\n");
-                        }
                         if(bDeriv)
                             vvvDeriv[ip][d1][sh](d1,d2) = scv.global_grad(sh)[d2];
                             //vvvDeriv[ip][d1][sh](d1,d2) = (m_imDensitySCV[sh] / m_imDensitySCV[ip]) * scv.global_grad(sh)[d2];

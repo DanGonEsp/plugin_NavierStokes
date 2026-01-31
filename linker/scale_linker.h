@@ -148,12 +148,7 @@ class ScaleLinker
 
             const number* vImport1 = m_spImport1->values(s_IMP1_);
             const number* vImport2 = m_spImport2->values(s_IMP2_);
-           
-
-            std::vector<number> vImport1_2(nip);
-            (*m_spImport1)(&vImport1_2[0], vGlobIP, time, si,
-                            elem, vCornerCoords, vLocIP, nip, u, vJT);
-            
+                       
   
             
             for(size_t ip = 0; ip < nip; ++ip)

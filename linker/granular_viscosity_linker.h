@@ -761,7 +761,8 @@ class GranularViscosityLinker
 
             mu_s=mu_friction*Ps/gamma;
             
-            if(std::isnan(mu_s)) UG_THROW("Error in MU(I) ViscosityLinker: NaN"
+            if(std::isnan(mu_s)) 
+				UG_THROW("Error in MU(I) ViscosityLinker: NaN"
                                      <<"\nPressure = "<< Ps
                                      << "\nGamma(I) = " << gamma
                                      << "\nMU(I) = " <<mu_friction <<".");
