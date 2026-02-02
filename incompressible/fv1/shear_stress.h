@@ -1232,21 +1232,21 @@ private:
 private:
 
 	///    Data import for source
-	SmartPtr<CplUserData<MathMatrix<dim,dim>,dim> > m_imSource;
+	SmartPtr<CplUserData<MathMatrix<dim,dim>,dim> > m_imDiffusion;
 	Interface<dim>* Inter;
 	
 public:
 	/////////// Source
 
-	void set_source(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> > data)
+	void set_diffusion(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> > data)
 	{
-		m_imSource = data;
+		m_imDiffusion = data;
 	}
-	void set_source(number f_x)
+	void set_diffusion(number f_x)
 	{
 		SmartPtr<ConstUserMatrix<dim,dim> > f(new ConstUserMatrix<dim,dim>());
 		f->set_diag_tensor(f_x);
-		set_source(f);
+		set_diffusion(f);
 	}
 
 	void set_theta(number data)
@@ -1282,7 +1282,7 @@ public:
 		grid_type& grid = *domain.grid();
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
-		set_source(0.0);
+		set_diffusion(0.0);
 		grid.template attach_to<Vertex>(m_aNormal);
 		//grid.template attach_to<Vertex>(m_aTang);
 		grid.template attach_to<Vertex>(m_aVol);
@@ -1357,8 +1357,11 @@ public:
 		
 		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
 		
-		(*m_imSource)(vValue, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
-
+		(*m_imDiffusion)(vValue, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
+		
+		bool cut_elem = false;
+		Inter->cut_element(cut_elem, u, _C_);
+		
 		for (size_t ip=0;ip<nip;ip++)
 		{
 			MathVector<dim> normal = 0.0;
@@ -1408,7 +1411,8 @@ public:
 				tang[dim-1] = -sin(m_theta_cr);
 			}
 			number Value = 0.0;
-			if(gradc_mag > 1e-01)
+			//if(gradc_mag > 1e-01)
+			if(cut_elem)
 			{
 				number theta = acos(normal[dim-1]);
 				number slope = fabs(tan(theta));
@@ -1416,6 +1420,7 @@ public:
 				Value = (Value + fabs(Value))/2.0;
 				Value *= m_vel/sqrt(1.0 + pow(slope,2.0));
 			}
+			
 			
 			//for(int d1 = 0; d1 < dim; ++d1)
 				//for(int d2 = 0; d2 < dim; ++d2)
@@ -1550,14 +1555,14 @@ public:
 							 const MathVector<dim>& globIP,
 							 number time, int si) const
 	{
-		UG_THROW("SlipVel: Need element.");
+		UG_THROW("SlipDiff: Need element.");
 	}
 
 	virtual void operator() (MathMatrix<dim,dim> vValue[],
 							 const MathVector<dim> vGlobIP[],
 							 number time, int si, const size_t nip) const
 	{
-		UG_THROW("SlipVel: Need element.");
+		UG_THROW("SlipDiff: Need element.");
 	}
 
 	virtual void compute(LocalVector* u, GridObject* elem,

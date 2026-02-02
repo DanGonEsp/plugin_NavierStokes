@@ -224,10 +224,11 @@ static void DomainAlgebra(Registry& reg, string grp)
 		typedef INewtonUpdate TBase2;
 		reg.add_class_<T, TBase,TBase2>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
-				.add_method("set_source", static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> >)>(&T::set_source), "", "Source")
+				.add_method("set_diffusion", static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> >)>(&T::set_diffusion), "", "Diffusion")
 				.add_method("set_theta", static_cast<void (T::*)(number)>(&T::set_theta), "", "Theta")
 				.add_method("set_vel", static_cast<void (T::*)(number)>(&T::set_vel), "", "Vel")
 				.add_method("update", &T::update)
+				.add_method("set_phase_parameters", &T::set_phase_parameters)
 		.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "SlipDiffusion", tag);
 	}

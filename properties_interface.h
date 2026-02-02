@@ -77,6 +77,7 @@ class Interface
             m_limit(1e6),
             m_dt(1.0),
             drag_model(1),
+			m_interface_value(0.5),
             m_bParticleGradientForce(false),
             m_bConsistentGravity(false),
             m_init(false)
@@ -307,7 +308,36 @@ class Interface
             }*/
    
         }
-    
+		void cut_element(bool &cut_elem, LocalVector* u, const size_t _C_)
+		{
+			
+			bool cut = false;
+			(*u).access_all();
+
+			const size_t numSH=(*u).num_all_dof(_C_);
+			size_t inside=0;
+			size_t outside=0;
+			number c;
+			for(size_t sh = 0; sh < numSH; ++sh)
+			{
+				c = fmin(1.0, fmax((*u)(_C_,sh),0));
+				if (c>m_interface_value)
+					inside += 1;
+				else
+					outside +=1;
+			}
+			
+			if (inside==numSH || outside == numSH)
+			{
+				cut = false;
+			}
+			else
+			{
+				cut = true;
+			}
+			
+			cut_elem=cut;
+		}
         void cut_element(number &value ,bool &cut_elem, bool &phase2, LocalVector* u, const number interface)
         {
             
@@ -981,6 +1011,9 @@ class Interface
         void set_time_step_factor(float R) {
             m_dt = R;
         }
+		void set_interface_volume_fraction(float R) {
+			m_interface_value = R;
+		}
         void set_reference_pressure(float R) {
             m_P0 = R;
         }
@@ -1012,7 +1045,7 @@ class Interface
     
     
     protected:
-        float m_P0, rho_s, rho_a, mu_a, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, m_limit, m_dt;
+        float m_P0, rho_s, rho_a, mu_a, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, m_limit, m_dt, m_interface_value;
         size_t drag_model;
         bool m_bParticleGradientForce, m_bConsistentGravity, m_init;
         
