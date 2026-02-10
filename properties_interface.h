@@ -1054,6 +1054,137 @@ class Interface
 
 
 };
+template <int TDim, int TWorldDim = TDim>
+class LineWriter
+{
+
+
+	public:
+	///	dimension of reference element
+		static const int dim = TDim;
+
+	///	dimension of world
+		static const int worldDim = TWorldDim;
+
+	public:
+	/// construct object and initialize local values and sizes
+		LineWriter():
+			num_columns(3),
+			id_width(5),
+			double_width(20),
+			double_precision(10),
+			separator(","),
+			newline("\n")
+		{
+			LINE_SIZE =  id_width + num_columns * double_width + (num_columns ) * separator.size()  + newline.size();
+		}
+		
+	
+
+	
+		
+	public:
+
+
+		std::string format_line(int rank, const std::vector<double>& values)
+		{
+			assert(values.size() == (size_t)num_columns);
+			
+			std::ostringstream oss;
+			oss << std::setw(id_width) << std::setfill('0') << (rank+1);
+			
+			
+			// Append each double column
+			for (int i = 0; i < num_columns; ++i) {
+				oss << separator;
+				
+				std::ostringstream tmp;
+				tmp << std::showpos << std::fixed << std::setprecision(double_precision) << values[i];
+				std::string num_str = tmp.str();
+				char sign = num_str[0];
+				num_str = num_str.substr(1);
+				
+				// Pad left with zeros if too short
+				if ((int)num_str.size() < double_width-1)
+				{
+					num_str.insert(0, double_width -1 - num_str.size(), '0');
+				}
+				// Truncate if too long
+				else if ((int)num_str.size() > double_width-1)
+				{
+					num_str = num_str.substr(0, double_width-1);
+				}
+				oss <<	sign	<<num_str;
+
+			}
+			
+			// Append newline
+			oss << newline;
+
+			std::string line = oss.str();
+	
+		   // Safety check: line length
+			assert((int)(line.size()) == LINE_SIZE && "Line length mismatch!");
+
+			return line;
+			
+		}
+ 
+		void write_line(const std::string filename, int rank ,double value1, double value2, double value3)
+		{
+			int local_rank = pcl::ProcRank();
+			if(local_rank != 0) return;
+
+			std::vector<double> values(num_columns);
+
+			values[0] = value1;
+			values[1] = value2;
+			values[2] = value3;
+		
+			std::string line = format_line(rank, values);
+			std::string empty_line(LINE_SIZE, ' '); // or '\0'
+			// Compute offset using plain int
+			int offset = rank * LINE_SIZE;
+			
+			
+			// Open file in binary read/write mode
+			std::fstream file(filename, std::ios::in | std::ios::out | std::ios::binary);
+
+			// If file does not exist, create it
+			if (!file.is_open()) {
+				std::ofstream create_file(filename, std::ios::out | std::ios::binary);
+				create_file.close();
+				file.open(filename, std::ios::in | std::ios::out | std::ios::binary);
+			}
+
+			// Seek to the offset
+			file.seekp(offset); // just plain int, no pos_type needed
+			if (!file) {
+				std::cerr << "Error seeking to offset " << offset << std::endl;
+				return;
+			}
+
+			// Write the line
+			file.write(line.c_str(), LINE_SIZE);
+			if (!file) {
+				std::cerr << "Error writing line at offset " << offset << std::endl;
+			}
+
+			file.close();
+		}
+
+	
+
+	protected:
+		int num_columns, id_width, double_width, double_precision, LINE_SIZE;
+		std::string separator,newline;
+
+
+		
+
+
+};
+
 
 
 

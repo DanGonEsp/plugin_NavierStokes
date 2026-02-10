@@ -179,6 +179,16 @@ static void Dimension(Registry& reg, string grp)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "Interface", tag);
 	}
+//    LineWriter
+	{
+		typedef LineWriter<dim> T;
+		string name = string("LineWriter").append(suffix);
+		reg.add_class_<T>(name, grp)
+			.add_method("write_line",  &T::write_line)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "LineWriter", tag);
+	}
 //    Granular Density Linker
 	{
 		typedef GranularDensityLinker<dim> T;
