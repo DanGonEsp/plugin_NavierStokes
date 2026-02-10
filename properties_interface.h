@@ -1069,7 +1069,7 @@ class LineWriter
 	public:
 	/// construct object and initialize local values and sizes
 		LineWriter():
-			num_columns(3),
+			num_columns(4),
 			id_width(5),
 			double_width(20),
 			double_precision(10),
@@ -1088,7 +1088,8 @@ class LineWriter
 
 		std::string format_line(int rank, const std::vector<double>& values)
 		{
-			assert(values.size() == (size_t)num_columns);
+			
+			UG_ASSERT(values.size() == (size_t)num_columns, "PropertiesInterface Writer: Values number mismatch colums number!");
 			
 			std::ostringstream oss;
 			oss << std::setw(id_width) << std::setfill('0') << (rank+1);
@@ -1124,13 +1125,13 @@ class LineWriter
 			std::string line = oss.str();
 	
 		   // Safety check: line length
-			assert((int)(line.size()) == LINE_SIZE && "Line length mismatch!");
+			UG_ASSERT((int)(line.size()) == LINE_SIZE, "PropertiesInterface Writer: Line length mismatch!");
 
 			return line;
 			
 		}
  
-		void write_line(const std::string filename, int rank ,double value1, double value2, double value3)
+		void write_line(const std::string filename, int rank, const std::string Headers, double value1, double value2, double value3, int boolSolution)
 		{
 			int local_rank = pcl::ProcRank();
 			if(local_rank != 0) return;
@@ -1140,11 +1141,12 @@ class LineWriter
 			values[0] = value1;
 			values[1] = value2;
 			values[2] = value3;
+			values[3] = boolSolution;
 		
 			std::string line = format_line(rank, values);
-			std::string empty_line(LINE_SIZE, ' '); // or '\0'
+			//std::string empty_line(LINE_SIZE, ' '); // or '\0'
 			// Compute offset using plain int
-			int offset = rank * LINE_SIZE;
+			int offset =(rank == 0)? 0 : Headers.size() + rank * LINE_SIZE;
 			
 			
 			// Open file in binary read/write mode
@@ -1165,6 +1167,7 @@ class LineWriter
 			}
 
 			// Write the line
+			if(rank == 0) file.write(Headers.c_str(), Headers.size());
 			file.write(line.c_str(), LINE_SIZE);
 			if (!file) {
 				std::cerr << "Error writing line at offset " << offset << std::endl;
