@@ -1381,15 +1381,15 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 		{
 		// 	Add to local matrix
             //J(d1, sh, d1, sh) += scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
-            J(d1, sh, d1, sh) += scv.volume() * (fac_m * m_imDensitySCV[ip]);//printf("Change the lin_def");
+			J(d1, sh, d1, sh) += 0;//*scv.volume() * (fac_m * m_imDensitySCV[ip]);//printf("Change the lin_def");
             //J(d1, sh, d1, sh) += scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho);
-            for(size_t ip2 = 0; ip2 < geo.num_scv(); ++ip2)
+            /*for(size_t ip2 = 0; ip2 < geo.num_scv(); ++ip2)
             {
                 const typename TFVGeom::SCV& scv2 = geo.scv(ip2);
                 const int sh2 = scv2.node_id();
                 J(d1, sh, d1, sh2) += (1.0-fac_m) * scv.volume() * (m_imDensitySCV[ip] * scv2.volume()/Vol_m);
                 
-            }
+            }/*
 		}
     }
     /*for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -1537,7 +1537,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		{
 		// 	Add to local matrix
             //d(d1, sh) += u(d1, sh) * scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
-            d(d1, sh) +=  scv.volume() * (fac_m * u(d1, sh) * m_imDensitySCV[ip] + (1-fac_m) * VRho[d1]); //printf("Change the lin_def");
+			d(d1, sh) +=  0;//*scv.volume() * (fac_m * u(d1, sh) * m_imDensitySCV[ip] + (1-fac_m) * VRho[d1]); //printf("Change the lin_def");
             //d(d1, sh) += u(d1, sh) * scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho); //printf("Change the lin_def");
 		}
         

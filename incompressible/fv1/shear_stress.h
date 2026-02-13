@@ -1412,13 +1412,13 @@ public:
 			}
 			number Value = 0.0;
 			//if(gradc_mag > 1e-01)
-			if(cut_elem)
+			if(cut_elem && VecProd(tang,-GradC) > 0)
 			{
 				number theta = acos(normal[dim-1]);
 				number slope = fabs(tan(theta));
 				Value = slope - tan(m_theta_cr);
 				Value = (Value + fabs(Value))/2.0;
-				Value *= m_vel/sqrt(1.0 + pow(slope,2.0));
+				Value *= m_vel*sin(theta-m_theta_cr)/sqrt(1.0 + pow(slope,2.0));
 			}
 			
 			
@@ -1624,29 +1624,29 @@ class RelativeVelocity
 	typedef typename TGridFunction::template dim_traits<dim>::grid_base_object elem_type;
 
 	/// MathVector<dim> attachment
-	typedef MathVector<dim> vecDim;
-	typedef Attachment<vecDim> AMathVectorDim;
+	//typedef MathVector<dim> vecDim;
+	//typedef Attachment<vecDim> AMathVectorDim;
 
 	/// attachment accessor
-	typedef PeriodicAttachmentAccessor<Vertex,ANumber > aVertexNumber;
-	typedef PeriodicAttachmentAccessor<Vertex,AMathVectorDim > aVertexDimVector;
+	//typedef PeriodicAttachmentAccessor<Vertex,ANumber > aVertexNumber;
+	//typedef PeriodicAttachmentAccessor<Vertex,AMathVectorDim > aVertexDimVector;
 	typedef Grid::AttachmentAccessor<elem_type,ANumber > aElementNumber;
 	
 	/// element iterator
 	typedef typename TGridFunction::template dim_traits<dim>::const_iterator ElemIterator;
 
 	/// vertex iterator
-	typedef typename TGridFunction::template traits<Vertex>::const_iterator VertexIterator;
+	//typedef typename TGridFunction::template traits<Vertex>::const_iterator VertexIterator;
 
 private:
 
 	//    Normal attachment accessor (average normal in vertices)
-	AMathVectorDim m_aNormal;
-	aVertexDimVector m_normal;
+	//AMathVectorDim m_aNormal;
+	//aVertexDimVector m_normal;
 	
 	//  volume attachment accessor
-	ANumber m_aVol;
-	aVertexNumber m_vol;
+	//ANumber m_aVol;
+	//aVertexNumber m_vol;
 	
 	//  volume attachment accessor
 	ANumber m_aRelVel;
@@ -1668,7 +1668,7 @@ private:
 private:
 
 	///    Data import for source
-	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imSource;
+	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imRelVel;
 	Interface<dim>* Inter;
 
 		  public:
@@ -1705,17 +1705,17 @@ public:
 		grid_type& grid = *domain.grid();
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
-		grid.template attach_to<Vertex>(m_aNormal);
-		grid.template attach_to<Vertex>(m_aVol);
+		//grid.template attach_to<Vertex>(m_aNormal);
+		//grid.template attach_to<Vertex>(m_aVol);
 		grid.template attach_to<elem_type>(m_aRelVel);
 		
-		m_normal.access(grid,m_aNormal);
-		m_vol.access(grid,m_aVol);
+		//m_normal.access(grid,m_aNormal);
+		//m_vol.access(grid,m_aVol);
 		m_rel_vel.access(grid,m_aRelVel);
 		// set all values to zero
-		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_rel_vel, m_u->template begin<elem_type>(), m_u->template end<elem_type>(), 0);
+		//SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_rel_vel, m_u->template begin<elem_type>(), m_u->template end<elem_type>(), 6.9);
 		this->update();
 	}
 
@@ -1798,12 +1798,12 @@ public:
 			MatVecMult(GradC, JTInv, locGrad);
 			
 			
-			for (size_t sh=0;sh<numVertices;sh++)
+			/*for (size_t sh=0;sh<numVertices;sh++)
 				for(int d = 0; d < refDim; ++d)
 				{
 					normal[d] += m_normal[vVrt[sh]][d]*shapes[sh];
 					//tang[d] += m_tang[vVrt[sh]][d]*shapes[sh];
-				}
+				}*/
 			number normal_mag =  VecTwoNorm(normal);
 			number gradc_mag =  VecTwoNorm(GradC);
 			if(normal_mag<m_limit)
@@ -1858,8 +1858,8 @@ public:
 		const position_accessor_type& posAcc = domain.position_accessor();
 
 		// set volume, tang and normal values to zero
-		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		// compute pressure in vertices by averaging
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
@@ -1874,44 +1874,13 @@ public:
 					coCoord[i] = posAcc[vVrt[i]];
 				};
 				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
-				for(size_t i = 0; i < numVertices; ++i){
-					number scvVol = geo.scv(i).volume();
-					
-					MathVector<dim> GradC; VecSet(GradC,0.0);
-					MathVector<dim> Normal; VecSet(Normal,0.0);
-					
-					//    sum up contributions of each shape
-					for(size_t sh = 0; sh < numVertices; ++sh)
-					{
-						m_u->dof_indices(elem->vertex(sh), _C_, multInd);
-						//    read value of index from vector
-						number uVal = DoFRef(*m_u,multInd[0]);
-						
-						//  Loop dimensions for derivative
-						for(int d1 = 0; d1 <dim; ++d1)
-						{
-							GradC[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
-						}
-					}
-					number grad_c_mag = VecTwoNorm(GradC);
-					if(grad_c_mag<m_limit)
-					{
-						VecSet(Normal,0.0);
-					}
-					else
-					{
-						VecScale(Normal,GradC,-1.0/grad_c_mag);
-						m_vol[vVrt[i]]+=scvVol;
-					}
-					
-					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol;
-					
-					
-				}
+				number W1 = m_rel_vel[elem];
+				//m_rel_vel[elem] = Inter->RelVel(W1,  iter,    MU2,   rho_a, rho_a, dp, rho_s,  fabs(gy), 5.0);
+				//m_pOld[elem]+=DoFRef(*m_u,multInd[0]);
+				
 			}
 		}
-		PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
+		/*PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
 		// go over all vertices and average
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
 			VertexIterator iter = m_u->template begin<Vertex>(si);
@@ -1926,7 +1895,7 @@ public:
 						m_normal[vrt][d1] /= m_vol[vrt];
 				}
 			}
-		}
+		}*/
 	}
 
 private:
