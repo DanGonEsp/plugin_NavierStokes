@@ -144,20 +144,34 @@ class RelativeVelocityLinker
             MathVector<dim> W;
             
             const number Dim=vRelativeVelocity[0].size();
+			if (false)
+				for(size_t ip = 0; ip < nip; ++ip)
+					{
+						VecSet(W, 0.0);
+						number RelVel = 0.0;
+						if(m_BoolRelativeVel )
+						{
+							RelativeVel(RelVel, vPsGrad[ip][Dim-1], m_gravitation, vVolume[ip], vMixDensity[ip], vMixKinVisc[ip], vEinsVisc[ip], m_Wr, m_Cd, rho_a, rho_s, dp, mu_a, alpha_max, Inter,false);
+							W[Dim-1] = RelVel;
+						}
+						
+						vRelativeVelocity[ip] = W;
+						
+					}
+			else
+				for(size_t ip = 0; ip < nip; ++ip)
+				{
+					number phi=fmin(alpha_max-1e-04, fmax(vVolume[ip],0.0));
+					
+					VecSet(W, 0.0);
+					number RelVel =  -6.8598479912268*(1.0-phi)*pow((1.0 + pow(phi,1.0/3.0))*exp(5.0*(phi)/(3*(1-phi))),-1.0);
+					
+						
+					W[dim-1] = RelVel;
+					vRelativeVelocity[ip] = W;
 
-            for(size_t ip = 0; ip < nip; ++ip)
-            {
-                VecSet(W, 0.0);
-                number RelVel = 0.0;
-                if(m_BoolRelativeVel )
-                {
-                    RelativeVel(RelVel, vPsGrad[ip][Dim-1], m_gravitation, vVolume[ip], vMixDensity[ip], vMixKinVisc[ip], vEinsVisc[ip], m_Wr, m_Cd, rho_a, rho_s, dp, mu_a, alpha_max, Inter,false);
-					W[Dim-1] = RelVel;
-                }
-                
-                vRelativeVelocity[ip] = W;
-                
-            }
+					
+				}
         }
 
         template <int refDim>
@@ -204,21 +218,35 @@ class RelativeVelocityLinker
         MathVector<dim> W;
         
         const size_t Dim=vRelativeVelocity[0].size();
+		if (false)
+			for(size_t ip = 0; ip < nip; ++ip)
+			{
+				VecSet(W, 0.0);
+				number RelVel = 0.0;
+				if(m_BoolRelativeVel )
+				{
+					RelativeVel(RelVel, vPsGrad[ip][Dim-1], m_gravitation, vVolume[ip], vMixDensity[ip], vMixKinVisc[ip], vEinsVisc[ip], m_Wr, m_Cd, rho_a, rho_s, dp , mu_a, alpha_max, Inter, true);
+					W[dim-1] = RelVel;
+				}
+				
+				vRelativeVelocity[ip] = W;
 
-        for(size_t ip = 0; ip < nip; ++ip)
-        {
-            VecSet(W, 0.0);
-            number RelVel = 0.0;
-            if(m_BoolRelativeVel )
-            {
-                RelativeVel(RelVel, vPsGrad[ip][Dim-1], m_gravitation, vVolume[ip], vMixDensity[ip], vMixKinVisc[ip], vEinsVisc[ip], m_Wr, m_Cd, rho_a, rho_s, dp , mu_a, alpha_max, Inter, true);
-                W[dim-1] = RelVel;
-            }
-            
-            vRelativeVelocity[ip] = W;
+				
+			}
+		else
+			for(size_t ip = 0; ip < nip; ++ip)
+			{
+				number phi=fmin(alpha_max-1e-04, fmax(vVolume[ip],0.0));
+				
+				VecSet(W, 0.0);
+				number RelVel =  -6.8598479912268*(1.0-phi)*pow((1.0 + pow(phi,1.0/3.0))*exp(5.0*(phi)/(3*(1-phi))),-1.0);
+				
+					
+				W[dim-1] = RelVel;
+				vRelativeVelocity[ip] = W;
 
-            
-        }
+				
+			}
 
         /*bool m_scvf=false;
         bool m_scv=false;
