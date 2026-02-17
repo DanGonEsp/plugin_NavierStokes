@@ -452,8 +452,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     
     
     std_vel(  u,  geo, StdVel, StdVol, Vel, m_imDensitySCV,Rho_up,Rho_do,ConvRatio);
-	if(m_imRelativeVelocitySCVF.data_given())
-		std_rel_vel(  u,  geo, StdRelVel_div, StdRelVel_total_t, StdRelVel_t, m_imDensitySCVF, m_imRelativeVelocitySCVF, m_bStokes, true);
+	if(m_imRelativeVelocitySCV.data_given())
+		std_rel_vel(  u,  geo, StdRelVel_div, StdRelVel_total_t, StdRelVel_t, m_imDensitySCVF,  m_imDensitySCV, m_imRelativeVelocitySCVF, m_imRelativeVelocitySCV, m_bStokes, true);
     if(Inter->ParticleGradientForce())
 	{
 		vel_grad(  u,  geo,  Gamma);
@@ -962,7 +962,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         
             
             
-            if(m_imRelativeVelocitySCV.data_given())
+            /*if(m_imRelativeVelocitySCV.data_given())
             {
                 const number prod_rel_sh = VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
                 const number rhoa = Inter->Density_a();
@@ -973,7 +973,18 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 J(_C_, scvf.from(), _C_, sh) += conv_flux_rel_sh;
                 J(_C_, scvf.to(),   _C_, sh) -= conv_flux_rel_sh;
                 
-            }
+            }*/
+			if(m_imRelativeVelocitySCV.data_given())
+			{
+				const number prod_rel_sh = VecProd(m_imRelativeVelocitySCV[sh], scvf.normal());
+				
+				const number conv_flux_rel_sh = -1.0 * C_up_vol * scvf.shape(sh) * prod_rel_sh ;
+				
+				//    Add flux term to local matrix
+				J(_C_, scvf.from(), _C_, sh) += conv_flux_rel_sh;
+				J(_C_, scvf.to(),   _C_, sh) -= conv_flux_rel_sh;
+				
+			}
             
             
             
@@ -1041,8 +1052,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		Inter->Ps( Ps, DPs, Gamma, u, _C_, numSh, false);
 		printf("Gamma is not implemented for Ps gradient, update import parameter");
 	}
-	if(m_imRelativeVelocitySCVF.data_given())
-		std_rel_vel(  u,  geo, StdRelVel_div, StdRelVel_total_t, StdRelVel_t, m_imDensitySCVF, m_imRelativeVelocitySCVF, m_bStokes, false);
+	if(m_imRelativeVelocitySCV.data_given())
+		std_rel_vel(  u,  geo, StdRelVel_div, StdRelVel_total_t, StdRelVel_t, m_imDensitySCVF,  m_imDensitySCV, m_imRelativeVelocitySCVF, m_imRelativeVelocitySCV, m_bStokes, false);
 	
     
     //	compute stabilized velocities and shapes for continuity equation
@@ -1389,7 +1400,7 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 const int sh2 = scv2.node_id();
                 J(d1, sh, d1, sh2) += (1.0-fac_m) * scv.volume() * (m_imDensitySCV[ip] * scv2.volume()/Vol_m);
                 
-            }/*
+            }*/
 		}
     }
     /*for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -1934,7 +1945,7 @@ template<typename TFVGeom>
 inline
 void
 NavierStokesFV1M<TDomain>::
-std_rel_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_div, MathVector<dim>* StdRelVel_total_t, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCVF, const DataImport<MathVector<dim>, dim>& RelVelSCVF, const bool m_bStokes, const bool jac)
+std_rel_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_div, MathVector<dim>* StdRelVel_total_t, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCVF, const DataImport<number, dim>& densitySCV, const DataImport<MathVector<dim>, dim>& RelVelSCVF, const DataImport<MathVector<dim>, dim>& RelVelSCV, const bool m_bStokes, const bool jac)
 {
     
     
@@ -1958,15 +1969,22 @@ std_rel_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVe
 		
 		for(int d1 = 0; d1 < dim; ++d1)
 		{
-			if(!jac)
+			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
 			{
-				StdRelVel_div[ip][d1] +=  (rhoa-rhos) * Vol * (1.0 - Vol) * RelVelSCVF[ip][d1] / densitySCVF[ip];
-				//UG_THROW("NavierStokes::std_rel_vel Not implemeted jet.");
+			
+				if(!jac)
+				{
+					StdRelVel_div[ip][d1] +=  (rhoa-rhos) * Vol * (1.0 - Vol) * RelVelSCVF[ip][d1] / densitySCVF[ip];
+					//StdRelVel_div[ip][d1] +=  (rhoa-rhos) * Vol * (1.0 - Vol) * RelVelSCVF[ip][d1] / densitySCVF[ip];
+					//UG_THROW("NavierStokes::std_rel_vel Not implemeted jet.");
+				}
+				number Value =   scvf.shape(sh) * (1.0 - u(_C_, sh)) * RelVelSCV[sh][d1];
+				StdRelVel_total_t[ip][d1] += Value;
+				if(!m_bStokes)
+					StdRelVel_t[ip][d1] += Value;
+				
 			}
-			number Value =  rhoa * (1.0 - Vol) * RelVelSCVF[ip][d1] / densitySCVF[ip];
-			StdRelVel_total_t[ip][d1] += Value;
-			if(!m_bStokes)
-				StdRelVel_t[ip][d1] += Value;
+
 		}
 		
     }
@@ -2530,7 +2548,7 @@ ex_div_velocity(MathVector<dim> vValue[],
 		}
 		
 		if(m_imRelativeVelocitySCVF.data_given())
-			std_rel_vel(  u,  geo, StdRelVel_div, StdRelVel_total_t, StdRelVel_t, m_imDensitySCVF, m_imRelativeVelocitySCVF, m_bStokes, false);
+			std_rel_vel(  u,  geo, StdRelVel_div, StdRelVel_total_t, StdRelVel_t, m_imDensitySCVF, m_imDensitySCV, m_imRelativeVelocitySCVF, m_imRelativeVelocitySCV, m_bStokes, false);
 		
 		
         
