@@ -263,7 +263,7 @@ class ShearStressFV1
 
     void update(){
         //    get domain
-        printf("Updating Velocity Grad... \n");
+        //printf("Updating Velocity Grad... \n");
         domain_type& domain = *m_u->domain().get();
         //    create Multiindex
         std::vector<DoFIndex> multInd;
@@ -621,7 +621,7 @@ class ParticlePressureFV1
 
 	void update(){
 		//    get domain
-		printf("Updating Velocity Grad... \n");
+		//printf("Updating Velocity Grad... \n");
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1003,7 +1003,7 @@ public:
 
 	void update(){
 		//    get domain
-		printf("Updating Slip Velocity... \n");
+		//printf("Updating Slip Velocity... \n");
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1436,7 +1436,7 @@ public:
 
 	void update(){
 		//    get domain
-		printf("Updating Slip Diffusion... \n");
+		//printf("Updating Slip Diffusion... \n");
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1843,7 +1843,7 @@ public:
 
 	void update(){
 		//    get domain
-		printf("Updating Relative Velocity... \n");
+		//printf("Updating Relative Velocity... \n");
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;

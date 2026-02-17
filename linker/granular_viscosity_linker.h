@@ -391,7 +391,7 @@ class GranularViscosityLinker
             this->set_zero(vvvDeriv, nip);
             
         //  Derivatives of Volume Fraction
-            /*if(m_spDVolumeFraction.valid() && !m_spDVolumeFraction->zero_derivative() && (m_model == 2 || m_model == 3 || m_model == 4))
+            /*if(m_spDVolumeFraction.valid() && !m_spDVolumeFraction->zero_derivative() && (m_model == 0 || m_model == 1 || m_model == 4))
             {
 
                 for(size_t ip = 0; ip < nip; ++ip)
