@@ -576,7 +576,7 @@ class NavierStokesFV1M
         inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, number* StdVol, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do, number* ConvRatio);
     
         template <typename TFVGeom>
-        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_div, MathVector<dim>* StdRelVel_total_t, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCVF, const DataImport<number, dim>& densitySCV, const DataImport<MathVector<dim>, dim>& RelVelSCVF,  const DataImport<MathVector<dim>, dim>& RelVelSCV, const bool m_bStokes, const bool Jac);
+        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV,  const DataImport<MathVector<dim>, dim>& RelVelSCV);
     
         template <typename TFVGeom>
         inline void vel_grad(const LocalVector& u, const TFVGeom& geo, number* Gamma);

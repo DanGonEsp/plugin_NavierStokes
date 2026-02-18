@@ -124,29 +124,36 @@ class GranularDiffusionLinker
 			(*m_spVelocityGrad)(&vVelocityGrad[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 			(*m_spMixViscosity)(&vMixViscosity[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 			const number mu_a = Inter-> Viscosity_a() * Inter->Density_a();
-
+			
+			bool cut_elem=false;
+			bool inside = false;
+			Inter->cut_element(cut_elem,inside,  u,dim+1);
+			
             for(size_t ip = 0; ip < nip; ++ip)
             {
                 
                 MathMatrix<dim,dim> Diff;
                 MatSet(Diff,0.0);
-				if (m_BoolConsKinVisc)
+				if(!inside || cut_elem || inside)
 				{
-					MatDiagSet(Diff,m_Diff_factor * mu_a * vGamma[ip]);
-				}
-				else
-				{
-					number gamma=0.0;
-					// compute inner sum
-					for(int d1 = 0; d1 < dim; ++d1)
+					if (m_BoolConsKinVisc)
 					{
-						for(int d2 = 0; d2 < dim; ++d2)
-						{
-							gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2.0);
-						}
+						MatDiagSet(Diff,m_Diff_factor * mu_a * vGamma[ip]);
 					}
-					gamma =sqrt((0.5*gamma));
-					MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
+					else
+					{
+						number gamma=0.0;
+						// compute inner sum
+						for(int d1 = 0; d1 < dim; ++d1)
+						{
+							for(int d2 = 0; d2 < dim; ++d2)
+							{
+								gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2.0);
+							}
+						}
+						gamma =sqrt((0.5*gamma));
+						MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
+					}
 				}
 				vValue[ip]=Diff;
 
@@ -190,34 +197,42 @@ class GranularDiffusionLinker
             //VolFraction=;
             VolFraction=fmin(1.0, fmax(VolFraction/nip,0));*/
 			
+			
+			bool cut_elem=false;
+			bool inside = false;
+			Inter->cut_element(cut_elem,inside,  u,dim+1);
+			
 			const number mu_a = Inter-> Viscosity_a() * Inter->Density_a();
             for(size_t ip = 0; ip < nip; ++ip)
             {
                                 
                 MathMatrix<dim,dim> Diff;
                 MatSet(Diff,0.0);
-				if(m_BoolConsKinVisc)
+				if(!inside || cut_elem || inside)
 				{
-					MatDiagSet(Diff,m_Diff_factor * mu_a * vGamma[ip]);
-				}
-				else
-				{
-					
-					number gamma=0.0;
-					// compute inner sum
-					for(int d1 = 0; d1 < dim; ++d1)
+					if(m_BoolConsKinVisc)
 					{
-						for(int d2 = 0; d2 < dim; ++d2)
-						{
-							gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2);
-						}
+						MatDiagSet(Diff,m_Diff_factor * mu_a * vGamma[ip]);
 					}
-					
-					gamma =sqrt((0.5*gamma));
-					
-					MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
-					
-					
+					else
+					{
+						
+						number gamma=0.0;
+						// compute inner sum
+						for(int d1 = 0; d1 < dim; ++d1)
+						{
+							for(int d2 = 0; d2 < dim; ++d2)
+							{
+								gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2);
+							}
+						}
+						
+						gamma =sqrt((0.5*gamma));
+						
+						MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
+						
+						
+					}
 				}
 				vValue[ip]=Diff;
             }

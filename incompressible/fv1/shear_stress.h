@@ -1360,7 +1360,8 @@ public:
 		(*m_imDiffusion)(vValue, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 		
 		bool cut_elem = false;
-		Inter->cut_element(cut_elem, u, _C_);
+		bool boolInside = false;
+		Inter->cut_element(cut_elem,boolInside, u, _C_);
 		
 		for (size_t ip=0;ip<nip;ip++)
 		{

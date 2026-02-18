@@ -78,6 +78,7 @@ class Interface
             m_dt(1.0),
             drag_model(1),
 			m_interface_value(0.5),
+			m_packing_factor(0.6),
             m_bParticleGradientForce(false),
             m_bConsistentGravity(false),
             m_init(false)
@@ -308,7 +309,7 @@ class Interface
             }*/
    
         }
-		void cut_element(bool &cut_elem, LocalVector* u, const size_t _C_)
+		void cut_element(bool &cut_elem,bool& boolInside, LocalVector* u, const size_t _C_)
 		{
 			
 			bool cut = false;
@@ -335,7 +336,7 @@ class Interface
 			{
 				cut = true;
 			}
-			
+			boolInside = (inside==numSH)? true:false;
 			cut_elem=cut;
 		}
         void cut_element(number &value ,bool &cut_elem, bool &phase2, LocalVector* u, const number interface)
@@ -993,9 +994,9 @@ class Interface
         void set_alpha_min(float R) {
             alpha_min = R;
         }
-        /*void set_packing_factor(float R) {
+        void set_packing_factor(float R) {
             m_packing_factor = R;
-        }*/
+        }
         void set_FR(float R) {
             Fr = R;
         }
@@ -1035,6 +1036,7 @@ class Interface
         number Density_max(){ return (rho_s-rho_a) * alpha_max + rho_a;}
 		number Viscosity_a(){ return mu_a;}
         number Alpha_max(){ return alpha_max;}
+		number packing_factor(){ return m_packing_factor;}
         number DT(){ return m_dt;}
         number ReferencePressure(){ return m_P0;}
         bool ParticleGradientForce(){ return m_bParticleGradientForce;}
@@ -1045,7 +1047,7 @@ class Interface
     
     
     protected:
-        float m_P0, rho_s, rho_a, mu_a, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, m_limit, m_dt, m_interface_value;
+        float m_P0, rho_s, rho_a, mu_a, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, m_limit, m_dt, m_interface_value, m_packing_factor;
         size_t drag_model;
         bool m_bParticleGradientForce, m_bConsistentGravity, m_init;
         
