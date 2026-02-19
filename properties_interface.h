@@ -118,15 +118,24 @@ class Interface
 
         void Einstein_viscosity(number& ss, number& Dss,const number phi, const bool deriv)
         {
-
-            ss= (phi < alpha_max)? mu_a*pow(1.0-phi/alpha_max,-2.5*alpha_max) : m_limit;
-            ss=fmin(ss,m_limit);
-            if(deriv)
-            {
-                Dss = (phi < alpha_max)? 2.5*ss/(1.0-phi/alpha_max) : 0.0;
-            }
+			number C_r = alpha_max - 1e-03;
+			if (phi<=C_r)
+			{
+				ss= mu_a*pow(1.0-phi/alpha_max,-2.5*alpha_max);
+				if(deriv)
+					Dss =  2.5*ss/(1.0-phi/alpha_max) ;
+			}
+			else
+			{
+				
+				number ss_r = mu_a*pow(1.0-C_r/alpha_max,-2.5*alpha_max);
+				number slope=2.5*ss_r/(1.0-C_r/alpha_max);
+				ss = slope*(phi-C_r)+ss_r;
+				if(deriv)
+					Dss =  slope ;
+			}
             
-            if(std::isnan(ss) || ss<0.0) UG_THROW("Error in Einstein ViscosityLinker: Value = NaN" <<"  Volume Fraction = "<<phi<<".");
+            if(std::isnan(ss) || ss<0.0 ) UG_THROW("Error in Einstein ViscosityLinker: Value = NaN" <<"  Volume Fraction = "<<phi<<".");
             //if(phi > alpha_max) UG_LOG("Phi > phi_max in Einstein Viscosity\n");
         }
     

@@ -150,7 +150,7 @@ class RelativeVelocityLinker
 				number RelVel = 0.0;
 				if(m_BoolRelativeVel && (!inside || inside || cut_elem))
 				{
-					if (true)
+					if (false)
 					{
 						
 						if(m_BoolRelativeVel )
@@ -228,7 +228,7 @@ class RelativeVelocityLinker
 			number RelVel = 0.0;
 			if(m_BoolRelativeVel && (!inside || inside || cut_elem))
 			{
-				if (true)
+				if (false)
 				{
 					RelativeVel(RelVel, vPsGrad[ip][Dim-1], m_gravitation, vVolume[ip], vMixDensity[ip], vMixKinVisc[ip], vEinsVisc[ip], m_Wr, m_Cd, rho_a, rho_s, dp , mu_a, alpha_max, Inter, true);
 					
