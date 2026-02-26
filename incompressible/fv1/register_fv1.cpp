@@ -330,6 +330,7 @@ static void Domain(Registry& reg, string grp)
             .add_method("particle_pressure", &T::particle_pressure)
             .add_method("particle_pressure_grad", &T::particle_pressure_grad)
             .add_method("set_phase_parameters", &T::set_phase_parameters)
+			.add_method("set_div_correction", &T::set_div_correction)
             .set_construct_as_smart_pointer(true);
         reg.add_class_to_group(name, "NavierStokesFV1M", tag);
     }

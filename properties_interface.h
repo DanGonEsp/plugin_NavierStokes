@@ -88,30 +88,55 @@ class Interface
 
         void Ps(number* ParticlePressure, number* DCParticlePressure, const number Gamma[], const LocalVector& u, const size_t _C_, const size_t numSH, const bool deriv)
         {
-            
+			const number delta = 1e-02;
+			const number Co=alpha_max-delta;
+			bool DERIVATIVE = false;
+			if(deriv || DCParticlePressure != NULL)
+				DERIVATIVE = true;
+				
             for(size_t sh = 0; sh < numSH; ++sh)
             {
 				number gamma=Gamma[sh];
-                const number phi=fmin(1.0, fmax(u(_C_,sh),0));
+                //const number phi=fmin(1.0, fmax(u(_C_,sh),0));
+				const number phi=u(_C_,sh);
                 
                 //Stokes number
                 const number St=gamma*rho_s*pow(dp,2)/mu_a;
                 
                 //Permanent contact pressure
-                const number pff=(phi >= alpha_min) ? Fr *pow(  phi-alpha_min,3) /pow(alpha_max-phi,5) : 0.0;
+				number pff= 0.0;
+				number dpff = 0.0;
+				number dpa = 0.0;
+				number pa = 0.0;
+				if(phi >= Co)
+				{
+					const number p0 = Fr *pow(  Co-alpha_min,3) /pow(alpha_max-Co,5);
+					const number dp0 = Fr * pow( Co-alpha_min,2) * (2.0*Co+3.0*alpha_max-5.0*alpha_min)/pow(alpha_max-Co,6.0);
+					pff = dp0*(phi-Co)+p0;
+					pa = 0.0;//*mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
+					if(DERIVATIVE)
+					{
+						dpff = dp0;
+						//dpa = 2*mu_a*(1.0+St)*pow(B_phi,2.0)*phi*alpha_max*gamma/(pow(alpha_max-phi,3));
+					}
+				}
+				else if(phi >= alpha_min)
+				{
+					pff = Fr *pow(  phi-alpha_min,3) /pow(alpha_max-phi,5);
+					pa = 0.0;//*mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
+					if (DERIVATIVE)
+					{
+						dpff =  Fr * pow( phi-alpha_min,2) * (2.0*phi+3.0*alpha_max-5.0*alpha_min)/pow(alpha_max-phi,6.0);
+						//dpa = 2*mu_a*(1.0+St)*pow(B_phi,2.0)*phi*alpha_max*gamma/(pow(alpha_max-phi,3));
+					}
+				}
+				
                 //Dynamic pressure
-                const number pa = 0.0*mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
-                
-                ParticlePressure[sh] = fmax(pff+pa,0.0);
-                if(deriv || DCParticlePressure==NULL)
-                {
-                    number dpff =(phi > alpha_min) ? pff *(2*phi+3*alpha_max-5*alpha_min)/((  phi-alpha_min)*(alpha_max-phi)) : 0.0;
-                    
-                    const number dpa = 2*mu_a*(1.0+St)*pow(B_phi,2.0)*phi*alpha_max*gamma/(pow(alpha_max-phi,3));
-                    
-                    
-                    DCParticlePressure[sh] = dpff + dpa;
-                }
+				ParticlePressure[sh] = pff+pa;
+				if(DERIVATIVE)
+					DCParticlePressure[sh] = dpff + dpa;
+
+				if(std::isnan(pff) || std::isnan(pa) || pff < 0.0 || pa<0.0 ) UG_THROW("Error in  NavierStokes: Export particlePressure: Ps = " << ParticlePressure[sh] << "   phi = "<< phi<< "   Pa = "<< pa<< "   Pf = "<< pff);
             }
 
         }
@@ -119,17 +144,18 @@ class Interface
         void Einstein_viscosity(number& ss, number& Dss,const number phi, const bool deriv)
         {
 			number C_r = alpha_max - 1e-03;
+			number power = 2.5;
 			if (phi<=C_r)
 			{
-				ss= mu_a*pow(1.0-phi/alpha_max,-2.5*alpha_max);
+				ss= mu_a*pow(1.0-phi/alpha_max,-power*alpha_max);
 				if(deriv)
-					Dss =  2.5*ss/(1.0-phi/alpha_max) ;
+					Dss =  power*ss/(1.0-phi/alpha_max) ;
 			}
 			else
 			{
 				
-				number ss_r = mu_a*pow(1.0-C_r/alpha_max,-2.5*alpha_max);
-				number slope=2.5*ss_r/(1.0-C_r/alpha_max);
+				number ss_r = mu_a*pow(1.0-C_r/alpha_max,-power*alpha_max);
+				number slope=power*ss_r/(1.0-C_r/alpha_max);
 				ss = slope*(phi-C_r)+ss_r;
 				if(deriv)
 					Dss =  slope ;
@@ -330,7 +356,7 @@ class Interface
 			number c;
 			for(size_t sh = 0; sh < numSH; ++sh)
 			{
-				c = fmin(1.0, fmax((*u)(_C_,sh),0));
+				c =(*u)(_C_,sh);
 				if (c>m_interface_value)
 					inside += 1;
 				else
@@ -362,7 +388,8 @@ class Interface
             value = 1000;
             for(size_t sh = 0; sh < numSH; ++sh)
             {
-                c = fmin(1.0, fmax((*u)(_C_,sh),0));
+                //c = fmin(1.0, fmax((*u)(_C_,sh),0));
+				c = (*u)(_C_,sh);
                 value = fmin(value, c);
                 if (c>interface)
                     inside += 1;
@@ -515,8 +542,11 @@ class Interface
                 if (N_value[from]*N_value[to] < 0.0)
                 {
 
-                    c_from = fmin(1.0, fmax((*u)(_C_,from),0));
-                    c_to = fmin(1.0, fmax((*u)(_C_,to),0));
+                    //c_from = fmin(1.0, fmax((*u)(_C_,from),0));
+                    //c_to = fmin(1.0, fmax((*u)(_C_,to),0));
+					
+					c_from = (*u)(_C_,from);
+					c_to = (*u)(_C_,to);
 
                     
                     DC=c_to-c_from;
@@ -556,8 +586,12 @@ class Interface
                 
                 const typename DimFV1Geometry<dim>::SCVF& scvf = geo.scvf(ip);
                 
-                c1 = fmin(1.0, fmax((*u)(_C_,scvf.from()),0));
-                c2 = fmin(1.0, fmax((*u)(_C_,scvf.to()),0));
+                //c1 = fmin(1.0, fmax((*u)(_C_,scvf.from()),0));
+                //c2 = fmin(1.0, fmax((*u)(_C_,scvf.to()),0));
+				
+				c1 = (*u)(_C_,scvf.from());
+				c2 = (*u)(_C_,scvf.to());
+				
                 rho1=(rho_s-rho_a)*c1+rho_a;
                 rho2=(rho_s-rho_a)*c2+rho_a;
                 
@@ -569,7 +603,8 @@ class Interface
                 number rho_aux;
                 for(size_t sh = 0; sh < numSH; ++sh)
                 {
-                    c = fmin(1.0, fmax((*u)(_C_,sh),0));
+                    //c = fmin(1.0, fmax((*u)(_C_,sh),0));
+					c = (*u)(_C_,sh);
                     rho_aux=(rho_s-rho_a)*c+rho_a;
                     rho = fmin (rho_aux,rho);
                     

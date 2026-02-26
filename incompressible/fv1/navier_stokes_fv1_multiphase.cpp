@@ -1367,7 +1367,14 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             
         const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
 		number conv_flux_vol = C_up_vol * VecProd(Vel_ip[ip], scvf.normal());
-		conv_flux_vol += (1.0-C_up_vol/packing)*C_up_vol * VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
+		
+		if (m_div_correction)
+			printf("Hola");
+		
+		if(m_imRelativeVelocitySCVF.data_given())
+		{
+			conv_flux_vol += (1.0-C_up_vol/packing)*C_up_vol * VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
+		}
 
     //  add to local defect
         d(_C_, scvf.from()) += conv_flux_vol;
@@ -1390,7 +1397,7 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
     //static const size_t numSCV = TFVGeom::numSCV;
     
-    number Vol_m = 0.0;
+    /*number Vol_m = 0.0;
     number fac_m = 1.0;
     
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1398,7 +1405,7 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     //     get current SCV
         const typename TFVGeom::SCV& scv = geo.scv(ip);
         Vol_m += scv.volume();
-    }
+    }*/
 
 // 	loop Sub Control Volumes (SCV)
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1413,8 +1420,8 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 		for(int d1 = 0; d1 < dim; ++d1)
 		{
 		// 	Add to local matrix
-            //J(d1, sh, d1, sh) += scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
-			J(d1, sh, d1, sh) += 0;//*scv.volume() * (fac_m * m_imDensitySCV[ip]);//printf("Change the lin_def");
+			J(d1, sh, d1, sh) += 0.0;//scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
+			//J(d1, sh, d1, sh) += scv.volume() * (fac_m * m_imDensitySCV[ip]);//printf("Change the lin_def");
             //J(d1, sh, d1, sh) += scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho);
             /*for(size_t ip2 = 0; ip2 < geo.num_scv(); ++ip2)
             {
@@ -1494,7 +1501,7 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         }
     }*/
     
-    number Vol_t = 0.0;
+    /*number Vol_t = 0.0;
     number fac_t = 1.0;
     
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1502,7 +1509,7 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         const typename TFVGeom::SCV& scv = geo.scv(ip);
         //     get associated node
         Vol_t += scv.volume();
-    }
+    }*/
     
 
 //     loop Sub Control Volumes (SCV)
@@ -1515,14 +1522,15 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         const int co = scv.node_id();
 
     //     Add to local matrix
-        J(_C_, co, _C_, co) += fac_t * scv.volume() ;
+        //J(_C_, co, _C_, co) += fac_t * scv.volume() ;
+		J(_C_, co, _C_, co) +=  scv.volume() ;
         
-        for(size_t ip2 = 0; ip2 < geo.num_scv(); ++ip2)
+        /*for(size_t ip2 = 0; ip2 < geo.num_scv(); ++ip2)
         {
             const typename TFVGeom::SCV& scv2 = geo.scv(ip2);
             const int co2 = scv2.node_id();
             J(_C_, co, _C_, co2) += (1.0-fac_t) * scv.volume() * (scv2.volume()/Vol_t);
-        }
+        }*/
         
     }
 }
@@ -1541,7 +1549,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     static const size_t numSCV = TFVGeom::numSCV;
     
 
-    MathVector<dim> VRho; VecSet(VRho,0.0);
+    /*MathVector<dim> VRho; VecSet(VRho,0.0);
     number Vol_m = 0.0;
     number fac_m = 1.0;
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1554,7 +1562,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             VRho[d1] += u(d1, sh) * m_imDensitySCV[ip] * scv.volume();
         
     }
-    VRho *= 1.0/Vol_m;
+    VRho *= 1.0/Vol_m;*/
 
 // 	loop Sub Control Volumes (SCV)
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1569,8 +1577,8 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		for(int d1 = 0; d1 < dim; ++d1)
 		{
 		// 	Add to local matrix
-            //d(d1, sh) += u(d1, sh) * scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
-			d(d1, sh) +=  0;//*scv.volume() * (fac_m * u(d1, sh) * m_imDensitySCV[ip] + (1-fac_m) * VRho[d1]); //printf("Change the lin_def");
+			d(d1, sh) += 0.0;//u(d1, sh) * scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
+			//d(d1, sh) += scv.volume() * (fac_m * u(d1, sh) * m_imDensitySCV[ip] + (1-fac_m) * VRho[d1]); //printf("Change the lin_def");
             //d(d1, sh) += u(d1, sh) * scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho); //printf("Change the lin_def");
 		}
         
@@ -1647,7 +1655,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     
 
     
-    number Vol = 0.0;
+    /*number Vol = 0.0;
     number fac = 1.0;
     number Value = 0.0;
 
@@ -1663,7 +1671,7 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         
         
     }
-    Value *= 1.0/Vol;
+    Value *= 1.0/Vol;*/
 
 //     loop Sub Control Volumes (SCV)
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -1675,15 +1683,16 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         const int co = scv.node_id();
 
     //    mass value
-        number val = 0.0;
+        //number val = 0.0;
 
     //    multiply by scaling
 
-        val +=  u(_C_, co);
+        //val +=  u(_C_, co);
 
 
     //     Add to local defect
-        d(_C_, co) += ( fac*val+(1.0-fac)*Value ) * scv.volume();
+        //d(_C_, co) += ( fac*val+(1.0-fac)*Value ) * scv.volume();
+		d(_C_, co) +=   u(_C_, co) * scv.volume();
     }
 }
 
@@ -3584,13 +3593,13 @@ ex_nodal_particle_pressure(number vValue[],
 //    number of shape functions
     static const size_t numSH =    ref_elem_type::numCorners;
 	
-	const bool constantPs = true;
+	const bool constantPs = false;
 	number Volume = 0.0;
 	number Gamma[numSH];
 	number Ps[numSH];
 	number DPs[numSH];
 
-	if(m_imAverageGammaSCV.data_given())
+	if(false && m_imAverageGammaSCV.data_given())
 	{
 		std::vector<number> GammaAve_aux(numSH);
 		MathVector<refDim> LocalCoord_aux[numSH];

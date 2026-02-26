@@ -150,7 +150,7 @@ class RelativeVelocityLinker
 				number RelVel = 0.0;
 				if(m_BoolRelativeVel && (!inside || inside || cut_elem))
 				{
-					if (false)
+					if (true)
 					{
 						
 						if(m_BoolRelativeVel )
@@ -163,7 +163,8 @@ class RelativeVelocityLinker
 					}
 					else
 					{
-						number phi=fmin(alpha_max-1e-04, fmax(vVolume[ip],0.0));
+						//number phi=fmin(alpha_max-1e-04, fmax(vVolume[ip],0.0));
+						number phi=vVolume[ip];
 						
 						RelVel =  -6.8598479912268*(1.0-phi)*pow((1.0 + pow(phi,1.0/3.0))*exp(5.0*(phi)/(3*(1-phi))),-1.0);
 
@@ -221,21 +222,22 @@ class RelativeVelocityLinker
 		number packing = Inter->packing_factor();
 		
 		MathVector<dim> W;
-		
+		number phi;
 		for(size_t ip = 0; ip < nip; ++ip)
 		{
 			VecSet(W, 0.0);
 			number RelVel = 0.0;
 			if(m_BoolRelativeVel && (!inside || inside || cut_elem))
 			{
-				if (false)
+				if (true)
 				{
 					RelativeVel(RelVel, vPsGrad[ip][Dim-1], m_gravitation, vVolume[ip], vMixDensity[ip], vMixKinVisc[ip], vEinsVisc[ip], m_Wr, m_Cd, rho_a, rho_s, dp , mu_a, alpha_max, Inter, true);
 					
 				}
 				else
 				{
-					number phi=fmin(alpha_max-1e-04, fmax(vVolume[ip],0.0));
+					//phi=fmin(alpha_max-1e-04, fmax(vVolume[ip],0.0));
+					phi=vVolume[ip];
 					
 					RelVel =  -6.8598479912268*(1.0-phi)*pow((1.0 + pow(phi,1.0/3.0))*exp(5.0*(phi)/(3*(1-phi))),-1.0);
 					
@@ -462,7 +464,6 @@ class RelativeVelocityLinker
         {
 			const number gy = m_gravitation;// -vPsGrad/(rho_s-rho_a) ;
             number W = 0.0;
-            number W1 = 0.0;
             //number W2 = 0.0;
             //number W3 = 0.0;
             //number W4 = 0.0;
@@ -470,7 +471,8 @@ class RelativeVelocityLinker
             //number W6 = 0.0;
             //number W7 = 0.0;
             //number Re,Cd;
-            const number phi=fmin(alpha_max-1e-04, fmax(vVolume,0.0));
+            //const number phi=fmin(alpha_max-1e-04, fmax(vVolume,0.0));
+			const number phi=vVolume;
             //const number Ratio = (1-phi)/((1+pow(phi,1/3))*exp(5*phi/(3*(1-phi))))-vol*0.017811336463534444;
             const number Ratio=(1.0-phi)/((1.0+pow(phi,1.0/3.0))*exp(5.0*phi/(3.0*(1.0-phi))));
             const number MU2 = vMixDensity*vMixKinVisc;
@@ -480,9 +482,9 @@ class RelativeVelocityLinker
             if( gy < 0.0 )
             {
                 
-                W1 = m_Wr*Ratio;
+                W = m_Wr*Ratio;
                 size_t iter = 0;
-                Inter->RelVel(W1,  iter,    MU2,   rho_a, rho_a, dp, rho_s,  fabs(gy), 5.0);
+                Inter->RelVel(W,  iter,    MU2,   rho_a, rho_a, dp, rho_s,  fabs(gy), 5.0);
 
                 //Inter->RelVel(W2,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1e-03);
                 //Re = Inter->RE( MU2, vMixDensity, dp,  W2);
@@ -501,7 +503,7 @@ class RelativeVelocityLinker
                 //W6=sqrt((4.0/3.0)*dp*(rho_s/vMixDensity-1.0)*fabs(Fy)/m_Cd);
                 //W7=sqrt((4.0/3.0)*dp*(rho_s/vMixDensity-1.0)*fabs(Fy)/m_Cd);
                 
-                W = -W1;//fmin(W1,W2);
+                //W = -W;//fmin(W1,W2);
                 //if(phi>0.1) ff= true;
                 //VecScale(W, vol,W);
                 
@@ -518,13 +520,13 @@ class RelativeVelocityLinker
             }*/
             if(ff && EvalAndDeriv)
             {
-                printf("W1 = %f, phi = %f,  Ratio = %f\n", W1, phi, Ratio);
+                printf("W1 = %f, phi = %f,  Ratio = %f\n", W, phi, Ratio);
             }
             
-            RelVel=W;
+            RelVel=-W;
             
             
-            if(std::isnan(RelVel)) UG_THROW("Error in  RelVelLinker: Value = NaN" <<"  Ws = "<<RelVel<<".");
+            if(std::isnan(W) || W<0.0) UG_THROW("Error in  RelVelLinker: Value = NaN" <<"  Ws = "<<W<<".");
             
             /*if (vol_grad>=limit_grad &&  phi>=limit_vol)
              {

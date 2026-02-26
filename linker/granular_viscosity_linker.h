@@ -74,6 +74,7 @@ class GranularViscosityLinker
             m_spMixDensity(NULL), m_spDMixDensity(NULL),
             m_spParticlePressure(NULL), m_spDParticlePressure(NULL),
             m_spMixViscosity(NULL), m_spDMixViscosity(NULL),
+			m_spGamma(NULL), m_spDGamma(NULL),
             m_model(0),
             //m_packing_factor(1),
             rho_s(1600.0),
@@ -91,10 +92,11 @@ class GranularViscosityLinker
             deltaI(1e-3),
             deltaPs(1.48e-04),
             deltaGamma(1e-4),
-            interface_volume_fraction(0.5)
+            interface_volume_fraction(0.5),
+			bAverageGamma(false)
         {
         //    this linker needs exactly four input
-            this->set_num_input(5);
+            this->set_num_input(6);
         }
 
         // function for evaluation at single ip?
@@ -157,6 +159,7 @@ class GranularViscosityLinker
             std::vector<number> vMixDensity(nip);
             std::vector<number> vParticlePressure(nip);
             std::vector<number> vMixViscosity(nip);
+			std::vector<number> vGamma(nip);
 
             (*m_spVolumeFraction)(&vVolumeFraction[0], vGlobIP, time, si,
                             elem, vCornerCoords, vLocIP, nip, u, vJT);
@@ -168,6 +171,8 @@ class GranularViscosityLinker
                             elem, vCornerCoords, vLocIP, nip, u, vJT);
             (*m_spMixViscosity)(&vMixViscosity[0], vGlobIP, time, si,
                             elem, vCornerCoords, vLocIP, nip, u, vJT);
+			(*m_spGamma)(&vGamma[0], vGlobIP, time, si,
+							elem, vCornerCoords, vLocIP, nip, u, vJT);
 
             
             number VolFraction;
@@ -188,7 +193,8 @@ class GranularViscosityLinker
                 mu_sand_aux=0;
                 //mu_eins_aux=mu_a;
                 
-                VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
+                //VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
+				VolFraction=vVolumeFraction[ip];
 
                 switch (m_model) {
                     case 0:
@@ -204,7 +210,7 @@ class GranularViscosityLinker
                         
                         break;
                     case 3:
-                        Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux);
+                        Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vGamma[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux,bAverageGamma);
 
                         viscosity_granular_aux = vMixViscosity[ip] + mu_sand_aux ;
 
@@ -212,7 +218,7 @@ class GranularViscosityLinker
                     case 4:
                         
                         if (VolFraction>interface_volume_fraction)
-                            Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux);
+                            Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vGamma[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux, bAverageGamma);
                         
                         viscosity_granular_aux = vMixViscosity[ip] + mu_sand_aux;
 
@@ -258,12 +264,14 @@ class GranularViscosityLinker
             int s_RHO_ = base_type::series_id(_RHO_, s);
             int s_P_   = base_type::series_id(_P_  , s);
             int s_MU_ = base_type::series_id(_MU_, s);
+			int s_GAMMA_ = base_type::series_id(_GAMMA_, s);
             
             const number*               vVolumeFraction   = m_spVolumeFraction->values(s_VOL_);
             const MathMatrix<dim,dim>*  vVelocityGrad     = m_spVelocityGrad->values(s_DV_);
             const number*               vMixDensity       = m_spMixDensity->values(s_RHO_);
             const number*               vParticlePressure = m_spParticlePressure->values(s_P_);
             const number*               vMixViscosity     = m_spMixViscosity->values(s_MU_);
+			const number*               vGamma     = m_spGamma->values(s_GAMMA_);
             
             number VolFraction;
             //number MixViscosity;
@@ -285,7 +293,8 @@ class GranularViscosityLinker
                 mu_sand_aux=0;
                 //mu_eins_aux=mu_a;
 
-                VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
+               // VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
+				VolFraction=vVolumeFraction[ip];
 
 
                 switch (m_model) {
@@ -306,7 +315,7 @@ class GranularViscosityLinker
                         break;
                     case 3:
 
-                        Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux);
+                        Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vGamma[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux, bAverageGamma);
 
                         viscosity_granular_aux = vMixViscosity[ip]+mu_sand_aux ;
                         
@@ -318,7 +327,7 @@ class GranularViscosityLinker
                     case 4:
                         
                         if (VolFraction>interface_volume_fraction)
-                            Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux);
+                            Granular_viscosity_1(mu_sand_aux,vVelocityGrad[ip], vGamma[ip], vParticlePressure[ip], rho_s, dp, FricMu_1, FricMu_2, I_0, deltaGamma, deltaPs, deltaI,gamma_aux, bAverageGamma);
                         
                         viscosity_granular_aux = vMixViscosity[ip] + mu_sand_aux;
 
@@ -569,7 +578,7 @@ class GranularViscosityLinker
             {
                 for(size_t ip = 0; ip < nip; ++ip)
                 {
-                    VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0));
+                    VolFraction=vVolumeFraction[ip];
                     
                     number deriv1=0;
                     number dmu1=0;
@@ -710,7 +719,7 @@ class GranularViscosityLinker
             return MU;
         }
         
-        static void Granular_viscosity_1(number& mu_s, const MathMatrix<dim,dim> VelocityGrad, const number Ps, const number rho_s, const number dp, const number FricMu_1, const number FricMu_2, const number I_0, const number deltaGamma, const number deltaPs, const number deltaI, number& gamma)
+        static void Granular_viscosity_1(number& mu_s, const MathMatrix<dim,dim> VelocityGrad, const number vGamma, const number Ps, const number rho_s, const number dp, const number FricMu_1, const number FricMu_2, const number I_0, const number deltaGamma, const number deltaPs, const number deltaI, number& gamma, const bool boolGamma)
         {
              
             //number grad_vel_mag=0.0;
@@ -718,22 +727,24 @@ class GranularViscosityLinker
             number mu_friction;
             //number St;
 
-            gamma=0.0;
-            //number grad_vel=0;
-            
-            // compute inner sum
-            for(int d1 = 0; d1 < dim; ++d1)
-            {
-                for(int d2 = 0; d2 < dim; ++d2)
-                {
-                    gamma += pow(VelocityGrad(d1,d2) + VelocityGrad(d2,d1),2);
-                    //grad_vel += pow(VelocityGrad(d1,d2) + VelocityGrad(d2,d1)-div_factor*(Div1),2);
-                }
-            }
-            
-            
-
-            gamma=   sqrt( pow(deltaGamma,2) + 0.5 * gamma    );
+			if(boolGamma)
+				gamma = sqrt(pow(deltaGamma,2) + pow(vGamma,2.0));
+			else
+			{
+				gamma=0.0;
+				//number grad_vel=0;
+				
+				// compute inner sum
+				for(int d1 = 0; d1 < dim; ++d1)
+				{
+					for(int d2 = 0; d2 < dim; ++d2)
+					{
+						gamma += pow(VelocityGrad(d1,d2) + VelocityGrad(d2,d1),2);
+						//grad_vel += pow(VelocityGrad(d1,d2) + VelocityGrad(d2,d1)-div_factor*(Div1),2);
+					}
+				}
+				gamma= sqrt( pow(deltaGamma,2) + 0.5 * gamma    );
+			}
             //grad_vel=sqrt( pow(deltaGamma,2) + 0.5 * grad_vel );
             
             /*if (false)
@@ -970,6 +981,7 @@ class GranularViscosityLinker
         {
             set_particle_pressure(make_sp(new ConstUserNumber<dim>(val)));
         }
+	///    set Mix Density import
         void set_eins_viscosity(SmartPtr<CplUserData<number, dim> > data)
         {
             m_spMixViscosity = data;
@@ -981,6 +993,18 @@ class GranularViscosityLinker
         {
 			set_eins_viscosity(make_sp(new ConstUserNumber<dim>(val)));
         }
+	///    set gamma import
+		void set_gamma(SmartPtr<CplUserData<number, dim> > data)
+		{
+			m_spGamma = data;
+			m_spDGamma = data.template cast_dynamic<DependentUserData<number, dim> >();
+			base_type::set_input(_GAMMA_, data, data);
+		}
+
+		void set_gamma(number val)
+		{
+			set_gamma(make_sp(new ConstUserNumber<dim>(val)));
+		}
 
     protected:
          //  variables for storing imports
@@ -1008,6 +1032,11 @@ class GranularViscosityLinker
             static const size_t _MU_ = 4;
             SmartPtr<CplUserData<number, dim> > m_spMixViscosity;
             SmartPtr<DependentUserData<number, dim> > m_spDMixViscosity;
+	
+		///    import for volume fraction
+			static const size_t _GAMMA_ = 5;
+			SmartPtr<CplUserData<number, dim> > m_spGamma;
+			SmartPtr<DependentUserData<number, dim> > m_spDGamma;
     
             Interface<dim>* Inter;
     
@@ -1062,11 +1091,15 @@ class GranularViscosityLinker
             void set_deltaGamma(float R) {
                 deltaGamma = R;
             }
+			bool set_gamma_average(bool R) {
+				bAverageGamma = R;
+			}
         protected:
 
             int m_model;
             float rho_s, nu_s, rho_a, mu_a, I_0, FricMu_1, FricMu_2, dp, alpha_max, alpha_min, deltaI, deltaPs, deltaGamma;
             float interface_volume_fraction; //m_packing_factor;
+			bool bAverageGamma;
     
 };
 

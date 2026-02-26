@@ -89,7 +89,8 @@ class GranularDensityLinker
             (*m_spVolumeFraction)(volume_fraction, globIP, time, si);
             printf("GranularDensityLinker::evaluate called");
             // Compute second invariant
-            number s=fmin(1.0, fmax(volume_fraction,0));
+            //number s=fmin(1.0, fmax(volume_fraction,0));
+			number s=volume_fraction;
             value = s*rho_s + (1.0-s)*rho_a ;
         }
 
@@ -177,6 +178,7 @@ class GranularDensityLinker
                 }
                 
                 vValue[ip]=value;
+				if(std::isnan(value) || value<0.0) UG_THROW("Error in DensityLinker: NaN" << value<< "   phi = "<< c);
             }
 
             //    Compute the derivatives at all ips     //
