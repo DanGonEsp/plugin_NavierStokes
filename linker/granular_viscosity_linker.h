@@ -550,7 +550,7 @@ class GranularViscosityLinker
             }*/
 		//  Derivatives of MixViscosity
 			
-			/*if(m_spDMixViscosity.valid() && !m_spDMixViscosity->zero_derivative() && (m_model== 2  || m_model== 3 || m_model== 4) )
+			if(m_spDMixViscosity.valid() && !m_spDMixViscosity->zero_derivative() && (m_model== 2  || m_model== 3 || m_model== 4) )
 			{
 				for(size_t ip = 0; ip < nip; ++ip)
 				{
@@ -574,7 +574,7 @@ class GranularViscosityLinker
             
         //  Derivatives of ParticlePressure
             
-            if(m_spDParticlePressure.valid() && !m_spDParticlePressure->zero_derivative() && (m_model== 3  || m_model== 4) )
+            /*if(m_spDParticlePressure.valid() && !m_spDParticlePressure->zero_derivative() && (m_model== 3  || m_model== 4) )
             {
                 for(size_t ip = 0; ip < nip; ++ip)
                 {

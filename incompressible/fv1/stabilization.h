@@ -207,6 +207,9 @@ class INavierStokesFV1Stabilization
 	///	returns if stab velocity comp depends on other vel components
 		bool vel_comp_connected() const {return m_bVelCompConnected;}
 
+	///	returns if stab velocity comp depends on other vel components
+		bool mu_deriv() const {return m_bMuDeriv;}
+	
 	/// computed stab shape for velocity. This is: The stab_vel derivative
 	/// w.r.t velocity unknowns in the corner for each component
 		number stab_shape_vel(size_t scvf, size_t compOut, size_t compIn, size_t sh) const
@@ -234,6 +237,13 @@ class INavierStokesFV1Stabilization
 			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
 			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
 			return m_vvvStabShapeVolume[scvf][compOut][sh];
+		}
+	
+	/// Derivative Vip w.r.t. MU
+		const MathVector<dim>& stab_vel_mu(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			return m_vStabVel_mu[scvf];
 		}
     
 
@@ -274,6 +284,8 @@ class INavierStokesFV1Stabilization
 
 	///	sets the vel comp connected flag
 		void set_vel_comp_connected(bool bVelCompConnected) {m_bVelCompConnected = bVelCompConnected;}
+	
+		void set_mu_deriv(bool bMuDeriv) {m_bMuDeriv = bMuDeriv;}
 
 	/// computed stab shape for velocity. This is: The stab_vel derivative
 	/// w.r.t velocity unknowns in the corner for each component
@@ -302,6 +314,12 @@ class INavierStokesFV1Stabilization
 			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
 			return m_vvvStabShapeVolume[scvf][compOut][sh];
 		}
+	
+		MathVector<dim>& stab_vel_mu(size_t scvf)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			return m_vStabVel_mu[scvf];
+		}
 
 
 	/////////////////////////////////////////
@@ -321,6 +339,9 @@ class INavierStokesFV1Stabilization
 
 	///	flag if velocity components are interconnected
 		bool m_bVelCompConnected;
+	
+	///	flag if Mu rerivative defined
+		bool m_bMuDeriv;
 
 	///	stab shapes w.r.t vel
 		number m_vvvvStabShapeVel[maxNumSCVF][dim][dim][maxNumSH];
@@ -330,6 +351,9 @@ class INavierStokesFV1Stabilization
 	
 	///	stab shapes w.r.t VolumeFraction
 		number m_vvvStabShapeVolume[maxNumSCVF][dim][maxNumSH];
+	
+	///derivative of V ip w.r.t. viscosity
+		MathVector<dim> m_vStabVel_mu[maxNumSCVF];
     
     
 
@@ -586,6 +610,7 @@ class NavierStokesFIELDSStabilization
 		using base_type::stab_shape_p;
 		using base_type::stab_vel;
 		using base_type::set_vel_comp_connected;
+		using base_type::set_mu_deriv;
 
 	//	functions from upwind
 		using base_type::upwind_conv_length;
@@ -602,6 +627,7 @@ class NavierStokesFIELDSStabilization
 		{
 		//	vel comp not coupled
 			set_vel_comp_connected(false);
+			set_mu_deriv(false);
 
 		//	register evaluation function
 			register_func();
@@ -680,6 +706,7 @@ class NavierStokesFLOWStabilization
 	//	explicitly forward some function
 		using base_type::register_update_func;
 		using base_type::set_vel_comp_connected;
+		using base_type::set_mu_deriv;
 		using base_type::diff_length_sq_inv;
 		using base_type::stab_shape_vel;
 		using base_type::stab_shape_p;
@@ -700,6 +727,7 @@ class NavierStokesFLOWStabilization
 		{
 		//	vel comp coupled
 			set_vel_comp_connected(true);
+			set_mu_deriv(false);
 
 		//	register evaluation function
 			register_func();
@@ -781,7 +809,9 @@ class NavierStokesFIELDS_2_Stabilization
         using base_type::stab_shape_p;
 		using base_type::stab_shape_c;
         using base_type::stab_vel;
+		using base_type::stab_vel_mu;
         using base_type::set_vel_comp_connected;
+		using base_type::set_mu_deriv;
     
     //    functions from upwind
         using base_type::upwind_conv_length;
@@ -810,6 +840,7 @@ class NavierStokesFIELDS_2_Stabilization
         {
         //    vel comp not coupled
             set_vel_comp_connected(true);
+			set_mu_deriv(true);
 
         //    register evaluation function
             register_func();
@@ -893,6 +924,7 @@ class NavierStokesFLOW_2_Stabilization
 		using base_type::stab_shape_c;
         using base_type::stab_vel;
         using base_type::set_vel_comp_connected;
+		using base_type::set_mu_deriv;
     
     //    functions from upwind
         using base_type::upwind_conv_length;
@@ -922,6 +954,7 @@ class NavierStokesFLOW_2_Stabilization
         {
         //    vel comp not coupled
             set_vel_comp_connected(true);
+			set_mu_deriv(false);
 
         //    register evaluation function
             register_func();
@@ -1001,6 +1034,7 @@ class NavierStokesKARIMIANStabilization
     //    explicitly forward some function
         using base_type::register_update_func;
         using base_type::set_vel_comp_connected;
+		using base_type::set_mu_deriv;
         using base_type::diff_length_sq_inv;
         using base_type::stab_shape_vel;
         using base_type::stab_shape_p;
@@ -1021,6 +1055,7 @@ class NavierStokesKARIMIANStabilization
         {
         //    vel comp coupled
             set_vel_comp_connected(true);
+			set_mu_deriv(false);
 
         //    register evaluation function
             register_func();
@@ -1097,6 +1132,7 @@ class NavierStokesNOStabilization
     //    explicitly forward some function
         using base_type::register_update_func;
         using base_type::set_vel_comp_connected;
+		using base_type::set_mu_deriv;
         using base_type::diff_length_sq_inv;
         using base_type::stab_shape_vel;
         using base_type::stab_shape_p;
@@ -1117,6 +1153,7 @@ class NavierStokesNOStabilization
         {
         //    vel comp coupled
             set_vel_comp_connected(false);
+			set_mu_deriv(false);
 
         //    register evaluation function
             register_func();
@@ -1191,6 +1228,7 @@ class NavierStokesFV1WithoutStabilization
 	//	explicitly forward some function
 		using base_type::register_update_func;
 		using base_type::set_vel_comp_connected;
+		using base_type::set_mu_deriv;
 		using base_type::stab_shape_vel;
 		using base_type::stab_shape_p;
 		using base_type::stab_vel;
@@ -1201,6 +1239,7 @@ class NavierStokesFV1WithoutStabilization
 		{
 		//	vel comp not interconnected
 			set_vel_comp_connected(false);
+			set_mu_deriv(false);
 
 		//	register evaluation function
 			register_func();

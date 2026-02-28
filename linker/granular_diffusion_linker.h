@@ -134,7 +134,7 @@ class GranularDiffusionLinker
                 
                 MathMatrix<dim,dim> Diff;
                 MatSet(Diff,0.0);
-				if(!inside || cut_elem || inside)
+				if(!inside || cut_elem)
 				{
 					if (m_BoolConsKinVisc)
 					{
@@ -208,7 +208,7 @@ class GranularDiffusionLinker
                                 
                 MathMatrix<dim,dim> Diff;
                 MatSet(Diff,0.0);
-				if(!inside || cut_elem || inside)
+				if(!inside || cut_elem)
 				{
 					if(m_BoolConsKinVisc)
 					{

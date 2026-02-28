@@ -476,7 +476,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     {
         Vel_ip[ip] = stab.stab_vel(ip);
 		StdRelVel_total_t[ip] = Vel_ip[ip];
-		VecAppend(StdRelVel_total_t[ip], StdRelVel_t[ip]);
+		if(m_imRelativeVelocitySCV.data_given())
+			VecAppend(StdRelVel_total_t[ip], StdRelVel_t[ip]);
 		if(m_imSlipVelocitySCVF.data_given())
 			VecAppend(StdRelVel_total_t[ip], m_imSlipVelocitySCVF[ip]);
     }
@@ -920,7 +921,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             
             
             //    Add derivative of stabilized flux w.r.t velocity comp to local matrix
-            if(stab.vel_comp_connected())
+            /*if(stab.vel_comp_connected())
             {
                 for(int d1 = 0; d1 < dim; ++d1)
                 {
@@ -952,7 +953,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 contVolFractionFlux_p += C_up_vol * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1];
             
             J(_C_, scvf.from(), _P_, sh) += contVolFractionFlux_p;
-            J(_C_, scvf.to()  , _P_, sh) -= contVolFractionFlux_p;
+            J(_C_, scvf.to()  , _P_, sh) -= contVolFractionFlux_p;*/
 			
 			//    Add derivative of stabilized flux w.r.t pressure to local matrix
 			/*number contVolFractionFlux_c = 0.0;
@@ -1001,10 +1002,57 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				
 			}*/
             
-            
-            
-            
         } //end ip shapes
+		
+		if (m_div_correction)
+		{
+			const number conv_flux = VecProd(Vel_ip[ip], scvf.normal());
+			
+			J(_C_, scvf.from(), _C_, scvf.from()) +=  -conv_flux;
+			J(_C_, scvf.to()  , _C_, scvf.to()  ) -=  -conv_flux;
+			
+			const number u_from = u(_C_, scvf.from());
+			const number u_to   = u(_C_, scvf.to());
+			
+			/*for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+			{
+				if(stab.vel_comp_connected())
+				{
+					for(int d1 = 0; d1 < dim; ++d1)
+					{
+						number contFlux_vel = 0.0;
+						for(int d2 = 0; d2 < dim; ++d2)
+							contFlux_vel += stab.stab_shape_vel(ip, d2, d1, sh)
+							* scvf.normal()[d2];
+						
+						J(_C_, scvf.from(), d1, sh) += -u_from * contFlux_vel;
+						J(_C_, scvf.to()  , d1, sh) -= -u_to * contFlux_vel;
+					}
+				}
+				else
+				{
+					for(int d1 = 0; d1 < dim; ++d1)
+					{
+						const number contFlux_vel = stab.stab_shape_vel(ip, d1, d1, sh)
+						* scvf.normal()[d1];
+						
+						J(_C_, scvf.from(), d1, sh) += -u_from * contFlux_vel;
+						J(_C_, scvf.to()  , d1, sh) -= -u_to * contFlux_vel;
+					}
+				}
+				
+				
+				//    Add derivative of stabilized flux w.r.t pressure to local matrix
+				number contVolFractionFlux_p = 0.0;
+				for(int d1 = 0; d1 < dim; ++d1)
+					contVolFractionFlux_p += stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1];
+				
+				J(_C_, scvf.from(), _P_, sh) += -u_from * contVolFractionFlux_p;
+				J(_C_, scvf.to()  , _P_, sh) -= -u_to * contVolFractionFlux_p;
+			}*/
+			
+			
+		}
 	} //end ips
     
     
@@ -1092,7 +1140,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     {
         Vel_ip[ip] = stab.stab_vel(ip);
 		StdRelVel_total_t[ip] = Vel_ip[ip];
-        VecAppend(StdRelVel_total_t[ip], StdRelVel_t[ip]);
+		if(m_imRelativeVelocitySCV.data_given())
+			VecAppend(StdRelVel_total_t[ip], StdRelVel_t[ip]);
 		if(m_imSlipVelocitySCVF.data_given())
 			VecAppend(StdRelVel_total_t[ip], m_imSlipVelocitySCVF[ip]);
 			
@@ -1366,10 +1415,9 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		const number packing = Inter->packing_factor();
             
         const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
-		number conv_flux_vol = C_up_vol * VecProd(Vel_ip[ip], scvf.normal());
+		number conv_flux = VecProd(Vel_ip[ip], scvf.normal());
+		number conv_flux_vol = C_up_vol * conv_flux;
 		
-		if (m_div_correction)
-			printf("Hola");
 		
 		if(m_imRelativeVelocitySCVF.data_given())
 		{
@@ -1379,6 +1427,14 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     //  add to local defect
         d(_C_, scvf.from()) += conv_flux_vol;
         d(_C_, scvf.to()  ) -= conv_flux_vol;
+		
+		if (m_div_correction)
+		{
+			d(_C_, scvf.from()) += -u(_C_, scvf.from()) * conv_flux;
+			d(_C_, scvf.to()  ) -= -u(_C_, scvf.to()  ) * conv_flux;
+			
+			
+		}
             
 	}
     
@@ -2264,9 +2320,9 @@ lin_def_viscosity(const LocalVector& u,
 //    request geometry
     const TFVGeom& geo = GeomProvider<TFVGeom>::get();
     
-    //static const size_t numSCVF = TFVGeom::numSCVF;
+    static const size_t numSCVF = TFVGeom::numSCVF;
     //  number of shape functions
-    //static const size_t numSh = reference_element_traits<TElem>::reference_element_type::numCorners;
+    static const size_t numSh = reference_element_traits<TElem>::reference_element_type::numCorners;
 
     
     //    reset the values for the linearized defect
@@ -2276,6 +2332,89 @@ lin_def_viscosity(const LocalVector& u,
                 vvvLinDef[ip][c][sh] = 0.0;
     //UG_LOG("Anfang add_def_A_elem");
     
+
+	//	check for solutions to pass to stabilization in time-dependent case
+	const LocalVector *pSol = &u, *pOldSol = NULL;
+	number dt = 0.0;
+	if(this->is_time_dependent())
+	{
+		//	get and check current and old solution
+		const LocalVectorTimeSeries* vLocSol = this->local_time_solutions();
+		if(vLocSol->size() != 2)
+			UG_THROW("NavierStokes::add_def_A_elem: "
+					 " Stabilization needs exactly two time points.");
+		
+		//	remember local solutions
+		pSol = &vLocSol->solution(0);
+		pOldSol = &vLocSol->solution(1);
+		dt = vLocSol->time(0) - vLocSol->time(1);
+	}
+	
+	//	interpolate velocity at ip with standard lagrange interpolation
+	
+	
+	MathVector<dim> StdVel[numSCVF];
+	MathVector<dim> StdRelVel_total_t[numSCVF];
+	MathVector<dim> StdRelVel_t[numSCVF];
+	MathVector<dim> Vel[numSCVF];
+	MathVector<dim> Vel_ip[numSCVF];
+	number Gamma[numSh];
+	number StdVol[numSCVF];
+	number Rho_up[numSCVF];
+	number Rho_do[numSCVF];
+	number ConvRatio[numSCVF];
+	number Ps[numSh];
+	number DPs[numSh];
+	
+   
+	std_vel(  u,  geo, StdVel, StdVol, Vel, m_imDensitySCV,Rho_up,Rho_do,ConvRatio);
+	if(Inter->ParticleGradientForce())
+	{
+		vel_grad(  u,  geo,  Gamma);
+		Inter->Ps( Ps, DPs, Gamma, u, _C_, numSh, false);
+		printf("Gamma is not implemented for Ps gradient, update import parameter");
+	}
+	if(m_imRelativeVelocitySCV.data_given())
+		std_rel_vel(  u,  geo, StdRelVel_t,  m_imDensitySCV, m_imRelativeVelocitySCV);
+	
+	
+	//	compute stabilized velocities and shapes for continuity equation
+	// \todo: (optional) Here we can skip the computation of shapes, implement?
+
+	m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+	if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
+	{
+		//	compute stabilized velocities and shapes for convection upwind
+		if(m_spConvStab.valid())
+			if(m_spConvStab != m_spStab)
+				m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdRelVel_t, m_imRelativeVelocitySCV, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+		
+	}
+	
+	//    get a const (!!) reference to the stabilization
+	const INavierStokesFV1Stabilization<dim>& stab = *m_spStab;
+	
+	
+	// Estimation of the veloctity at ip for upwind shape and continuity equations
+	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+	{
+		Vel_ip[ip] = stab.stab_vel(ip);
+		StdRelVel_total_t[ip] = Vel_ip[ip];
+		if(m_imRelativeVelocitySCV.data_given())
+			VecAppend(StdRelVel_total_t[ip], StdRelVel_t[ip]);
+		if(m_imSlipVelocitySCVF.data_given())
+			VecAppend(StdRelVel_total_t[ip], m_imSlipVelocitySCVF[ip]);
+			
+	}
+	
+
+	//    compute upwind shapes for trasport eq.
+	if(m_spConvUpwind_vol.valid())
+		m_spConvUpwind_vol->update(&geo, StdRelVel_total_t);
+	
+
+
+	const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;
 
 //     loop Sub Control Volume Faces (SCVF)
     for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -2288,7 +2427,7 @@ lin_def_viscosity(const LocalVector& u,
         ////////////////////////////////////////////////////
 
     //     1. Interpolate Functional Matrix of velocity at ip
-        MathMatrix<dim, dim> gradVel;
+        /*MathMatrix<dim, dim> gradVel;
         for(int d1 = 0; d1 < dim; ++d1)
             for(int d2 = 0; d2 <dim; ++d2)
             {
@@ -2329,7 +2468,50 @@ lin_def_viscosity(const LocalVector& u,
                         vvvLinDef[ip][d1][scvf.from()] += stab_flux;
                         vvvLinDef[ip][d1][scvf.to()  ] -= stab_flux;
                     }
-        }
+        }*/
+		////////////////////////////////////////////////////
+		////////////////////////////////////////////////////
+		// Continuity Equation (conservation of mass)
+		////////////////////////////////////////////////////
+		////////////////////////////////////////////////////
+		///
+	
+		if (stab.mu_deriv())
+		{
+		//	compute flux at ip
+			const number contFlux = VecProd(stab.stab_vel_mu(ip), scvf.normal());
+
+		//	Add contributions to local defect
+			vvvLinDef[ip][_P_][scvf.from()] += contFlux;
+			vvvLinDef[ip][_P_][scvf.to()  ] -= contFlux;
+		
+		
+		/////////////////////////////////////////////////////
+		// Convective Term in (conservation of mass, transport eq.)
+		/////////////////////////////////////////////////////
+			//      sum up convective flux using convection shapes
+		
+			const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
+			number conv_flux_vol = C_up_vol * contFlux;
+			
+			
+			//    3. Add flux to local defect
+
+			vvvLinDef[ip][_C_][scvf.from()] += conv_flux_vol;
+			vvvLinDef[ip][_C_][scvf.to()  ] -= conv_flux_vol;
+			
+			if (m_div_correction)
+			{
+				vvvLinDef[ip][_C_][scvf.from()] += -u(_C_, scvf.from()) * contFlux;
+				vvvLinDef[ip][_C_][scvf.to()  ] -= -u(_C_, scvf.to()  ) * contFlux;
+				
+				
+			}
+		}
+		
+		
+		
+		
     }
         
 }
@@ -3593,7 +3775,7 @@ ex_nodal_particle_pressure(number vValue[],
 //    number of shape functions
     static const size_t numSH =    ref_elem_type::numCorners;
 	
-	const bool constantPs = false;
+	const bool constantPs = true;
 	number Volume = 0.0;
 	number Gamma[numSH];
 	number Ps[numSH];

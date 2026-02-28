@@ -874,6 +874,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 				stab_shape_c(ip, d1, k) = 0.0;
             }
         }
+		VecSet(stab_vel_mu(ip),0.0);
     }
 	
 	//    compute diffusion length
@@ -1094,6 +1095,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Source
                 number rhs = 0.0;
+				number rhs_mu = 0.0;
                 if(Inter->boolConsistentGravity())
                 {
                     rhs =  vConsGravitySCVF[ip][d];
@@ -1140,6 +1142,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     //    Add to rhs
                     rhs += sumVel * vCornerValue(d, k);
+					rhs_mu += scvf.shape(k) * vCornerValue(d, k);
                     
                     //    set stab shape
                     stab_shape_vel(ip, d, d, k) += sumVel / diag;
@@ -1178,6 +1181,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 //    Finally, the can invert this row
                 stab_vel(ip)[d] = rhs / diag;
+				stab_vel_mu(ip)[d] = diff_length_sq_inv(ip) * (rhs_mu * diag - rhs)/ pow(diag,2.0);
             }
         }
     }
