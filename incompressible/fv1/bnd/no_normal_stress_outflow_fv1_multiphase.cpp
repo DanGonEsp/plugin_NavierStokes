@@ -400,16 +400,19 @@ convective_flux_volumefraction_Jac
     const MathVector<dim>& StdVel // velocity at ip
 )
 {
-    
-// The convection velocity according to the current approximation:
-    number volumetric_flux = VecDot (StdVel, bf.normal ());
-    
-// We assume that there should be no inflow through the outflow boundary:
-    if (volumetric_flux < 0)
-        volumetric_flux = 0;
-    
-
-    J(_C_, bf.node_id(), _C_, bf.node_id()) +=   volumetric_flux;
+	if(!m_spMaster->div_correction())
+	{
+		
+		// The convection velocity according to the current approximation:
+		number volumetric_flux = VecDot (StdVel, bf.normal ());
+		
+		// We assume that there should be no inflow through the outflow boundary:
+		if (volumetric_flux < 0)
+			volumetric_flux = 0;
+		
+		
+		J(_C_, bf.node_id(), _C_, bf.node_id()) +=   volumetric_flux;
+	}
     
 }
 
@@ -426,16 +429,19 @@ convective_flux_volumefraction_defect
     const MathVector<dim>& StdVel // velocity at ip
 )
 {
-// The convection velocity according to the current approximation:
-    number volumetric_flux = VecDot (StdVel, bf.normal ());
-    
-// We assume that there should be no inflow through the outflow boundary:
-    if (volumetric_flux < 0)
-        volumetric_flux = 0;
-    
-// Add the flux to the defect:
-
-    d(_C_, bf.node_id()) += volumetric_flux * u(_C_,bf.node_id());
+	if(!m_spMaster->div_correction())
+	{
+		// The convection velocity according to the current approximation:
+		number volumetric_flux = VecDot (StdVel, bf.normal ());
+		
+		// We assume that there should be no inflow through the outflow boundary:
+		if (volumetric_flux < 0)
+			volumetric_flux = 0;
+		
+		// Add the flux to the defect:
+		
+		d(_C_, bf.node_id()) += volumetric_flux * u(_C_,bf.node_id());
+	}
     
 
 }

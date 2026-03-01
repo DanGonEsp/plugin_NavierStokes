@@ -207,6 +207,14 @@ class IncompressibleNavierStokesBase
 	 */
 		void set_stokes(bool Stokes) {m_bStokes = Stokes;}
 		bool stokes() {return m_bStokes;}
+	
+	
+		void set_div_correction(bool bDiv)
+		{
+			m_div_correction = bDiv;
+		}
+	///    returns div_correction
+		bool div_correction() {return m_div_correction;}
 
 	///	sets assembling of diffusive term to laplace
 	/**
@@ -261,6 +269,9 @@ class IncompressibleNavierStokesBase
 
 	/// factor for div grad stabilization
 		number m_gradDivFactor;
+	
+	/// factor for div correction for trasport equation
+		bool m_div_correction;
 
 	/// flag if solving the Stokes equation
 		bool m_bStokes;

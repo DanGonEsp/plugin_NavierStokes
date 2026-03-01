@@ -249,10 +249,6 @@ class NavierStokesFV1M
             m_spStab->set_phase_parameters(user);
             Inter = user;
         }
-		void set_div_correction(bool bDiv)
-		{
-			m_div_correction = bDiv;
-		}
 	
     
     ///    returns the export of the VolumeFractions
@@ -758,7 +754,6 @@ class NavierStokesFV1M
     ///    Upwinding for VolFraction in convective term of Transport equation
         SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind_vol;
 	
-		bool m_div_correction = false;
 
 
 	/// abbreviation for pressure and volume fraction
@@ -771,6 +766,7 @@ class NavierStokesFV1M
 		using base_type::m_bStokes;
 		using base_type::m_bLaplace;
         using base_type::m_gradDivFactor;
+		using base_type::m_div_correction;
 
 		virtual void init();
 

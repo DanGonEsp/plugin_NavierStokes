@@ -293,7 +293,8 @@ class ShearStressFV1
                     coCoord[i] = posAcc[vVrt[i]];
                 };
                 geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
-                for(size_t i = 0; i < numVertices; ++i){
+                for(size_t i = 0; i < numVertices; ++i)
+				{
                     number scvVol = geo.scv(i).volume();
                     m_vol[vVrt[i]]+=scvVol;
                     
@@ -355,14 +356,14 @@ class ShearStressFV1
                              const MathVector<dim>& globIP,
                              number time, int si) const
     {
-        UG_THROW("LevelSetUserData: Need element.");
+        UG_THROW("ShearStressUserData: Need element.");
     }
 
     virtual void operator() (number vValue[],
                              const MathVector<dim> vGlobIP[],
                              number time, int si, const size_t nip) const
     {
-        UG_THROW("LevelSetUserData: Need element.");
+        UG_THROW("ShearStress: Need element.");
     }
 
     virtual void compute(LocalVector* u, GridObject* elem,
