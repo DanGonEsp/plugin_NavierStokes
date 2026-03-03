@@ -155,6 +155,9 @@ class GranularDiffusionLinker
 						MatDiagSet(Diff,m_Diff_factor * vMixViscosity[ip] * gamma);
 					}
 				}
+				else
+					MatDiagSet(Diff,0.0);
+					
 				vValue[ip]=Diff;
 
             }
@@ -234,6 +237,9 @@ class GranularDiffusionLinker
 						
 					}
 				}
+				else
+					MatDiagSet(Diff,0.0);
+				
 				vValue[ip]=Diff;
             }
             
@@ -400,6 +406,7 @@ class GranularDiffusionLinker
 
 		void set_phase_parameters(Interface<dim>* user)
 		{
+			if (!user) UG_THROW("Interface pointer is null!");
 			if (!user->valid())
 				UG_THROW("Interface parameters has not been initialized");
 			Inter = user;

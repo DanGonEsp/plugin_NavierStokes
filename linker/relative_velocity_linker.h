@@ -462,7 +462,7 @@ class RelativeVelocityLinker
         }
         static void RelativeVel(number& RelVel, const number vPsGrad, const number m_gravitation, const number vVolume, const number vMixDensity, const number vMixKinVisc, const number vEinstVisc, const number m_Wr, const number m_Cd, const number rho_a, const number rho_s, const number dp, const number mu_a, const number alpha_max, Interface<dim>* Inter, bool EvalAndDeriv)
         {
-			const number gy = m_gravitation;// -vPsGrad/(rho_s-rho_a) ;
+			const number gy = m_gravitation-vPsGrad/(rho_s-rho_a) ;
             number W = 0.0;
             //number W2 = 0.0;
             //number W3 = 0.0;
@@ -700,6 +700,7 @@ class RelativeVelocityLinker
         }
         void set_phase_parameters(Interface<dim>* user)
         {
+			if (!user) UG_THROW("Interface pointer is null!");
             if (!user->valid())
                 UG_THROW("Interface parameters has not been initialized");
             Inter = user;

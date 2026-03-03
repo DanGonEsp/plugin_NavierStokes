@@ -93,15 +93,15 @@ class NavierStokesNoNormalStressOutflowFV1M
 
 	///	sets the density
 		virtual void set_density(SmartPtr<CplUserData<number, dim> > data)
-        {
-            m_imDensity.set_data(data);
-            m_imDensity_old.set_data(data);
-            m_imDensityCoor.set_data(data);
-        }
-    
-    ///    sets the density
-        virtual void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
-            {m_imSource.set_data(data);}
+		{
+			m_imDensity.set_data(data);
+			m_imDensity_old.set_data(data);
+			m_imDensityCoor.set_data(data);
+		}
+
+	///    sets the density
+		virtual void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+			{m_imSource.set_data(data);}
 
 	public:
 	///	type of trial space for each function used
@@ -127,9 +127,9 @@ class NavierStokesNoNormalStressOutflowFV1M
 	///	adds the stiffness part to the local defect
 		template <typename TElem, typename TFVGeom>
 		void add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[]);
-    
-        template <typename TElem, typename TFVGeom>
-        void add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoords[]);
+
+		template <typename TElem, typename TFVGeom>
+		void add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoords[]);
 
 	public:
 	///	dummy implementations
@@ -140,17 +140,17 @@ class NavierStokesNoNormalStressOutflowFV1M
 		void add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[]){}
 	/// \}
 
-    
-    ///    computes the linearized defect w.r.t to the density SCV
-        template <typename TElem, typename TFVGeom>
-        void lin_def_density(const LocalVector& u,
-                              std::vector<std::vector<number> > vvvLinDef[],
-                              const size_t nip);
-    ///    computes the linearized defect w.r.t to the density SCV
-        template <typename TElem, typename TFVGeom>
-        void lin_def_viscosity(const LocalVector& u,
-                              std::vector<std::vector<number> > vvvLinDef[],
-                              const size_t nip);
+
+	///    computes the linearized defect w.r.t to the density SCV
+		template <typename TElem, typename TFVGeom>
+		void lin_def_density(const LocalVector& u,
+							  std::vector<std::vector<number> > vvvLinDef[],
+							  const size_t nip);
+	///    computes the linearized defect w.r.t to the density SCV
+		template <typename TElem, typename TFVGeom>
+		void lin_def_viscosity(const LocalVector& u,
+							  std::vector<std::vector<number> > vvvLinDef[],
+							  const size_t nip);
 	private:
 	/// adds the diffusive part of the local Jacobian of the momentum equation
 		template <typename BF>
@@ -178,8 +178,8 @@ class NavierStokesNoNormalStressOutflowFV1M
 			const BF& bf,
 			LocalMatrix& J,
 			const LocalVector& u,
-            const MathVector<dim>& Vel,
-            const MathVector<dim>& StdVel
+			const MathVector<dim>& Vel,
+			const MathVector<dim>& StdVel
 		);
 	/// adds the convective part of the local defect of the momentum equation
 		template <typename BF>
@@ -189,52 +189,52 @@ class NavierStokesNoNormalStressOutflowFV1M
 			const BF& bf,
 			LocalVector& d,
 			const LocalVector& u,
-            const MathVector<dim>& Vel,
+			const MathVector<dim>& Vel,
 			const MathVector<dim>& StdVel
 		);
-    /// adds the convective part of the local Jacobian of the momentum equation
-        template <typename BF>
-        inline void convective_flux_volumefraction_Jac
-        (
-            const size_t ip,
-            const BF& bf,
-            LocalMatrix& J,
-            const LocalVector& u,
-            const MathVector<dim>& StdVel
-        );
-    /// adds the convective part of the local defect of the momentum equation
-        template <typename BF>
-        inline void convective_flux_volumefraction_defect
-        (
-            const size_t ip,
-            const BF& bf,
-            LocalVector& d,
-            const LocalVector& u,
-            const MathVector<dim>& StdVel
-        );
-    /// adds the convective part of the local defect of the momentum equation
-        template <typename BF>
-        inline void convective_flux_lin_defect
-        (
-            const size_t ip,
-            const BF& bf,
-         std::vector<std::vector<number> > vvvLinDef[],
-            const LocalVector& u
-        );
-    /// adds the convective part of the local defect of the momentum equation
-        template <typename BF>
-        inline void diffusive_flux_lin_defect
-        (
-            const size_t ip,
-            const BF& bf,
-         std::vector<std::vector<number> > vvvLinDef[],
-            const LocalVector& u
-        );
-    
+	/// adds the convective part of the local Jacobian of the momentum equation
+		template <typename BF>
+		inline void convective_flux_volumefraction_Jac
+		(
+			const size_t ip,
+			const BF& bf,
+			LocalMatrix& J,
+			const LocalVector& u,
+			const MathVector<dim>& StdVel
+		);
+	/// adds the convective part of the local defect of the momentum equation
+		template <typename BF>
+		inline void convective_flux_volumefraction_defect
+		(
+			const size_t ip,
+			const BF& bf,
+			LocalVector& d,
+			const LocalVector& u,
+			const MathVector<dim>& StdVel
+		);
+	/// adds the convective part of the local defect of the momentum equation
+		template <typename BF>
+		inline void convective_flux_lin_defect
+		(
+			const size_t ip,
+			const BF& bf,
+		 std::vector<std::vector<number> > vvvLinDef[],
+			const LocalVector& u
+		);
+	/// adds the convective part of the local defect of the momentum equation
+		template <typename BF>
+		inline void diffusive_flux_lin_defect
+		(
+			const size_t ip,
+			const BF& bf,
+		 std::vector<std::vector<number> > vvvLinDef[],
+			const LocalVector& u
+		);
+
 	protected:
 	/// abbreviation for pressure
 		static const size_t _P_ = dim;
-        static const size_t _C_ = dim+1;
+		static const size_t _C_ = dim+1;
 
 		using base_type::m_spMaster;
 		using base_type::m_vBndSubSetIndex;
@@ -244,28 +244,29 @@ class NavierStokesNoNormalStressOutflowFV1M
 
 	/// Data import for density
 		DataImport<number, dim> m_imDensity;
-        DataImport<number, dim> m_imDensity_old;
-        DataImport<number, dim> m_imDensityCoor;
-    
-    /// Data import for Source
-        DataImport<MathVector<dim>, dim> m_imSource;
+		DataImport<number, dim> m_imDensity_old;
+		DataImport<number, dim> m_imDensityCoor;
+
+	/// Data import for Source
+		DataImport<MathVector<dim>, dim> m_imSource;
 
 	/// Boundary integration points of the viscosity and the density
 		std::vector<MathVector<dim> > m_vLocIP;
 		std::vector<MathVector<dim> > m_vGloIP;
-    
-    /// Boundary integration points of the viscosity and the density
-        std::vector<MathVector<dim> > m_vLocCoor;
-        std::vector<MathVector<dim> > m_vGloCoor;
-    
-        Interface<dim>* Inter = NULL;
+
+	/// Boundary integration points of the viscosity and the density
+		std::vector<MathVector<dim> > m_vLocCoor;
+		std::vector<MathVector<dim> > m_vGloCoor;
+
+		Interface<dim>* Inter = NULL;
     public:
-        void set_phase_parameters(Interface<dim>* user)
-        {
-            if (!user->valid())
-                UG_THROW("NoNormalStressOutflowB Multiphase:Interface parameters has not been initialized");
-            Inter = user;
-        }
+		void set_phase_parameters(Interface<dim>* user)
+		{.
+			if (!user) UG_THROW("Interface pointer is null!");
+			if (!user->valid())
+				UG_THROW("NoNormalStressOutflowB Multiphase:Interface parameters has not been initialized");
+			Inter = user;
+		}
 
 	protected:
 		void register_all_funcs(bool bHang);

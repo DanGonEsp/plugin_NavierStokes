@@ -244,6 +244,7 @@ class NavierStokesFV1M
         {
             if(m_spStab.invalid())
                 UG_THROW("Stabilization has not been set or must me set before.");
+			if (!user) UG_THROW("Interface pointer is null!");
             if (!user->valid())
                 UG_THROW("Interface parameters has not been initialized");
             m_spStab->set_phase_parameters(user);

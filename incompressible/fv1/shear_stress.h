@@ -52,6 +52,10 @@
 #include "bindings/lua/lua_user_data.h"
 #endif
 
+#ifdef UG_PARALLEL
+#include "lib_grid/parallelization/util/attachment_operations.hpp"
+#endif
+
 namespace ug{
 namespace NavierStokes{
 
@@ -334,6 +338,12 @@ class ShearStressFV1
                 }
             }
         }
+		
+		#ifdef UG_PARALLEL
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol, PCL_RO_SUM);
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aSR, PCL_RO_SUM);
+		#endif
+		
         PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
         // go over all vertices and average
         for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
@@ -515,6 +525,7 @@ class ParticlePressureFV1
 #endif
 	  void set_phase_parameters(Interface<dim>* user)
 	  {
+		  if (!user) UG_THROW("Interface pointer is null!");
 		  if (!user->valid())
 			  UG_THROW("Interface parameters has not been initialized");
 		  Inter = user;
@@ -841,6 +852,7 @@ private:
 	
 	void set_phase_parameters(Interface<dim>* user)
 	{
+		if (!user) UG_THROW("Interface pointer is null!");
 		if (!user->valid())
 			UG_THROW("Interface parameters has not been initialized");
 		Inter = user;
@@ -1261,6 +1273,7 @@ public:
 	
 	void set_phase_parameters(Interface<dim>* user)
 	{
+		if (!user) UG_THROW("Interface pointer is null!");
 		if (!user->valid())
 			UG_THROW("Interface parameters has not been initialized");
 		Inter = user;
@@ -1685,6 +1698,7 @@ private:
 	
 	void set_phase_parameters(Interface<dim>* user)
 	{
+		if (!user) UG_THROW("Interface pointer is null!");
 		if (!user->valid())
 			UG_THROW("Interface parameters has not been initialized");
 		Inter = user;
@@ -1944,6 +1958,416 @@ public:
 	///    returns if grid function is needed for evaluation
 	virtual bool requires_grid_fct() const {return true;}
 };
+
+template <typename TGridFunction>
+class RelaxedKinViscosity
+:     public StdUserData<RelaxedKinViscosity<TGridFunction>, number, TGridFunction::dim>,
+	  virtual public INewtonUpdate
+{
+	///    domain type
+	typedef typename TGridFunction::domain_type domain_type;
+
+	///    algebra type
+	typedef typename TGridFunction::algebra_type algebra_type;
+
+	/// position accessor type
+	typedef typename domain_type::position_accessor_type position_accessor_type;
+
+	///    world dimension
+	static const int dim = domain_type::dim;
+	///    Pressure
+	static const int _P_ = domain_type::dim;
+	///    Vol of fraction
+	static const int _C_ = domain_type::dim+1;
+
+	///    grid type
+	typedef typename domain_type::grid_type grid_type;
+
+	/// element type
+	typedef typename TGridFunction::template dim_traits<dim>::grid_base_object elem_type;
+
+	/// MathVector<dim> attachment
+	//        typedef MathVector<dim> vecDim;
+	//        typedef Attachment<vecDim> AMathVectorDim;
+
+	/// attachment accessor
+	typedef PeriodicAttachmentAccessor<Vertex,ANumber > aVertexNumber;
+
+	/// element iterator
+	typedef typename TGridFunction::template dim_traits<dim>::const_iterator ElemIterator;
+
+	/// vertex iterator
+	typedef typename TGridFunction::template traits<Vertex>::const_iterator VertexIterator;
+
+private:
+
+	
+	//    Kinetic viscosity attachment accessor (New)
+	ANumber m_aShearRate;
+	aVertexNumber m_shear_rate;
+	
+	//    Kinetic viscosity attachment accessor (New)
+	ANumber m_aKinViscNew;
+	aVertexNumber m_kinetic_visc_new;
+	
+	//    Kinetic viscosity attachment accessor (Old)
+	ANumber m_aKinViscOld;
+	aVertexNumber m_kinetic_visc_old;
+
+	//  volume attachment accessor
+	ANumber m_aVol;
+	aVertexNumber m_vol;
+
+	// level set grid function
+	SmartPtr<TGridFunction> m_u;
+
+	//    approximation space for level and surface grid
+	SmartPtr<ApproximationSpace<domain_type> > m_spApproxSpace;
+
+	//  grid
+	grid_type* m_grid;
+
+private:
+
+	///    Data import for source
+	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imSource;
+	
+	Interface<dim> iface;
+	Interface<dim>* Inter = &iface;
+
+	int m_counter;
+
+public:
+	/////////// Source
+
+	void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+	{
+		m_imSource = data;
+	}
+
+	void set_source(number f_x)
+	{
+		SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+		for (int i=0;i<dim;i++){
+			f->set_entry(i, f_x);
+		}
+		set_source(f);
+	}
+
+	void set_source(number f_x, number f_y)
+	{
+		if (dim!=2){
+			UG_THROW("NavierStokes: Setting source vector of dimension 2"
+					" to a Discretization for world dim " << dim);
+		} else {
+			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+			f->set_entry(0, f_x);
+			f->set_entry(1, f_y);
+			set_source(f);
+		}
+	}
+
+	void set_source(number f_x, number f_y, number f_z)
+	{
+		if (dim<3){
+			UG_THROW("NavierStokes: Setting source vector of dimension 3"
+					" to a Discretization for world dim " << dim);
+		}
+		else
+		{
+			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+			f->set_entry(0, f_x);
+			f->set_entry(1, f_y);
+			f->set_entry(2, f_z);
+			set_source(f);
+		}
+	}
+
+#ifdef UG_FOR_LUA
+	void set_source(const char* fctName)
+	{
+		set_source(LuaUserDataFactory<MathVector<dim>, dim>::create(fctName));
+	}
+#endif
+	
+	void set_phase_parameters(Interface<dim>* user)
+	{
+		if (!user) UG_THROW("Interface pointer is null!");
+		if (!user->valid())
+			UG_THROW("Interface parameters has not been initialized");
+		Inter = user;
+	}
+
+public:
+	/// constructor
+	RelaxedKinViscosity(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct)
+	{
+		
+		if (spGridFct->num_fct() != dim+2)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		for (int d=0;d<dim+2;d++)
+		{
+			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
+				UG_THROW("Component " << d << " in approximation space must be of Lagrange P1 type.");
+			}
+		}
+		if (!Inter) UG_THROW("Interface pointer is null!");
+
+		m_u = spGridFct;
+		domain_type& domain = *m_u->domain().get();
+		grid_type& grid = *domain.grid();
+		m_grid = &grid;
+		m_spApproxSpace = approxSpace;
+		set_source(0.0);
+		m_counter = -1;
+		
+		grid.template attach_to<Vertex>(m_aShearRate);
+		grid.template attach_to<Vertex>(m_aKinViscNew);
+		grid.template attach_to<Vertex>(m_aKinViscOld);
+		grid.template attach_to<Vertex>(m_aVol);
+		
+		m_shear_rate.access(grid,m_aShearRate);
+		m_kinetic_visc_new.access(grid,m_aKinViscNew);
+		m_kinetic_visc_old.access(grid,m_aKinViscOld);
+		m_vol.access(grid,m_aVol);
+		
+		// set all values to zero
+		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_shear_rate, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_kinetic_visc_new, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_kinetic_visc_old, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+
+		this->update();
+	}
+
+	virtual ~RelaxedKinViscosity(){};
+
+	template <int refDim>
+	inline void evaluate(number vValue[],
+						 const MathVector<dim> vGlobIP[],
+						 number time, int si,
+						 GridObject* elem,
+						 const MathVector<dim> vCornerCoords[],
+						 const MathVector<refDim> vLocIP[],
+						 const size_t nip,
+						 LocalVector* u,
+						 const MathMatrix<refDim, dim>* vJT = NULL) const
+	{
+		UG_ASSERT(dynamic_cast<elem_type*>(elem) != NULL, "Unsupported element type");
+		elem_type* element = static_cast<elem_type*>(elem);
+
+		//    reference object id
+		ReferenceObjectID roid = elem->reference_object_id();
+
+		const size_t numVertices = element->num_vertices();
+		//    get domain of grid function
+		const domain_type& domain = *m_u->domain().get();
+
+		//    get position accessor
+		typedef typename domain_type::position_accessor_type position_accessor_type;
+		const position_accessor_type& posAcc = domain.position_accessor();
+
+//        position_accessor_type aaPos = m_u->domain()->position_accessor();
+
+		// coord and vertex array
+		MathVector<dim> coCoord[domain_traits<dim>::MaxNumVerticesOfElem];
+		Vertex* vVrt[domain_traits<dim>::MaxNumVerticesOfElem];
+		DimFV1Geometry<dim> geo;
+
+		for(size_t i = 0; i < numVertices; ++i){
+			vVrt[i] = element->vertex(i);
+			coCoord[i] = posAcc[vVrt[i]];
+		};
+
+		// evaluate finite volume geometry
+		geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+
+		// Lagrange 1 trial space
+		const LocalShapeFunctionSet<refDim>& rTrialSpace =
+				LocalFiniteElementProvider::get<refDim>(roid, LFEID(LFEID::LAGRANGE, refDim, 1));
+
+		std::vector<number> shapes;
+		for (size_t ip=0;ip<nip;ip++)
+		{
+			number value_new = 0.0;
+			rTrialSpace.shapes(shapes,vLocIP[ip]);
+			for (size_t sh=0;sh<numVertices;sh++)
+				value_new += m_kinetic_visc_new[vVrt[sh]]*shapes[sh];
+			
+			vValue[ip] = value_new;
+			
+		}
+		
+		
+			
+	}; // evaluate
+
+	void update(){
+		//    get domain
+		//printf("Viscosity... counter = %d \n",m_counter);
+		++m_counter;
+		
+		domain_type& domain = *m_u->domain().get();
+		//    create Multiindex
+		std::vector<DoFIndex> multInd;
+		DimFV1Geometry<dim> geo;
+		//    coord and vertex array
+		MathVector<dim> coCoord[domain_traits<dim>::MaxNumVerticesOfElem];
+		MathVector<dim> coGrad[domain_traits<dim>::MaxNumVerticesOfElem];
+		Vertex* vVrt[domain_traits<dim>::MaxNumVerticesOfElem];
+
+		//    get position accessor
+		typedef typename domain_type::position_accessor_type position_accessor_type;
+		const position_accessor_type& posAcc = domain.position_accessor();
+		
+		// set volume and p values to zero
+		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_shear_rate, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_kinetic_visc_new, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		// compute pressure in vertices by averaging
+		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
+			ElemIterator iter = m_u->template begin<elem_type>(si);
+			ElemIterator iterEnd = m_u->template end<elem_type>(si);
+			for(  ;iter !=iterEnd; ++iter)
+			{
+				elem_type* elem = *iter;
+				const size_t numVertices = elem->num_vertices();
+				for(size_t i = 0; i < numVertices; ++i){
+					vVrt[i] = elem->vertex(i);
+					coCoord[i] = posAcc[vVrt[i]];
+				};
+				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+				for(size_t i = 0; i < numVertices; ++i)
+				{
+					number scvVol = geo.scv(i).volume();
+					m_vol[vVrt[i]]+=scvVol;
+					
+					MathMatrix<dim,dim> VelGrad; MatSet(VelGrad,0.0);
+					
+					//    sum up contributions of each shape
+					for(size_t sh = 0; sh < numVertices; ++sh)
+					{
+						//  Loop dimensions for derivative
+						for(int d1 = 0; d1 <dim; ++d1)
+						{
+							m_u->dof_indices(elem->vertex(sh), d1, multInd);
+							//    read value of index from vector
+							number uVal = DoFRef(*m_u,multInd[0]);
+						//  Loop dimensions for direction
+							for(int d2 = 0; d2 < dim; ++d2)
+							{
+								VelGrad(d1, d2) += uVal*geo.scv(i).global_grad(sh)[d2];
+							}
+						}
+					}
+					number gamma=0.0;
+					// compute inner sum
+					for(int d1 = 0; d1 < dim; ++d1)
+					{
+						for(int d2 = 0; d2 < dim; ++d2)
+						{
+							gamma += pow((VelGrad(d1,d2) + VelGrad(d2,d1)),2);
+						}
+					}
+					
+					gamma =sqrt((0.5*gamma));
+					
+					
+					m_shear_rate[vVrt[i]] += gamma * scvVol;
+					
+				}
+			}
+		}
+		
+		#ifdef UG_PARALLEL
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol, PCL_RO_SUM);
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aShearRate, PCL_RO_SUM);
+		#endif
+	
+		PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
+		// go over all vertices and average
+		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
+			VertexIterator iter = m_u->template begin<Vertex>(si);
+			VertexIterator iterEnd = m_u->template end<Vertex>(si);
+			
+			for(  ;iter !=iterEnd; ++iter)
+			{
+				Vertex* vrt = *iter;
+				
+				if (pbm && pbm->is_slave(vrt)) continue;
+				
+				m_shear_rate[vrt] /= m_vol[vrt];
+	
+				number C_value, mu_s, gamma_average, mu_eins, Dmu_eins;
+
+				m_u->dof_indices(vrt, _C_, multInd);
+				C_value=DoFRef(*m_u,multInd[0]);
+				gamma_average = m_shear_rate[vrt];
+
+
+				Inter->MU_I_Viscosity( mu_s, gamma_average, C_value, false);
+				Inter->Einstein_viscosity( mu_eins, Dmu_eins, C_value, false);
+				
+				
+				m_kinetic_visc_old[vrt] = m_kinetic_visc_new[vrt];
+				m_kinetic_visc_new[vrt] = mu_s + mu_eins;
+				
+				
+			}
+			
+		}
+		
+		
+		//UG_LOG("Update done \n");
+	}
+
+		  private:
+	static const size_t max_number_of_ips = 20;
+
+		  public:
+	virtual void operator() (number& value,
+							 const MathVector<dim>& globIP,
+							 number time, int si) const
+	{
+		UG_THROW("ShearStressUserData: Need element.");
+	}
+
+	virtual void operator() (number vValue[],
+							 const MathVector<dim> vGlobIP[],
+							 number time, int si, const size_t nip) const
+	{
+		UG_THROW("ShearStress: Need element.");
+	}
+
+	virtual void compute(LocalVector* u, GridObject* elem,
+						 const MathVector<dim> vCornerCoords[], bool bDeriv = false)
+	{
+		const int si = this->subset();
+		for(size_t s = 0; s < this->num_series(); ++s)
+			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
+						  elem, NULL, this->template local_ips<dim>(s),
+						  this->num_ip(s), u);
+	}
+
+	virtual void compute(LocalVectorTimeSeries* u, GridObject* elem,
+						 const MathVector<dim> vCornerCoords[], bool bDeriv = false)
+	{
+		const int si = this->subset();
+		for(size_t s = 0; s < this->num_series(); ++s)
+			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
+						  elem, NULL, this->template local_ips<dim>(s),
+						  this->num_ip(s), &(u->solution(this->time_point(s))));
+	}
+
+	///    returns if provided data is continuous over geometric object boundaries
+	virtual bool continuous() const {return false;}
+
+	///    returns if grid function is needed for evaluation
+	virtual bool requires_grid_fct() const {return true;}
+};
+
+
+
 
 } // namespace NavierStokes
 } // end namespace ug

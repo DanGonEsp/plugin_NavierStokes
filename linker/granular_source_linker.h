@@ -668,6 +668,7 @@ class GranularSourceLinker
         }
         void set_phase_parameters(Interface<dim>* user)
         {
+			if (!user) UG_THROW("Interface pointer is null!");
             if (!user->valid())
                 UG_THROW("Interface parameters has not been initialized");
             Inter = user;
