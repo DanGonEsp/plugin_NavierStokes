@@ -258,6 +258,8 @@ class NavierStokesFV1M
         SmartPtr<CplUserData<MathVector<dim>, dim> > volume_fraction_grad() {return m_exVolumeFractionGrad;}
     ///    returns the export of the Einstein Viscosity
         SmartPtr<CplUserData<number, dim> > einstein_viscosity() {return m_exEinsteinViscosity;}
+	///    returns the export of the Mix Viscosity
+		SmartPtr<CplUserData<number, dim> > mix_viscosity() {return m_exMixViscosity;}
     ///    returns the export of the PariclePressure
         SmartPtr<CplUserData<number, dim> > particle_pressure() {return m_exPsPressure;}
     ///    returns the export of the ParticlePressure gradient
@@ -282,6 +284,8 @@ class NavierStokesFV1M
     SmartPtr<DataExport<MathVector<dim>,dim> > m_exVolumeFractionGrad;
     ///    Export for the Einstein Viscosity
     SmartPtr<DataExport<number,dim> > m_exEinsteinViscosity;
+	///    Export for the Mix Viscosity
+	SmartPtr<DataExport<number,dim> > m_exMixViscosity;
     
 
 
@@ -578,7 +582,7 @@ class NavierStokesFV1M
         inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, number* StdVol, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do, number* ConvRatio);
     
         template <typename TFVGeom>
-        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV,  const DataImport<MathVector<dim>, dim>& RelVelSCV);
+        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV,  const DataImport<MathVector<dim>, dim>& RelVelSCVF);
     
         template <typename TFVGeom>
         inline void vel_grad(const LocalVector& u, const TFVGeom& geo, number* Gamma);
@@ -683,6 +687,18 @@ class NavierStokesFV1M
                               const size_t nip,
                               bool bDeriv,
                               std::vector<std::vector<number > > vvvDeriv[]);
+	///    export value of the mix viscosity
+		template <typename TElem, typename TFVGeom>
+		void ex_nodal_mix_viscosity(number vValue[],
+							  const MathVector<dim> vGlobIP[],
+							  number time, int si,
+							  const LocalVector& u,
+							  GridObject* elem,
+							  const MathVector<dim> vCornerCoords[],
+							  const MathVector<TFVGeom::dim> vLocIP[],
+							  const size_t nip,
+							  bool bDeriv,
+							  std::vector<std::vector<number > > vvvDeriv[]);
     ///    export value of the partilce pressure
         template <typename TElem, typename TFVGeom>
         void ex_nodal_particle_pressure(number vValue[],

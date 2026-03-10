@@ -69,9 +69,6 @@ class GranularDensityLinker
     public:
         GranularDensityLinker() :
             m_spVolumeFraction(NULL), m_spDVolumeFraction(NULL),
-            rho_s(2500),
-            rho_a(1.2),
-            interface_volume_fraction(0.5),
             m_model(0)
         {
         //    this linker needs exactly four input
@@ -90,6 +87,9 @@ class GranularDensityLinker
             printf("GranularDensityLinker::evaluate called");
             // Compute second invariant
             //number s=fmin(1.0, fmax(volume_fraction,0));
+			
+			number rho_s = Inter->Density_s();
+			number rho_a = Inter->Density_a();
 			number s=volume_fraction;
             value = s*rho_s + (1.0-s)*rho_a ;
         }
@@ -110,15 +110,17 @@ class GranularDensityLinker
             (*m_spVolumeFraction)(&vVolumeFraction[0], vGlobIP, time, si,
                             elem, vCornerCoords, vLocIP, nip, u, vJT);
             
-            
+			number rho_s = Inter->Density_s();
+			number rho_a = Inter->Density_a();
+			number interface_value = Inter->interface_value();
             number c;
             number value;
             for(size_t ip = 0; ip < nip; ++ip)
             {
-                c=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
+                c=fmin(1.0, fmax(vVolumeFraction[ip],0.0)) ;
                 switch (m_model) {
                     case 0:
-                        value =Constant_density( c,   rho_a,   rho_s, interface_volume_fraction);
+                        value =Constant_density( c,   rho_a,   rho_s, interface_value);
 
                         break;
 
@@ -154,7 +156,9 @@ class GranularDensityLinker
             int s_VOL_ = base_type::series_id(_VOL_, s);
             const number* vVolumeFraction   = m_spVolumeFraction->values(s_VOL_);
             
-            
+			number rho_s = Inter->Density_s();
+			number rho_a = Inter->Density_a();
+			number interface_value = Inter->interface_value();
             number c;
             number value;
             for(size_t ip = 0; ip < nip; ++ip)
@@ -164,12 +168,12 @@ class GranularDensityLinker
 
                 switch (m_model) {
                     case 0:
-                        value =Constant_density( c,   rho_a,   rho_s, interface_volume_fraction);
+                        value =Constant_density( c,   rho_a,   rho_s, interface_value);
 
                         break;
 
                     case 1:
-                        value =Linear_density( c,   rho_a,   rho_s);
+                        value =Linear_density( c,   rho_a,   rho_s );
                         
                         break;
                     default:
@@ -253,18 +257,11 @@ class GranularDensityLinker
             static const size_t _VOL_ = 0;
             SmartPtr<CplUserData<number, dim> > m_spVolumeFraction;
             SmartPtr<DependentUserData<number, dim> > m_spDVolumeFraction;
+	
+			Interface<dim>* Inter;
     
     
         public:
-            void set_particle_density(float R) {
-                rho_s = R;
-            }
-            void set_fluid_density(float R) {
-                rho_a = R;
-            }
-            void set_interface_volume_fraction(float R) {
-                interface_volume_fraction = R;
-            }
 
             void set_model(std::string density_model)
             {
@@ -279,8 +276,14 @@ class GranularDensityLinker
                     UG_THROW("Density calculation method not found."
                              " Use one of [constant, linear].");
             }
+			void set_phase_parameters(Interface<dim>* user)
+			{
+				if (!user) UG_THROW("Interface pointer is null!");
+				if (!user->valid())
+					UG_THROW("Interface parameters has not been initialized");
+				Inter = user;
+			}
         protected:
-            float rho_s, rho_a, interface_volume_fraction;
             int m_model;
     
 };

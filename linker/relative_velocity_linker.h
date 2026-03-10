@@ -464,15 +464,8 @@ class RelativeVelocityLinker
         {
 			const number gy = m_gravitation-vPsGrad/(rho_s-rho_a) ;
             number W = 0.0;
-            //number W2 = 0.0;
-            //number W3 = 0.0;
-            //number W4 = 0.0;
-            //number W5 = 0.0;
-            //number W6 = 0.0;
-            //number W7 = 0.0;
-            //number Re,Cd;
-            //const number phi=fmin(alpha_max-1e-04, fmax(vVolume,0.0));
-			const number phi=vVolume;
+            const number phi=fmin(alpha_max-1e-04, fmax(vVolume,0.0));
+			//const number phi=vVolume;
             //const number Ratio = (1-phi)/((1+pow(phi,1/3))*exp(5*phi/(3*(1-phi))))-vol*0.017811336463534444;
             const number Ratio=(1.0-phi)/((1.0+pow(phi,1.0/3.0))*exp(5.0*phi/(3.0*(1.0-phi))));
             const number MU2 = vMixDensity*vMixKinVisc;
@@ -484,6 +477,7 @@ class RelativeVelocityLinker
                 
                 W = m_Wr*Ratio;
                 size_t iter = 0;
+
                 Inter->RelVel(W,  iter,    MU2,   rho_a, rho_a, dp, rho_s,  fabs(gy), 5.0);
 
                 //Inter->RelVel(W2,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1e-03);

@@ -121,6 +121,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.add_method("set_kinematic_viscosity", static_cast<void (T::*)(const char*)>(&T::set_kinematic_viscosity), "", "KinematicViscosity")
 		#endif
 			.add_method("set_turbulence_zero_bnd", &T::setTurbulenceZeroBoundaries)
+			.add_method("update", &T::update)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "FV1SmagorinskyTurbViscData", tag);
 	}
@@ -142,6 +143,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.add_method("set_time_filter", &T::set_time_filter)
 			.add_method("set_time_filter_eps", &T::set_time_filter_eps)
 			.add_method("set_space_filter", &T::set_time_filter)
+			.add_method("update", &T::update)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "FV1DynamicTurbViscData", tag);
 	}
@@ -240,31 +242,27 @@ static void DomainAlgebra(Registry& reg, string grp)
 		typedef INewtonUpdate TBase2;
 		reg.add_class_<T, TBase,TBase2>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
-				.add_method("set_theta", static_cast<void (T::*)(number)>(&T::set_theta), "", "Theta")
-				.add_method("set_vel", static_cast<void (T::*)(number)>(&T::set_vel), "", "Vel")
+			.add_method("set_ps_grad", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_ps_grad), "", "PsGrad")
+			.add_method("set_ps_grad", static_cast<void (T::*)(number)>(&T::set_ps_grad), "", "F_i")
+			.add_method("set_viscosity", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_viscosity), "", "Viscosity")
+			.add_method("set_phase_parameters", &T::set_phase_parameters)
 				.add_method("update", &T::update)
 		.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "RelativeVelocity", tag);
 	}
-	// RelaxedKinViscosity
+	// RelaxedParticleViscosity
 	{
-		string name = string("RelaxedKinViscosity").append(suffix);
-		typedef RelaxedKinViscosity<TFct> T;
+		string name = string("RelaxedParticleViscosity").append(suffix);
+		typedef RelaxedParticleViscosity<TFct> T;
 		typedef CplUserData<number, dim> TBase;
 		typedef INewtonUpdate TBase2;
 		reg.add_class_<T, TBase,TBase2>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
-				.add_method("set_source", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_source), "", "Source")
-				.add_method("set_source", static_cast<void (T::*)(number)>(&T::set_source), "", "F_x")
-				.add_method("set_source", static_cast<void (T::*)(number,number)>(&T::set_source), "", "F_x, F_y")
-				.add_method("set_source", static_cast<void (T::*)(number,number,number)>(&T::set_source), "", "F_x, F_y, F_z")
-			#ifdef UG_FOR_LUA
-				.add_method("set_source", static_cast<void (T::*)(const char*)>(&T::set_source), "", "Source Vector")
-			#endif
 				.add_method("update", &T::update)
 				.add_method("set_phase_parameters", &T::set_phase_parameters)
+				.add_method("set_relaxation_parameters", &T::set_relaxation_parameters)
 		.set_construct_as_smart_pointer(true);
-		reg.add_class_to_group(name, "RelaxedKinViscosity", tag);
+		reg.add_class_to_group(name, "RelaxedParticleViscosity", tag);
 	}
 
 }
@@ -347,6 +345,7 @@ static void Domain(Registry& reg, string grp)
             .add_method("volume_fraction", &T::volume_fraction)
             .add_method("volume_fraction_grad", &T::volume_fraction_grad)
             .add_method("einstein_viscosity", &T::einstein_viscosity)
+			.add_method("mix_viscosity", &T::mix_viscosity)
             .add_method("particle_pressure", &T::particle_pressure)
             .add_method("particle_pressure_grad", &T::particle_pressure_grad)
             .add_method("set_phase_parameters", &T::set_phase_parameters)

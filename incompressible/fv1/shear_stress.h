@@ -59,6 +59,17 @@
 namespace ug{
 namespace NavierStokes{
 
+
+
+template<int dim>
+void computeElemBarycenter(MathVector<dim>& bary,int NumSh , const MathVector<dim> Vec[]){
+	bary = 0;
+	for (size_t i=0;i<NumSh;i++){
+		bary+=Vec[i];
+	}
+	bary/=NumSh;
+}
+
 /**
 concept derived from grid_function_user_data.h
  */
@@ -200,7 +211,7 @@ class ShearStressFV1
         // set all values to zero
         SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
         SetAttachmentValues(m_shear_rate, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-        this->update();
+        //this->update();
     }
 
     virtual ~ShearStressFV1(){};
@@ -267,7 +278,7 @@ class ShearStressFV1
 
     void update(){
         //    get domain
-        //printf("Updating Velocity Grad... \n");
+		UG_LOG("Updating Shear Rate... \n");
         domain_type& domain = *m_u->domain().get();
         //    create Multiindex
         std::vector<DoFIndex> multInd;
@@ -382,7 +393,7 @@ class ShearStressFV1
         const int si = this->subset();
         for(size_t s = 0; s < this->num_series(); ++s)
             evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-                          elem, NULL, this->template local_ips<dim>(s),
+                          elem, vCornerCoords, this->template local_ips<dim>(s),
                           this->num_ip(s), u);
     }
 
@@ -392,7 +403,7 @@ class ShearStressFV1
         const int si = this->subset();
         for(size_t s = 0; s < this->num_series(); ++s)
             evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-                          elem, NULL, this->template local_ips<dim>(s),
+                          elem, vCornerCoords, this->template local_ips<dim>(s),
                           this->num_ip(s), &(u->solution(this->time_point(s))));
     }
 
@@ -556,7 +567,7 @@ class ParticlePressureFV1
 		// set all values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		SetAttachmentValues(m_shear_rate, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		this->update();
+		//this->update();
 	}
 
 	virtual ~ParticlePressureFV1(){};
@@ -633,7 +644,8 @@ class ParticlePressureFV1
 
 	void update(){
 		//    get domain
-		//printf("Updating Velocity Grad... \n");
+		UG_LOG("Updating Particle Pressure Ps... \n");
+		
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -741,7 +753,7 @@ class ParticlePressureFV1
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), u);
 	}
 
@@ -751,7 +763,7 @@ class ParticlePressureFV1
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), &(u->solution(this->time_point(s))));
 	}
 
@@ -885,7 +897,7 @@ public:
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		this->update();
+		//this->update();
 	}
 
 	virtual ~SlipVelocity(){};
@@ -1016,7 +1028,7 @@ public:
 
 	void update(){
 		//    get domain
-		//printf("Updating Slip Velocity... \n");
+		UG_LOG("Updating Slip Velocity... \n");
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1150,7 +1162,7 @@ public:
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), u);
 	}
 
@@ -1160,7 +1172,7 @@ public:
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), &(u->solution(this->time_point(s))));
 	}
 
@@ -1451,7 +1463,7 @@ public:
 
 	void update(){
 		//    get domain
-		//printf("Updating Slip Diffusion... \n");
+		UG_LOG("Updating Slip Diffusion... \n");
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1586,7 +1598,7 @@ public:
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), u);
 	}
 
@@ -1596,7 +1608,7 @@ public:
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), &(u->solution(this->time_point(s))));
 	}
 
@@ -1656,12 +1668,6 @@ class RelativeVelocity
 private:
 
 	//    Normal attachment accessor (average normal in vertices)
-	//AMathVectorDim m_aNormal;
-	//aVertexDimVector m_normal;
-	
-	//  volume attachment accessor
-	//ANumber m_aVol;
-	//aVertexNumber m_vol;
 	
 	//  volume attachment accessor
 	ANumber m_aRelVel;
@@ -1676,24 +1682,40 @@ private:
 	//  grid
 	grid_type* m_grid;
 	
-	number m_limit = 1e-03;
-	number m_theta_cr = 34.0*3.1416/180.0;
-	number m_vel = 0.15;
 
-private:
+	private:
 
 	///    Data import for source
-	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imRelVel;
-	Interface<dim>* Inter;
+	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imPsGrad;
+	
+	///    Data import for Viscosity
+	SmartPtr<CplUserData<number,dim> > m_imMixViscosity;
+	bool m_bvisc = false;
+	
+	Interface<dim> iface;
+	Interface<dim>* Inter = &iface;
 
-		  public:
-	void set_theta(number data)
+	public:
+	/////////// Particle Pressure Grad import
+
+	void set_ps_grad(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 	{
-		m_theta_cr = data*3.1416/180.0;
+		m_imPsGrad = data;
 	}
-	void set_vel(number data)
+
+	void set_ps_grad(number f_x)
 	{
-		m_vel = data;
+		SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+		for (int i=0;i<dim;i++){
+			f->set_entry(i, f_x);
+		}
+		set_ps_grad(f);
+	}
+
+	void set_viscosity(SmartPtr<CplUserData<number, dim> > data)
+	{
+		m_imMixViscosity = data;
+		m_bvisc = true;
 	}
 	
 	void set_phase_parameters(Interface<dim>* user)
@@ -1716,23 +1738,23 @@ public:
 				UG_THROW("Component " << d << " in approximation space must be of Lagrange P1 type.");
 			}
 		}
+		if (!Inter) UG_THROW("Interface pointer is null!");
+		
 		m_u = spGridFct;
 		domain_type& domain = *m_u->domain().get();
 		grid_type& grid = *domain.grid();
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
-		//grid.template attach_to<Vertex>(m_aNormal);
-		//grid.template attach_to<Vertex>(m_aVol);
+		
+		set_ps_grad(0.0);
+		
 		grid.template attach_to<elem_type>(m_aRelVel);
 		
-		//m_normal.access(grid,m_aNormal);
-		//m_vol.access(grid,m_aVol);
 		m_rel_vel.access(grid,m_aRelVel);
-		// set all values to zero
-		//SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		//SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+
 		SetAttachmentValues(m_rel_vel, m_u->template begin<elem_type>(), m_u->template end<elem_type>(), 6.9);
-		this->update();
+		
+		//this->update();
 	}
 
 	virtual ~RelativeVelocity(){};
@@ -1748,6 +1770,9 @@ public:
 						 LocalVector* u,
 						 const MathMatrix<refDim, dim>* vJT = NULL) const
 	{
+		if(!m_bvisc)
+			UG_THROW("RelativeVelocity StdUserData: Dynamic viscosity required");
+			
 		UG_ASSERT(dynamic_cast<elem_type*>(elem) != NULL, "Unsupported element type");
 		elem_type* element = static_cast<elem_type*>(elem);
 
@@ -1764,7 +1789,6 @@ public:
 		const position_accessor_type& posAcc = domain.position_accessor();
 
 //        position_accessor_type aaPos = m_u->domain()->position_accessor();
-
 		// coord and vertex array
 		MathVector<dim> coCoord[numVertices];
 		Vertex* vVrt[numVertices];
@@ -1776,8 +1800,58 @@ public:
 		};
 
 		// evaluate finite volume geometry
-		geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+		try{
+			geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+		}
+		UG_CATCH_THROW("RelativeVel Export Parameter::evaluate:"
+					   " Cannot update Finite Volume Geometry.");
+		
+		
+		bool m_scvf=false;
+		bool m_scv=false;
+		if (!(vGlobIP!=NULL && vLocIP!=NULL && vCornerCoords!=NULL) && nip>0)
+		{
+			UG_THROW("Error in RelativeVelLinker:Non-suitable integration points");
+		}
+		else
+		{	Inter->integration_points(m_scvf, m_scv, elem,   vCornerCoords,   vGlobIP, nip);	}
+		
+		
+		
+		
+		number vMu[nip];
+		if(m_scvf)
+		{
+			DimFV1Geometry<dim> geo;
+			geo.update(elem, vCornerCoords, NULL);
+			number vViscosity_points[geo.num_scv()];
+			(*m_imMixViscosity)(vViscosity_points, geo.scv_global_ips(), time, si, elem, vCornerCoords, geo.scv_local_ips(), geo.num_scv(), u , NULL);
+			
+			MathVector<dim> W = 0.0;
+			W[dim-1] = -1;
+			for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+			{
+				const typename DimFV1Geometry<dim>::SCVF& scvf = geo.scvf(ip);
+				
+				int SH;
+				if (VecProd(W,scvf.normal()) > 0.0)
+					SH = scvf.to();
+				else
+					SH = scvf.from();
+					
+				vMu[ip] = vViscosity_points[SH];
 
+			}
+			
+		}
+		else
+		{
+			number vViscosity_points[nip];
+			(*m_imMixViscosity)(vViscosity_points, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u , NULL);
+			for(size_t ip = 0; ip < nip; ++ip)
+				vMu[ip] = vViscosity_points[ip];
+		}
+		
 		// Lagrange 1 trial space
 		const LocalShapeFunctionSet<refDim>& rTrialSpace =
 				LocalFiniteElementProvider::get<refDim>(roid, LFEID(LFEID::LAGRANGE, refDim, 1));
@@ -1793,65 +1867,49 @@ public:
 		MathMatrix<dim, refDim> JTInv;
 		
 		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
-		for (size_t ip=0;ip<nip;ip++)
-		{
-			MathVector<dim> normal = 0.0;
-			MathVector<dim> GradC = 0.0;
-			MathVector<dim> tang = 0.0;
-
-			rTrialSpace.shapes(shapes,vLocIP[ip]);
-			
-			
-		//    evaluate at shapes at ip
-			rTrialSpace.grads(vLocGrad, vLocIP[ip]);
-		//    compute grad at ip
-			VecSet(locGrad, 0.0);
-			for(size_t sh = 0; sh < numVertices; ++sh)
-				VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
-
-		//    compute global grad
-			mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
-			MatVecMult(GradC, JTInv, locGrad);
-			
-			
-			/*for (size_t sh=0;sh<numVertices;sh++)
-				for(int d = 0; d < refDim; ++d)
-				{
-					normal[d] += m_normal[vVrt[sh]][d]*shapes[sh];
-					//tang[d] += m_tang[vVrt[sh]][d]*shapes[sh];
-				}*/
-			number normal_mag =  VecTwoNorm(normal);
-			number gradc_mag =  VecTwoNorm(GradC);
-			if(normal_mag<m_limit)
-			{
-				VecSet(normal,0.0);
-				normal[dim-1] = 1.0;
-			}
-			else
-				VecScale(normal,normal,1.0/normal_mag);
-			
-			number tang_mag =  0.0;
-			for(int d = 0; d < refDim-1; ++d)
-				tang_mag += pow(normal[d],2.0);
-			tang_mag = sqrt(tang_mag);
+		
+		
+		const number gravity = Inter->gravity();
+		const number rho_s = Inter->Density_s();
+		const number rho_a =Inter->Density_a();
+		const number dp =Inter->diameter();
+		
+		//MathVector<dim> Global_bary[1];
+		//computeElemBarycenter<elem_type,position_accessor_type ,dim>( Global_bary[0], element, posAcc);
+		//MathVector<dim> Local_bary[1];
+		//computeElemBarycenter<elem_type,position_accessor_type ,dim>( Local_bary[0], element, posAcc);
 	
-			VecSet(tang,0.0);
-			if(tang_mag>m_limit && gradc_mag > m_limit)
-			{
-				for(int d = 0; d < refDim-1; ++d)
-					tang[d] = normal[d]*cos(m_theta_cr) / tang_mag;
-				tang[dim-1] = -sin(m_theta_cr);
-			}
-			
-			number theta = acos(normal[dim-1]);
-			number slope = fabs(tan(theta));
-			number Value = slope - tan(m_theta_cr);
-			Value = (Value + fabs(Value))/2.0;
-			Value /= sqrt(1.0 + pow(slope,2.0));
+		MathVector<dim>  vPsGrad[nip];
+		(*m_imPsGrad)(vPsGrad, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u , NULL);
+	
+		
+		const number Ws = m_rel_vel[element];
 		
 
-			VecScale(tang,tang,m_vel*Value);
-			vValue[ip] = tang;
+		
+		
+
+		for (size_t ip=0;ip<nip;ip++)
+		{
+			MathVector<dim> RelVel; VecSet(RelVel,0.0);
+			number W = Ws;
+
+			number gy = gravity;
+			if(vPsGrad[ip][dim-1] < 0.0)
+				gy += -vPsGrad[ip][dim-1]/(rho_s-rho_a);
+
+			if( gy < 0.0 )
+			{
+				size_t iter = 0;
+				Inter->RelVel(W,  iter,    vMu[ip],   rho_a, rho_a, dp, rho_s,  fabs(gy), 1);
+			}else W = 0.0;
+			
+			
+			RelVel[dim-1] = -W * 0.0;
+			
+
+	
+			vValue[ip] = RelVel;
 			
 		}
 		
@@ -1859,7 +1917,8 @@ public:
 
 	void update(){
 		//    get domain
-		//printf("Updating Relative Velocity... \n");
+		
+		UG_LOG("Updating Relative Velocity... \n");
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1873,45 +1932,86 @@ public:
 		typedef typename domain_type::position_accessor_type position_accessor_type;
 		const position_accessor_type& posAcc = domain.position_accessor();
 
-		// set volume, tang and normal values to zero
-		//SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		//SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		// compute pressure in vertices by averaging
+		
+		const number gravity = Inter->gravity();
+		const number rho_s = Inter->Density_s();
+		const number rho_a =Inter->Density_a();
+		const number dp =Inter->diameter();
+
+
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
 			ElemIterator iter = m_u->template begin<elem_type>(si);
 			ElemIterator iterEnd = m_u->template end<elem_type>(si);
 			for(  ;iter !=iterEnd; ++iter)
 			{
 				elem_type* elem = *iter;
+				static const int refDim = elem_type::dim;
 				const size_t numVertices = elem->num_vertices();
 				for(size_t i = 0; i < numVertices; ++i){
 					vVrt[i] = elem->vertex(i);
 					coCoord[i] = posAcc[vVrt[i]];
 				};
+				
+				//	create storage
+				LocalIndices ind;
+				LocalVector localU;
+
+				// 	get global indices
+				m_u->indices(elem, ind);
+				// 	adapt local algebra
+				localU.resize(ind);
+
+				// 	read local values of u
+				GetLocalVector(localU, *m_u);
+				
+				
 				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
-				number W1 = m_rel_vel[elem];
-				//m_rel_vel[elem] = Inter->RelVel(W1,  iter,    MU2,   rho_a, rho_a, dp, rho_s,  fabs(gy), 5.0);
-				//m_pOld[elem]+=DoFRef(*m_u,multInd[0]);
+				
+				number Ws = m_rel_vel[elem];
+				
+				const number gravity = Inter->gravity();
+				const number rho_s = Inter->Density_s();
+				const number rho_a =Inter->Density_a();
+				const number dp =Inter->diameter();
+				
+				MathVector<dim> Global_points[1];
+				computeElemBarycenter<dim>( Global_points[0] , numVertices, geo.scv_global_ips());
+				MathVector<refDim> Local_points[1];
+				computeElemBarycenter<refDim>(Local_points[0], numVertices, geo.scv_local_ips());
+				
+			
+				MathVector<dim>  vPsGrad_points[1];
+				(*m_imPsGrad)(vPsGrad_points, Global_points, 0, si, elem, coCoord, Local_points, 1, &localU, NULL);
+				
+				number vViscosity_points[numVertices];
+				(*m_imMixViscosity)(vViscosity_points, geo.scv_global_ips(), 0, si, elem, coCoord, geo.scv_local_ips(), geo.num_scv(), &localU, NULL);
+				
+				number MU = 0.0;
+				number Volume = 0.0;
+				
+				for(size_t i = 0; i < numVertices; ++i)
+				{
+					number scvVol = geo.scv(i).volume();
+					MU += vViscosity_points[i]*scvVol;
+					Volume += scvVol;
+					
+				}
+				MU /= Volume;
+				
+			
+				const number gy = gravity-vPsGrad_points[0][dim-1]/(rho_s-rho_a) ;
+				
+
+				if( gy < 0.0 )
+				{
+					size_t iter = 0;
+					Inter->RelVel(Ws,  iter,  MU,   rho_a, rho_a, dp, rho_s,  fabs(gy), 1);
+				}
+				m_rel_vel[elem] = Ws;
 				
 			}
 		}
-		/*PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
-		// go over all vertices and average
-		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
-			VertexIterator iter = m_u->template begin<Vertex>(si);
-			VertexIterator iterEnd = m_u->template end<Vertex>(si);
-			for(  ;iter !=iterEnd; ++iter)
-			{
-				Vertex* vrt = *iter;
-				if (pbm && pbm->is_slave(vrt)) continue;
-				if(m_vol[vrt] > 1e-10)
-				{
-					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vrt][d1] /= m_vol[vrt];
-				}
-			}
-		}*/
+		
 	}
 
 private:
@@ -1938,7 +2038,7 @@ public:
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), u);
 	}
 
@@ -1948,7 +2048,7 @@ public:
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), &(u->solution(this->time_point(s))));
 	}
 
@@ -1960,9 +2060,9 @@ public:
 };
 
 template <typename TGridFunction>
-class RelaxedKinViscosity
-:     public StdUserData<RelaxedKinViscosity<TGridFunction>, number, TGridFunction::dim>,
-	  virtual public INewtonUpdate
+class RelaxedParticleViscosity:
+	public StdUserData<RelaxedParticleViscosity<TGridFunction>, number, TGridFunction::dim>,
+	virtual public INewtonUpdate
 {
 	///    domain type
 	typedef typename TGridFunction::domain_type domain_type;
@@ -2007,12 +2107,12 @@ private:
 	aVertexNumber m_shear_rate;
 	
 	//    Kinetic viscosity attachment accessor (New)
-	ANumber m_aKinViscNew;
-	aVertexNumber m_kinetic_visc_new;
+	ANumber m_aViscNew;
+	aVertexNumber m_visc_new;
 	
 	//    Kinetic viscosity attachment accessor (Old)
-	ANumber m_aKinViscOld;
-	aVertexNumber m_kinetic_visc_old;
+	ANumber m_aViscOld;
+	aVertexNumber m_visc_old;
 
 	//  volume attachment accessor
 	ANumber m_aVol;
@@ -2029,66 +2129,17 @@ private:
 
 private:
 
-	///    Data import for source
-	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imSource;
 	
 	Interface<dim> iface;
 	Interface<dim>* Inter = &iface;
 
-	int m_counter;
+	int m_counter, m_skip_update;
+	float m_relaxation_factor;
+	bool m_bRelaxation;
+	
 
 public:
-	/////////// Source
-
-	void set_source(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
-	{
-		m_imSource = data;
-	}
-
-	void set_source(number f_x)
-	{
-		SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
-		for (int i=0;i<dim;i++){
-			f->set_entry(i, f_x);
-		}
-		set_source(f);
-	}
-
-	void set_source(number f_x, number f_y)
-	{
-		if (dim!=2){
-			UG_THROW("NavierStokes: Setting source vector of dimension 2"
-					" to a Discretization for world dim " << dim);
-		} else {
-			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
-			f->set_entry(0, f_x);
-			f->set_entry(1, f_y);
-			set_source(f);
-		}
-	}
-
-	void set_source(number f_x, number f_y, number f_z)
-	{
-		if (dim<3){
-			UG_THROW("NavierStokes: Setting source vector of dimension 3"
-					" to a Discretization for world dim " << dim);
-		}
-		else
-		{
-			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
-			f->set_entry(0, f_x);
-			f->set_entry(1, f_y);
-			f->set_entry(2, f_z);
-			set_source(f);
-		}
-	}
-
-#ifdef UG_FOR_LUA
-	void set_source(const char* fctName)
-	{
-		set_source(LuaUserDataFactory<MathVector<dim>, dim>::create(fctName));
-	}
-#endif
+	
 	
 	void set_phase_parameters(Interface<dim>* user)
 	{
@@ -2097,10 +2148,19 @@ public:
 			UG_THROW("Interface parameters has not been initialized");
 		Inter = user;
 	}
+	void set_relaxation_parameters(bool bRelaxation, float relaxation_factor, int skip_update)
+	{
+		m_skip_update = skip_update;
+		m_relaxation_factor = relaxation_factor;
+		m_bRelaxation = bRelaxation;
+		if (m_relaxation_factor < 0.0) UG_THROW("Invalid Relaxation factor!");
+		if (!m_bRelaxation) m_relaxation_factor = 1.0;
+		
+	}
 
 public:
 	/// constructor
-	RelaxedKinViscosity(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct)
+	RelaxedParticleViscosity(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct)
 	{
 		
 		if (spGridFct->num_fct() != dim+2)
@@ -2118,29 +2178,29 @@ public:
 		grid_type& grid = *domain.grid();
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
-		set_source(0.0);
+		
 		m_counter = -1;
 		
 		grid.template attach_to<Vertex>(m_aShearRate);
-		grid.template attach_to<Vertex>(m_aKinViscNew);
-		grid.template attach_to<Vertex>(m_aKinViscOld);
+		grid.template attach_to<Vertex>(m_aViscNew);
+		grid.template attach_to<Vertex>(m_aViscOld);
 		grid.template attach_to<Vertex>(m_aVol);
 		
 		m_shear_rate.access(grid,m_aShearRate);
-		m_kinetic_visc_new.access(grid,m_aKinViscNew);
-		m_kinetic_visc_old.access(grid,m_aKinViscOld);
+		m_visc_new.access(grid,m_aViscNew);
+		m_visc_old.access(grid,m_aViscOld);
 		m_vol.access(grid,m_aVol);
 		
 		// set all values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		SetAttachmentValues(m_shear_rate, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_kinetic_visc_new, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_kinetic_visc_old, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_visc_new, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_visc_old, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 
 		this->update();
 	}
 
-	virtual ~RelaxedKinViscosity(){};
+	virtual ~RelaxedParticleViscosity(){};
 
 	template <int refDim>
 	inline void evaluate(number vValue[],
@@ -2167,7 +2227,6 @@ public:
 		typedef typename domain_type::position_accessor_type position_accessor_type;
 		const position_accessor_type& posAcc = domain.position_accessor();
 
-//        position_accessor_type aaPos = m_u->domain()->position_accessor();
 
 		// coord and vertex array
 		MathVector<dim> coCoord[domain_traits<dim>::MaxNumVerticesOfElem];
@@ -2187,16 +2246,57 @@ public:
 				LocalFiniteElementProvider::get<refDim>(roid, LFEID(LFEID::LAGRANGE, refDim, 1));
 
 		std::vector<number> shapes;
-		for (size_t ip=0;ip<nip;ip++)
+
+		
+		bool bAverageVisc = true;
+		bool bAverageHarmonic = false;
+		number AveValue = 0.0;
+		
+		if(bAverageVisc)
 		{
 			number value_new = 0.0;
-			rTrialSpace.shapes(shapes,vLocIP[ip]);
-			for (size_t sh=0;sh<numVertices;sh++)
-				value_new += m_kinetic_visc_new[vVrt[sh]]*shapes[sh];
+			number value_old = 0.0;
+			if(bAverageHarmonic)
+			{
+				UG_THROW("Harmonic Averaged Viscosity  non implemented.");
+			}
+			else
+			{	number vol = 0.0;
+				for (size_t sh=0;sh<numVertices;sh++)
+				{
+					value_new += geo.scv(sh).volume() * m_visc_new[vVrt[sh]];
+					value_old += geo.scv(sh).volume() * m_visc_old[vVrt[sh]];
+					vol += geo.scv(sh).volume();
+				}
+				value_new =  value_new / vol;
+				value_old = value_old / vol;
+
+			}
 			
-			vValue[ip] = value_new;
+			AveValue = m_relaxation_factor * value_new +  (1.0 - m_relaxation_factor) * value_old;
+		}
+
+		for (size_t ip=0;ip<nip;ip++)
+		{
+			if(bAverageVisc)
+				vValue[ip] = AveValue;
+			else
+			{
+				
+				number value_new = 0.0;
+				number value_old = 0.0;
+				rTrialSpace.shapes(shapes,vLocIP[ip]);
+				for (size_t sh=0;sh<numVertices;sh++)
+				{
+					value_new += m_visc_new[vVrt[sh]]*shapes[sh];
+					value_old += m_visc_old[vVrt[sh]]*shapes[sh];
+				}
+
+				vValue[ip] = m_relaxation_factor * value_new + (1.0 - m_relaxation_factor) * value_old;
+			}
 			
 		}
+		
 		
 		
 			
@@ -2204,8 +2304,18 @@ public:
 
 	void update(){
 		//    get domain
-		//printf("Viscosity... counter = %d \n",m_counter);
-		++m_counter;
+		if(m_counter>=0)
+		{
+			++m_counter;
+			if( m_counter % (m_skip_update+1) != 0)
+			{
+				//UG_LOG("Skipping...\n");
+				return ;
+			}
+			else m_counter = 0;
+		}
+		
+		UG_LOG("Updating Relaxed Viscosity...\n");
 		
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
@@ -2223,7 +2333,7 @@ public:
 		// set volume and p values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		SetAttachmentValues(m_shear_rate, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_kinetic_visc_new, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_visc_new, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		// compute pressure in vertices by averaging
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
 			ElemIterator iter = m_u->template begin<elem_type>(si);
@@ -2298,27 +2408,34 @@ public:
 				
 				m_shear_rate[vrt] /= m_vol[vrt];
 	
-				number C_value, mu_s, gamma_average, mu_eins, Dmu_eins;
+				number C_value, mu_s, Dmu_s, gamma_average;
+				number mu_eins = 0.0;
+				number Dmu_eins = 0.0;
 
 				m_u->dof_indices(vrt, _C_, multInd);
 				C_value=DoFRef(*m_u,multInd[0]);
 				gamma_average = m_shear_rate[vrt];
 
 
-				Inter->MU_I_Viscosity( mu_s, gamma_average, C_value, false);
-				Inter->Einstein_viscosity( mu_eins, Dmu_eins, C_value, false);
+				Inter->MU_I_Viscosity( mu_s, Dmu_s,gamma_average, C_value, false);
+				//Inter->Einstein_viscosity( mu_eins, Dmu_eins, C_value, false);
 				
+				if (m_counter<0)
+				{
+					m_visc_old[vrt] = mu_s;
+					m_counter = 0;
+				}
+				else
+					m_visc_old[vrt] = m_visc_new[vrt];
 				
-				m_kinetic_visc_old[vrt] = m_kinetic_visc_new[vrt];
-				m_kinetic_visc_new[vrt] = mu_s + mu_eins;
+				m_visc_new[vrt] = mu_s;
+
 				
 				
 			}
 			
 		}
 		
-		
-		//UG_LOG("Update done \n");
 	}
 
 		  private:
@@ -2345,7 +2462,7 @@ public:
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), u);
 	}
 
@@ -2355,7 +2472,7 @@ public:
 		const int si = this->subset();
 		for(size_t s = 0; s < this->num_series(); ++s)
 			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
-						  elem, NULL, this->template local_ips<dim>(s),
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
 						  this->num_ip(s), &(u->solution(this->time_point(s))));
 	}
 

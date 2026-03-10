@@ -68,6 +68,7 @@ class Interface
 			rho_s(2400.0),
 			rho_a(1.2),
 			mu_a(1.48e-5),
+			nu_s(1.48e-5),
 			dp(0.001),
 			Fr(0.05),
 			B_phi(1.0),
@@ -84,6 +85,7 @@ class Interface
 			drag_model(1),
 			m_interface_value(0.5),
 			m_packing_factor(0.6),
+			m_gravitation(-9.81),
 			m_bParticleGradientForce(false),
 			m_bConsistentGravity(false),
 			m_init(false)
@@ -101,11 +103,11 @@ class Interface
 			{
 				number gamma=Gamma[sh];
 				//const number phi=fmin(1.0, fmax(u(_C_,sh),0));
-				const number phi=u(_C_,sh);
+				const number vol=u(_C_,sh);
 
 				
 				number Ps_val, DPs;
-				Ps( Ps_val,  DPs, gamma, phi, DERIVATIVE);
+				Ps( Ps_val,  DPs, gamma, vol, DERIVATIVE);
 				//Dynamic pressure
 				ParticlePressure[sh] = Ps_val;
 				if(DERIVATIVE)
@@ -157,7 +159,7 @@ class Interface
 			if(std::isnan(pff) || std::isnan(pa) || pff < 0.0 || pa<0.0 ) UG_THROW("Error in PropertiesInterface: Export particlePressure: Ps = " << ParticlePressure << "   phi = "<< phi<< "   Pa = "<< pa<< "   Pf = "<< pff);
 		}
 	
-		void MU_I_Viscosity(number& mu_s, const number  gamma_nr, const number phi, const bool deriv)
+		void MU_I_Viscosity(number& mu_s, number& Dmu_s, const number  gamma_nr, const number phi, const bool deriv)
 		{
 			
 			const number gamma = sqrt(pow(deltaGamma,2) + pow(gamma_nr,2.0));
@@ -174,6 +176,7 @@ class Interface
 			mu_friction=FricMu_1+(FricMu_2-FricMu_1)/(1.0+I_0/I);
 			
 			mu_s=mu_friction*Ps_val/gamma;
+			Dmu_s = mu_friction*DPs/gamma;
 			
 			if(std::isnan(mu_s) || mu_s<0.0 ) UG_THROW("Error in MU(I) Viscosity: Value = NaN" <<"  Volume Fraction = "<<phi<<".");
 			//if(phi > alpha_max) UG_LOG("Phi > phi_max in Einstein Viscosity\n");
@@ -204,13 +207,14 @@ class Interface
 
 		number RelVel_ext(const number mu_a1, const number rho_a1, const number dp1, const number rho_s1, const number g1, const number E1)
 		{
-			number Vel; size_t iter;
-			RelVel(Vel, iter,  mu_a1,  rho_a1, rho_a1, dp1,  rho_s1,  g1,  E1);
+			number Vel = 5.0;
+			size_t iter;
+			RelVel(Vel, iter,  mu_a1,  rho_a1, rho_a1, dp1,  rho_s1,  fabs(g1),  E1);
 			number Re = RE(mu_a1,rho_a1,dp1,Vel);
 			number cd = CD(Re,  drag_model);
-			printf("Ws = %f\n",Vel);
-			printf("Cd = %f\n",cd);
-			printf("Iter = %zu\n",iter);
+			UG_LOG("Sediment Velocity Ws = " << Vel << "\n");
+			//UG_LOG("Cd = " << cd  << "\n");
+			//UG_LOG("Iter = " << iter << "\n");
 			return Vel;
 			
 		}
@@ -219,8 +223,8 @@ class Interface
 			size_t mod = drag_model;
 			size_t i=0;
 			number e=10.0;
-			number w2=6.8598479912268;
-			number w1=6.8598478663758;
+			number w2=Rel;
+			number w1=Rel;
 			number re, c;
 			while(e>E1)
 			{
@@ -231,12 +235,12 @@ class Interface
 				w2 = sqrt((4.0/3.0)*dp1*(rho_s-rho_a)*g1/ (c*rho_mix));
 				e = 100.0 * fabs(w2-w1)/w2;
 				i=i+1;
-				if(i > 40) UG_THROW("Error in RelativeVelocityLinker: Reached " << i <<" iterations in RelVel. Vel = "  << w2 <<"   Error = "<<e<<".");
+				if(i > 100) UG_THROW("Error in RelativeVelocity: Reached " << i <<" iterations in RelVel. Vel = "  << w2 <<"   Error = "<<e<< " Tol =  "<< E1 << "  Mu =  " << mu_mix << "  Gz =  "<< g1 <<"\n");
 			}
 			iter = i;
 			Rel = w2;
 
-			if(std::isnan(Rel) || Rel<0.0) UG_THROW("Error in RelativeVelocityLinker: Relative Vel = "<< Rel <<".");
+			if(std::isnan(Rel) || Rel<0.0) UG_THROW("Error in RelativeVelocity, values out of range: Vel  = "<< Rel << "  Mu = "<<mu_mix<<".");
 		}
 		number RE(const number mu_a1, const number rho_a1, const number dp1, const number w1)
 		{
@@ -261,7 +265,7 @@ class Interface
 			{//Turton and Levenspiel
 				c=(24.0/RE)*(1.0+0.173*pow(RE,0.657))+0.413/(1.0+16300.0*pow(RE,-1.09));
 			}
-			else UG_THROW("Error in RelativeVelocityLinker: Drag Coefficient.");
+			else UG_THROW("Error in RelativeVelocityFunction: Drag Coefficient model not defined.");
 			return c;
 		}
 
@@ -1066,6 +1070,9 @@ class Interface
 		void set_fluid_Visc(float R) {
 			mu_a = R;
 		}
+		void set_particle_kinVisc(float R) {
+			nu_s = R;
+		}
 		void set_particle_diameter(float R) {
 			dp = R;
 		}
@@ -1096,8 +1103,26 @@ class Interface
 		void set_interface_volume_fraction(float R) {
 			m_interface_value = R;
 		}
+		void set_FrictionMu_1(float R) {
+			FricMu_1 = R;
+		}
+		void set_FrictionMu_2(float R) {
+			FricMu_2 = R;
+		}
+		void set_I_0(float R) {
+			I_0 = R;
+		}
+		void set_deltaI(float R) {
+			deltaI = R;
+		}
+		void set_deltaPs(float R) {
+			deltaPs = R;
+		}
 		void set_reference_pressure(float R) {
 			m_P0 = R;
+		}
+		void set_gravity(float R) {
+			m_gravitation = R;
 		}
 		void set_bool_particle_pressure_force(bool R) {
 			m_bParticleGradientForce = R;
@@ -1116,10 +1141,20 @@ class Interface
 		number Density_a(){ return rho_a;}
 		number Density_max(){ return (rho_s-rho_a) * alpha_max + rho_a;}
 		number Viscosity_a(){ return mu_a;}
+		number KinViscosity_s(){ return nu_s;}
 		number Alpha_max(){ return alpha_max;}
 		number packing_factor(){ return m_packing_factor;}
 		number DT(){ return m_dt;}
 		number ReferencePressure(){ return m_P0;}
+		number gravity(){ return m_gravitation;}
+		number diameter(){ return dp;}
+		number interface_value(){ return m_interface_value;}
+		number FrictionMu_1(){ return FricMu_1;}
+		number FrictionMu_2(){ return FricMu_2;}
+		number param_I_0(){ return I_0;}
+		number param_deltaI(){ return deltaI;}
+		number param_deltaPs(){ return deltaPs;}
+		number param_deltaGamma(){ return deltaGamma;}
 		bool ParticleGradientForce(){ return m_bParticleGradientForce;}
 		bool boolConsistentGravity(){ return m_bConsistentGravity;}
 		
@@ -1128,7 +1163,7 @@ class Interface
 
 
 	protected:
-		float m_P0, rho_s, rho_a, mu_a, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, FricMu_1, FricMu_2, I_0, deltaI, deltaPs, m_limit, m_dt, m_interface_value, m_packing_factor;
+		float m_P0, rho_s, rho_a, mu_a, nu_s, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, FricMu_1, FricMu_2, I_0, deltaI, deltaPs, m_limit, m_dt, m_interface_value, m_packing_factor, m_gravitation;
 		size_t drag_model;
 		bool m_bParticleGradientForce, m_bConsistentGravity, m_init;
         
