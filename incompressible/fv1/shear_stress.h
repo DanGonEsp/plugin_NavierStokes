@@ -1905,7 +1905,7 @@ public:
 			}else W = 0.0;
 			
 			
-			RelVel[dim-1] = -W * 0.0;
+			RelVel[dim-1] = -W;
 			
 
 	

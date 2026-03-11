@@ -132,7 +132,7 @@ class GranularDiffusionLinker
                 
                 MathMatrix<dim,dim> Diff;
                 MatSet(Diff,0.0);
-				if(!inside || cut_elem)
+				if(!inside || cut_elem || inside)
 				{
 
 					number gamma=0.0;
@@ -201,7 +201,7 @@ class GranularDiffusionLinker
                                 
                 MathMatrix<dim,dim> Diff;
                 MatSet(Diff,0.0);
-				if(!inside || cut_elem)
+				if(!inside || cut_elem || inside)
 				{
 
 					number gamma=0.0;

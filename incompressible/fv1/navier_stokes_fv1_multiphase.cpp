@@ -501,7 +501,10 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         m_spConvUpwind_vol->update(&geo, StdVel_transport);
 	//    compute upwind shapes
 	if(m_spConvUpwind_rel.valid() && m_imRelativeVelocitySCVF.data_given())
+	{
 		m_spConvUpwind_rel->update(&geo, m_imRelativeVelocitySCVF.values());
+		m_spConvUpwind_rel->update_downwind(&geo, m_imRelativeVelocitySCVF.values());
+	}
     
 
 	const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
@@ -977,13 +980,15 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         
             
             
-            /*if(m_imRelativeVelocitySCVF.data_given())
+            if(m_imRelativeVelocitySCVF.data_given())
             {
-				
+				const number C_down_rel = upwind_rel.downwind_value(ip, u, _C_);
 				const number C_up_rel = upwind_rel.upwind_value(ip, u, _C_);
                 
-				//const number conv_flux_rel_sh =  upwind_rel.upwind_shape_sh(ip, sh) * (1.0) * VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
-				const number conv_flux_rel_sh =  upwind_rel.upwind_shape_sh(ip, sh) * (1.0 - C_up_rel) * VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
+				const number prod_rel = VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
+				
+				number conv_flux_rel_sh =  upwind_rel.upwind_shape_sh(ip, sh) * (1.0 - C_down_rel) * prod_rel;
+				conv_flux_rel_sh += (- 1.0 ) * upwind_rel.downwind_shape_sh(ip, sh) * C_up_rel * prod_rel;
 				//const number conv_flux_rel_sh =  -1.0 * scvf.shape(sh) * C_up * VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
 				
 				//-1.0 * C_up_vol * scvf.shape(sh) * rhoa * prod_rel_sh / (m_imDensitySCV[sh] );
@@ -992,7 +997,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 J(_C_, scvf.from(), _C_, sh) += conv_flux_rel_sh;
                 J(_C_, scvf.to(),   _C_, sh) -= conv_flux_rel_sh;
                 
-            }*/
+            }
 			/*if(m_imRelativeVelocitySCVF.data_given())
 			{
 				const number prod_rel_sh = VecProd(m_imRelativeVelocitySCVF[sh], scvf.normal());
@@ -1182,7 +1187,10 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         m_spConvUpwind_vol->update(&geo, StdVel_transport);
 	//    compute upwind shapes for trasport eq.
 	if(m_spConvUpwind_rel.valid() && m_imRelativeVelocitySCVF.data_given())
+	{
 		m_spConvUpwind_rel->update(&geo, m_imRelativeVelocitySCVF.values());
+		m_spConvUpwind_rel->update_downwind(&geo, m_imRelativeVelocitySCVF.values());
+	}
     
 
 
@@ -1441,7 +1449,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		if( m_imRelativeVelocitySCVF.data_given())
 		{
 			const number C_up_rel = upwind_rel.upwind_value(ip, u, _C_);
-			conv_flux_vol += (1.0-C_up_rel)*C_up_rel * VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
+			const number C_down_rel = upwind_rel.downwind_value(ip, u, _C_);
+			conv_flux_vol += (1.0-C_down_rel)*C_up_rel * VecProd(m_imRelativeVelocitySCVF[ip], scvf.normal());
 		}
 
     //  add to local defect
@@ -1819,7 +1828,7 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
             for(int d1 = 0; d1 < dim; ++d1){
                 d(d1, sh) += vConsGravitySCV[ip][d1]*scv.volume();
 
-            }
+            }	
         }
     }
     else if(m_imSourceSCV.data_given())
