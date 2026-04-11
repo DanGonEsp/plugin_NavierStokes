@@ -590,6 +590,7 @@ class ParticlePressureFV1
 		ReferenceObjectID roid = elem->reference_object_id();
 
 		const size_t numVertices = element->num_vertices();
+		const size_t MaxVertices = domain_traits<dim>::MaxNumVerticesOfElem;
 		//    get domain of grid function
 		const domain_type& domain = *m_u->domain().get();
 
@@ -1655,15 +1656,15 @@ class RelativeVelocity
 	//typedef Attachment<vecDim> AMathVectorDim;
 
 	/// attachment accessor
-	//typedef PeriodicAttachmentAccessor<Vertex,ANumber > aVertexNumber;
+	typedef PeriodicAttachmentAccessor<Vertex,ANumber > aVertexNumber;
 	//typedef PeriodicAttachmentAccessor<Vertex,AMathVectorDim > aVertexDimVector;
-	typedef Grid::AttachmentAccessor<elem_type,ANumber > aElementNumber;
+	//typedef Grid::AttachmentAccessor<elem_type,ANumber > aElementNumber;
 	
 	/// element iterator
 	typedef typename TGridFunction::template dim_traits<dim>::const_iterator ElemIterator;
 
 	/// vertex iterator
-	//typedef typename TGridFunction::template traits<Vertex>::const_iterator VertexIterator;
+	typedef typename TGridFunction::template traits<Vertex>::const_iterator VertexIterator;
 
 private:
 
@@ -1671,7 +1672,7 @@ private:
 	
 	//  volume attachment accessor
 	ANumber m_aRelVel;
-	aElementNumber m_rel_vel;
+	aVertexNumber m_rel_vel;
 
 	// level set grid function
 	SmartPtr<TGridFunction> m_u;
@@ -1686,11 +1687,11 @@ private:
 	private:
 
 	///    Data import for source
-	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imPsGrad;
+	//SmartPtr<CplUserData<MathVector<dim>,dim> > m_imPsGrad;
 	
 	///    Data import for Viscosity
 	SmartPtr<CplUserData<number,dim> > m_imMixViscosity;
-	bool m_bvisc = false;
+	//bool m_bvisc = false;
 	
 	Interface<dim> iface;
 	Interface<dim>* Inter = &iface;
@@ -1698,7 +1699,7 @@ private:
 	public:
 	/////////// Particle Pressure Grad import
 
-	void set_ps_grad(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+	/*void set_ps_grad(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 	{
 		m_imPsGrad = data;
 	}
@@ -1710,13 +1711,13 @@ private:
 			f->set_entry(i, f_x);
 		}
 		set_ps_grad(f);
-	}
+	}*/
 
-	void set_viscosity(SmartPtr<CplUserData<number, dim> > data)
+	/*void set_viscosity(SmartPtr<CplUserData<number, dim> > data)
 	{
 		m_imMixViscosity = data;
 		m_bvisc = true;
-	}
+	}*/
 	
 	void set_phase_parameters(Interface<dim>* user)
 	{
@@ -1746,13 +1747,13 @@ public:
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
 		
-		set_ps_grad(0.0);
+		//set_ps_grad(0.0);
 		
-		grid.template attach_to<elem_type>(m_aRelVel);
+		grid.template attach_to<Vertex>(m_aRelVel);
 		
 		m_rel_vel.access(grid,m_aRelVel);
 
-		SetAttachmentValues(m_rel_vel, m_u->template begin<elem_type>(), m_u->template end<elem_type>(), 6.9);
+		SetAttachmentValues(m_rel_vel, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 6.9);
 		
 		//this->update();
 	}
@@ -1770,8 +1771,8 @@ public:
 						 LocalVector* u,
 						 const MathMatrix<refDim, dim>* vJT = NULL) const
 	{
-		if(!m_bvisc)
-			UG_THROW("RelativeVelocity StdUserData: Dynamic viscosity required");
+		/*if(!m_bvisc)
+			UG_THROW("RelativeVelocity StdUserData: Dynamic viscosity required");*/
 			
 		UG_ASSERT(dynamic_cast<elem_type*>(elem) != NULL, "Unsupported element type");
 		elem_type* element = static_cast<elem_type*>(elem);
@@ -1788,10 +1789,9 @@ public:
 		typedef typename domain_type::position_accessor_type position_accessor_type;
 		const position_accessor_type& posAcc = domain.position_accessor();
 
-//        position_accessor_type aaPos = m_u->domain()->position_accessor();
 		// coord and vertex array
-		MathVector<dim> coCoord[numVertices];
-		Vertex* vVrt[numVertices];
+		MathVector<dim> coCoord[MaxVertices];
+		Vertex* vVrt[MaxVertices];
 		DimFV1Geometry<dim> geo;
 
 		for(size_t i = 0; i < numVertices; ++i){
@@ -1806,109 +1806,50 @@ public:
 		UG_CATCH_THROW("RelativeVel Export Parameter::evaluate:"
 					   " Cannot update Finite Volume Geometry.");
 		
-		
-		bool m_scvf=false;
-		bool m_scv=false;
-		if (!(vGlobIP!=NULL && vLocIP!=NULL && vCornerCoords!=NULL) && nip>0)
-		{
-			UG_THROW("Error in RelativeVelLinker:Non-suitable integration points");
-		}
-		else
-		{	Inter->integration_points(m_scvf, m_scv, elem,   vCornerCoords,   vGlobIP, nip);	}
-		
-		
-		
-		
-		number vMu[nip];
-		if(m_scvf)
-		{
-			DimFV1Geometry<dim> geo;
-			geo.update(elem, vCornerCoords, NULL);
-			number vViscosity_points[geo.num_scv()];
-			(*m_imMixViscosity)(vViscosity_points, geo.scv_global_ips(), time, si, elem, vCornerCoords, geo.scv_local_ips(), geo.num_scv(), u , NULL);
-			
-			MathVector<dim> W = 0.0;
-			W[dim-1] = -1;
-			for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
-			{
-				const typename DimFV1Geometry<dim>::SCVF& scvf = geo.scvf(ip);
-				
-				int SH;
-				if (VecProd(W,scvf.normal()) > 0.0)
-					SH = scvf.to();
-				else
-					SH = scvf.from();
-					
-				vMu[ip] = vViscosity_points[SH];
-
-			}
-			
-		}
-		else
-		{
-			number vViscosity_points[nip];
-			(*m_imMixViscosity)(vViscosity_points, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u , NULL);
-			for(size_t ip = 0; ip < nip; ++ip)
-				vMu[ip] = vViscosity_points[ip];
-		}
-		
 		// Lagrange 1 trial space
 		const LocalShapeFunctionSet<refDim>& rTrialSpace =
 				LocalFiniteElementProvider::get<refDim>(roid, LFEID(LFEID::LAGRANGE, refDim, 1));
 
 		std::vector<number> shapes;
+
+		
 		
 
-	//    storage for shape function at ip
-		MathVector<refDim> vLocGrad[numVertices];
-		MathVector<refDim> locGrad;
-
-	//    Reference Mapping
-		MathMatrix<dim, refDim> JTInv;
-		
-		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
 		
 		
-		const number gravity = Inter->gravity();
+		const number gy = Inter->gravity();
 		const number rho_s = Inter->Density_s();
 		const number rho_a =Inter->Density_a();
 		const number dp =Inter->diameter();
 		
-		//MathVector<dim> Global_bary[1];
-		//computeElemBarycenter<elem_type,position_accessor_type ,dim>( Global_bary[0], element, posAcc);
-		//MathVector<dim> Local_bary[1];
-		//computeElemBarycenter<elem_type,position_accessor_type ,dim>( Local_bary[0], element, posAcc);
-	
-		MathVector<dim>  vPsGrad[nip];
-		(*m_imPsGrad)(vPsGrad, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u , NULL);
-	
-		
-		const number Ws = m_rel_vel[element];
-		
 
+		/*number  vViscosity[numVertices];
+		(*m_imMixViscosity)(vViscosity, geo.scv_global_ips(), time, si, elem, coCoord, geo.scv_local_ips(), numVertices, u , NULL);*/
 		
+		number RelVelNodes[numVertices];
 		
-
+		for (size_t sh=0;sh<numVertices;sh++)
+		{
+			number W = m_rel_vel[vVrt[sh]];
+			size_t iter = 0;
+			Inter->RelVel(W,  iter,    (*u)(_C_,sh),   rho_a, rho_a, dp, rho_s,  fabs(gy));
+			RelVelNodes[sh] = W;
+		}
+	
+		
 		for (size_t ip=0;ip<nip;ip++)
 		{
+			rTrialSpace.shapes(shapes,vLocIP[ip]);
+			
+			number W = 0.0;
+			for (size_t sh=0;sh<numVertices;sh++)
+				W += RelVelNodes[sh]*shapes[sh];
+
+				
 			MathVector<dim> RelVel; VecSet(RelVel,0.0);
-			number W = Ws;
-
-			number gy = gravity;
-			if(vPsGrad[ip][dim-1] < 0.0)
-				gy += -vPsGrad[ip][dim-1]/(rho_s-rho_a);
-
-			if( gy < 0.0 )
-			{
-				size_t iter = 0;
-				Inter->RelVel(W,  iter,    vMu[ip],   rho_a, rho_a, dp, rho_s,  fabs(gy), 1);
-			}else W = 0.0;
 			
 			
 			RelVel[dim-1] = -W;
-			
-
-	
 			vValue[ip] = RelVel;
 			
 		}
@@ -1933,7 +1874,7 @@ public:
 		const position_accessor_type& posAcc = domain.position_accessor();
 
 		
-		const number gravity = Inter->gravity();
+		const number gy = Inter->gravity();
 		const number rho_s = Inter->Density_s();
 		const number rho_a =Inter->Density_a();
 		const number dp =Inter->diameter();
@@ -1967,48 +1908,30 @@ public:
 				
 				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
 				
-				number Ws = m_rel_vel[elem];
+				/*number vViscosity[numVertices];
+				(*m_imMixViscosity)(vViscosity, geo.scv_global_ips(), 0, si, elem, coCoord, geo.scv_local_ips(), geo.num_scv(), &localU, NULL);*/
 				
-				const number gravity = Inter->gravity();
-				const number rho_s = Inter->Density_s();
-				const number rho_a =Inter->Density_a();
-				const number dp =Inter->diameter();
 				
-				MathVector<dim> Global_points[1];
-				computeElemBarycenter<dim>( Global_points[0] , numVertices, geo.scv_global_ips());
-				MathVector<refDim> Local_points[1];
-				computeElemBarycenter<refDim>(Local_points[0], numVertices, geo.scv_local_ips());
-				
-			
-				MathVector<dim>  vPsGrad_points[1];
-				(*m_imPsGrad)(vPsGrad_points, Global_points, 0, si, elem, coCoord, Local_points, 1, &localU, NULL);
-				
-				number vViscosity_points[numVertices];
-				(*m_imMixViscosity)(vViscosity_points, geo.scv_global_ips(), 0, si, elem, coCoord, geo.scv_local_ips(), geo.num_scv(), &localU, NULL);
-				
-				number MU = 0.0;
-				number Volume = 0.0;
 				
 				for(size_t i = 0; i < numVertices; ++i)
 				{
-					number scvVol = geo.scv(i).volume();
-					MU += vViscosity_points[i]*scvVol;
-					Volume += scvVol;
+
+					m_u->dof_indices(elem->vertex(i), _C_, multInd);
+					//    read value of index from vector
+					number uVal = DoFRef(*m_u,multInd[0]);
+						
+
+					
+					number Ws = m_rel_vel[vVrt[i]];
+					
+					size_t iter = 0;
+
+					Inter->RelVel(Ws,  iter,  uVal,   rho_a, rho_a, dp, rho_s,  fabs(gy));
+					
+					m_rel_vel[vVrt[i]] = Ws;
+					
 					
 				}
-				MU /= Volume;
-				
-			
-				const number gy = gravity-vPsGrad_points[0][dim-1]/(rho_s-rho_a) ;
-				
-
-				if( gy < 0.0 )
-				{
-					size_t iter = 0;
-					Inter->RelVel(Ws,  iter,  MU,   rho_a, rho_a, dp, rho_s,  fabs(gy), 1);
-				}
-				m_rel_vel[elem] = Ws;
-				
 			}
 		}
 		
@@ -2239,7 +2162,12 @@ public:
 		};
 
 		// evaluate finite volume geometry
-		geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+		try{
+			geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+		}
+		UG_CATCH_THROW("RelativeVel Export Parameter::evaluate:"
+					   " Cannot update Finite Volume Geometry.");
+
 
 		// Lagrange 1 trial space
 		const LocalShapeFunctionSet<refDim>& rTrialSpace =

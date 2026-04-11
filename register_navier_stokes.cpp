@@ -183,6 +183,7 @@ static void Dimension(Registry& reg, string grp)
 			.add_method("RelVel_ext",  &T::RelVel_ext)
 			.add_method("RE",  &T::RE)
 			.add_method("CD",  &T::CD)
+			.add_method("set_relative_vel_error",  &T::set_relative_vel_error)
 			.add_constructor()
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "Interface", tag);

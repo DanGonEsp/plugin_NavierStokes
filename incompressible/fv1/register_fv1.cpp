@@ -242,9 +242,9 @@ static void DomainAlgebra(Registry& reg, string grp)
 		typedef INewtonUpdate TBase2;
 		reg.add_class_<T, TBase,TBase2>(name, grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
-			.add_method("set_ps_grad", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_ps_grad), "", "PsGrad")
-			.add_method("set_ps_grad", static_cast<void (T::*)(number)>(&T::set_ps_grad), "", "F_i")
-			.add_method("set_viscosity", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_viscosity), "", "Viscosity")
+			//.add_method("set_ps_grad", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_ps_grad), "", "PsGrad")
+			//.add_method("set_ps_grad", static_cast<void (T::*)(number)>(&T::set_ps_grad), "", "F_i")
+			//.add_method("set_viscosity", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_viscosity), "", "Viscosity")
 			.add_method("set_phase_parameters", &T::set_phase_parameters)
 				.add_method("update", &T::update)
 		.set_construct_as_smart_pointer(true);

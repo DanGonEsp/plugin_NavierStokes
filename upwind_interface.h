@@ -103,12 +103,9 @@ class INavierStokesUpwind
 		MathVector<dim> upwind_vel(const size_t scvf, const LocalVector& CornerVel, const MathVector<dim> vStdVel[]) const;
     /// returns the upwind velocity
         MathVector<dim> upwind_momentum(const size_t scvf, const LocalVector& CornerVel, const number DensitySCV[]) const;
-    /// returns the upwind velocity
-        MathVector<dim> upwind_rel_momentum(const size_t scvf,
-									   const LocalVector& CornerValues,
-									   const size_t _val_,
-									   const MathVector<dim> vRelVelCorners[],
-									   const number factor) const;
+    /// returns the upwind Vector
+        MathVector<dim> upwind_vector(const size_t scvf,
+									   const MathVector<dim> vVectorCorners[]) const;
     /// returns the upwind velocity
         number upwind_value(const size_t scvf, const LocalVector& CornerVel, const size_t _val_) const;
 		number downwind_value(const size_t scvf, const LocalVector& CornerVel, const size_t _val_) const;
@@ -398,22 +395,19 @@ upwind_momentum(const size_t scvf,
 template <int dim>
 MathVector<dim>
 INavierStokesUpwind<dim>::
-upwind_rel_momentum(const size_t scvf,
-			   const LocalVector& CornerValues,
-			   const size_t _val_,
-               const MathVector<dim> vRelVelCorners[],
-			   const number rho_s) const
+upwind_vector(const size_t scvf,
+               const MathVector<dim> vVectorCorners[]) const
 {
 //    reset result
-    MathVector<dim> momentum; VecSet(momentum, 0.0);
+    MathVector<dim> Vector_up; VecSet(Vector_up, 0.0);
 
 //    add corner shapes
     for(size_t sh = 0; sh < num_sh(); ++sh)
         for(int d = 0; d < dim; ++d)
-			momentum[d] += rho_s * upwind_shape_sh(scvf, sh) * CornerValues(_val_, sh) * vRelVelCorners[sh][d];
+			Vector_up[d] += upwind_shape_sh(scvf, sh) * vVectorCorners[sh][d];
 
 //    done if only depending on shapes
-    if(!non_zero_shape_ip()) return momentum;
+    if(!non_zero_shape_ip()) return Vector_up;
 	else
 		UG_THROW("Error in upwind method");
 

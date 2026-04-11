@@ -164,7 +164,7 @@ class RelativeVelocityLinker
 					else
 					{
 						//number phi=fmin(alpha_max-1e-04, fmax(vVolume[ip],0.0));
-						number phi=vVolume[ip];
+						number phi= alpha_max * vVolume[ip];
 						
 						RelVel =  -6.8598479912268*(1.0-phi)*pow((1.0 + pow(phi,1.0/3.0))*exp(5.0*(phi)/(3*(1-phi))),-1.0);
 
@@ -237,7 +237,7 @@ class RelativeVelocityLinker
 				else
 				{
 					//phi=fmin(alpha_max-1e-04, fmax(vVolume[ip],0.0));
-					phi=vVolume[ip];
+					phi= alpha_max * vVolume[ip];
 					
 					RelVel =  -6.8598479912268*(1.0-phi)*pow((1.0 + pow(phi,1.0/3.0))*exp(5.0*(phi)/(3*(1-phi))),-1.0);
 					
@@ -464,7 +464,7 @@ class RelativeVelocityLinker
         {
 			const number gy = m_gravitation-vPsGrad/(rho_s-rho_a) ;
             number W = 0.0;
-            const number phi=fmin(alpha_max-1e-04, fmax(vVolume,0.0));
+            const number phi= alpha_max * fmin(1.0, fmax(vVolume,0.0));
 			//const number phi=vVolume;
             //const number Ratio = (1-phi)/((1+pow(phi,1/3))*exp(5*phi/(3*(1-phi))))-vol*0.017811336463534444;
             const number Ratio=(1.0-phi)/((1.0+pow(phi,1.0/3.0))*exp(5.0*phi/(3.0*(1.0-phi))));
@@ -478,9 +478,9 @@ class RelativeVelocityLinker
                 W = m_Wr*Ratio;
                 size_t iter = 0;
 
-                Inter->RelVel(W,  iter,    MU2,   rho_a, rho_a, dp, rho_s,  fabs(gy), 5.0);
+                Inter->RelVel(W,  iter,    vVolume,   rho_a, rho_a, dp, rho_s,  fabs(gy));
 
-                //Inter->RelVel(W2,  iter,      MU2,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1e-03);
+                //Inter->RelVel(W2,  iter,      vVolume,   vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1e-03);
                 //Re = Inter->RE( MU2, vMixDensity, dp,  W2);
                 //Cd = Inter->CD( Re,  Inter->DragModel());
                 //W2 = (rho_s-rho_a) * pow(dp,2.0) * fabs(Fy/vMixDensity) / (18.0 * MU2);
@@ -490,9 +490,9 @@ class RelativeVelocityLinker
                 //W5 = (rho_s-vMixDensity) * pow(dp,2.0) * fabs(Fy/vMixDensity) / (18.0 * vEinstVisc);
                 
                 
-                //Inter->RelVel(W7,  iter, vEinstVisc, vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1e-03);
+                //Inter->RelVel(W7,  iter, vVolume, vMixDensity, dp, rho_s,  fabs(Fy/vMixDensity), 1e-03);
                 //number W8 = 0.0;
-                //Inter->RelVel(W8,  iter, mu_a, rho_a, dp, rho_s,  9.81, 1e-03);
+                //Inter->RelVel(W8,  iter, 0.0, rho_a, dp, rho_s,  9.81, 1e-03);
                 //printf("Vel = %f\n",W8);
                 //W6=sqrt((4.0/3.0)*dp*(rho_s/vMixDensity-1.0)*fabs(Fy)/m_Cd);
                 //W7=sqrt((4.0/3.0)*dp*(rho_s/vMixDensity-1.0)*fabs(Fy)/m_Cd);

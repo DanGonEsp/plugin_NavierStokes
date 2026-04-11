@@ -126,6 +126,8 @@ class GranularDiffusionLinker
 			bool cut_elem=false;
 			bool inside = false;
 			Inter->cut_element(cut_elem,inside,  u,dim+1);
+			const number deltaGamma = Inter->param_deltaGamma();
+			const number alpha_max = Inter->Alpha_max();
 			
             for(size_t ip = 0; ip < nip; ++ip)
             {
@@ -144,8 +146,8 @@ class GranularDiffusionLinker
 							gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2.0);
 						}
 					}
-					gamma =sqrt((0.5*gamma));
-					MatDiagSet(Diff,m_Diff_factor * mu_a * gamma);
+					gamma =sqrt(pow(deltaGamma,2)+(0.5*gamma));
+					MatDiagSet(Diff,m_Diff_factor * alpha_max * mu_a * gamma);
 				}
 				else
 					MatDiagSet(Diff,0.0);
@@ -178,24 +180,16 @@ class GranularDiffusionLinker
 			const MathMatrix<dim,dim>*  vVelocityGrad	= m_spVelocityGrad->values(s_DV_);
 			const number*               vMixViscosity	= m_spMixViscosity->values(s_MU_);
 
-            //number viscosity_granular;
-            //number VolFraction;
-            
-            
-            /*for(size_t ip = 0; ip < nip; ++ip)
-            {
-                VolFraction+=vMixKinViscosity[ip];
-                
-            }
-            //VolFraction=;
-            VolFraction=fmin(1.0, fmax(VolFraction/nip,0));*/
 			
 			
 			bool cut_elem=false;
 			bool inside = false;
 			Inter->cut_element(cut_elem,inside,  u,dim+1);
+			const number deltaGamma = Inter->param_deltaGamma();
+			const number alpha_max = Inter->Alpha_max();
 			
 			const number mu_a = Inter-> Viscosity_a() * Inter->Density_a();
+			number Diffusion[nip];
             for(size_t ip = 0; ip < nip; ++ip)
             {
                                 
@@ -214,13 +208,19 @@ class GranularDiffusionLinker
 						}
 					}
 					
-					gamma =sqrt((0.5*gamma));
+					gamma =sqrt(pow(deltaGamma,2)+(0.5*gamma));
 					
-					MatDiagSet(Diff,m_Diff_factor * mu_a * gamma);
+					Diffusion[ip] = m_Diff_factor * alpha_max * mu_a * gamma;
+					
+					
 
 				}
 				else
-					MatDiagSet(Diff,0.0);
+				{
+					Diffusion[ip] = 0.0;
+				}
+				
+				MatDiagSet(Diff,Diffusion[ip]);
 				
 				vValue[ip]=Diff;
             }
@@ -237,86 +237,49 @@ class GranularDiffusionLinker
 
         //    clear all derivative values
             this->set_zero(vvvDeriv, nip);
-            /*
-        //  Derivatives of Volume Fraction
-            if(m_spDMixKinViscosity.valid() && !m_spDMixKinViscosity->zero_derivative())
-            {
-                for(size_t ip = 0; ip < nip; ++ip)
-                {
-                    VolFraction=fmin(1.0, fmax(vMixKinViscosity[ip],0));
-                    
-                    for(size_t fct = 0; fct < m_spDMixKinViscosity->num_fct(); ++fct)
-                    {
-                    //    get derivative of volume fraction w.r.t. to all functions
-                        const number* vDMixKinViscosity = m_spDMixKinViscosity->deriv(s, ip, fct);
+ 
 
-                    //    get common fct id for this function
-                        const size_t commonFct = this->input_common_fct(_MU_, fct);
-                        number Dmu_einstein;
-                        number Dmu_rheology;
-
-                    //    loop all shapes and set the derivative
-                        for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
-                        {
-                            switch (m_model) {
-                                case 0:
-                                    vvvDeriv[ip][commonFct][sh]=vDMixKinViscosity[sh]*(nu_s*rho_s-nu_a*rho_s);
-                                    break;
-                                case 1:
-                                    vvvDeriv[ip][commonFct][sh]=vDMixKinViscosity[sh]*(2.5*m_packing_factor*vValue[ip]/(1-vMixKinViscosity[ip]*m_packing_factor/alpha_max));
-                                    break;
-                                case 2:
-                                    DevGranular_viscosity_1(Dmu_rheology,VolFraction*m_packing_factor, vVelocityGrad[ip], nu_a*rho_a, rho_s, dp, FricMu_1, FricMu_2, alpha_min, alpha_max, Fr, B_phi, I_0, nu_a, deltaPs, deltaI);
-                                    vvvDeriv[ip][commonFct][sh]=vDMixKinViscosity[sh]*Dmu_rheology*m_packing_factor;
-                                    break;
-                                case 3:
-                                    Einstein_viscosity(Dmu_einstein,VolFraction*m_packing_factor, nu_a*rho_a, alpha_max);
-                                    Granular_viscosity_1(Dmu_rheology,VolFraction*m_packing_factor, vVelocityGrad[ip], nu_a*rho_a, rho_s, dp, FricMu_1, FricMu_2, alpha_min, alpha_max, Fr, B_phi, I_0, nu_a, deltaPs, deltaI);
-                                    vvvDeriv[ip][commonFct][sh]=vDMixKinViscosity[sh]*(Dmu_rheology-Dmu_einstein+(1-VolFraction)*2.5*m_packing_factor*Dmu_einstein/(1-VolFraction*m_packing_factor/alpha_max));
-                                    break;
-                                default:
-                                    UG_THROW("Wrong model selected for granular viscosity: GranularViscosityLinker has options"
-                                                   " model= 0, 1 , 2, 3")
-                                    break;
-                            }
-                            
-
-                            
-
-                        }
-                    }
-                }
-            }
-            */
-        
-            /*
             //  Derivatives of velocity gradient
             //UG_LOG("Derivatives of velocity gradient missing");
             if(m_spDVelocityGrad.valid() && !m_spDVelocityGrad->zero_derivative())
             {
+				
                 for(size_t ip = 0; ip < nip; ++ip)
                 {
-                    for(size_t fct = 0; fct < m_spDYieldStress->num_fct(); ++fct)
-                    {
-                    //    get derivative of velocity gradient w.r.t. to all functions
-                        const number* vDYieldStress = m_spDYieldStress->deriv(s, ip, fct);
+					MathMatrix<dim,dim> Deriv_sh;
+					MathMatrix<dim,dim> Diff_Deriv;
+					Inter->MatAddTraspose(Diff_Deriv,vVelocityGrad[ip]);
+					number SumSH = 0.0;
+					for(size_t d = 0; d < dim; ++d)
+						Diff_Deriv[d][d] = Diff_Deriv[d][d]/2.0;
+					
+					MatScale(Diff_Deriv, pow(m_Diff_factor * alpha_max * mu_a,2.0)/Diffusion[ip] ,Diff_Deriv);
+					
+					for(size_t fct = 0; fct < m_spDVelocityGrad->num_fct(); ++fct)
+					{
+					//    get derivative of velocity gradient w.r.t. to all functions
+						const MathMatrix<dim,dim>* vDVelocityGrad = m_spDVelocityGrad->deriv(s_DV_, ip, fct);
 
-                    //    get common fct id for this function
-                        const size_t commonFct = this->input_common_fct(_DV_, fct);
+					//    get common fct id for this function
+						const size_t commonFct = this->input_common_fct(_DV_, fct);
 
-                    //    loop all shapes and set the derivative
-                        for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
-                        {
-                            VecScaleAppend(vvvDeriv[ip][commonFct][sh], vDYieldStress[sh], rInvariant);
-                        }
-                    }
+					//    loop all shapes and set the derivative
+						for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
+						{
+							
+							Inter->MatAddTraspose(Deriv_sh,vDVelocityGrad[sh]);
+							SumSH = Inter->MatMultiplyElment(Diff_Deriv,Deriv_sh) ;
+							MatSet(Deriv_sh,0.0); MatDiagSet(Deriv_sh, SumSH);
+							
+							vvvDeriv[ip][commonFct][sh] += Deriv_sh;
+
+							
+						}
+					}
                 }
             }
              
-            
-        
-            */
-            
+		
         }
 
 

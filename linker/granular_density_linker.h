@@ -90,7 +90,8 @@ class GranularDensityLinker
 			
 			number rho_s = Inter->Density_s();
 			number rho_a = Inter->Density_a();
-			number s=volume_fraction;
+			number alpha_max = Inter->Alpha_max();
+			number s= alpha_max * volume_fraction;
             value = s*rho_s + (1.0-s)*rho_a ;
         }
 
@@ -110,17 +111,18 @@ class GranularDensityLinker
             (*m_spVolumeFraction)(&vVolumeFraction[0], vGlobIP, time, si,
                             elem, vCornerCoords, vLocIP, nip, u, vJT);
             
-			number rho_s = Inter->Density_s();
-			number rho_a = Inter->Density_a();
-			number interface_value = Inter->interface_value();
+			const number rho_s = Inter->Density_s();
+			const number rho_a = Inter->Density_a();
+			const number interface_value = Inter->interface_value();
+			const number alpha_max = Inter->Alpha_max();
             number c;
             number value;
             for(size_t ip = 0; ip < nip; ++ip)
             {
-                c=fmin(1.0, fmax(vVolumeFraction[ip],0.0)) ;
+                c= alpha_max * fmin(1.0, fmax(vVolumeFraction[ip],0.0)) ;
                 switch (m_model) {
                     case 0:
-                        value =Constant_density( c,   rho_a,   rho_s, interface_value);
+                        value =Constant_density( c,   rho_a,   rho_s, alpha_max * interface_value);
 
                         break;
 
@@ -156,19 +158,20 @@ class GranularDensityLinker
             int s_VOL_ = base_type::series_id(_VOL_, s);
             const number* vVolumeFraction   = m_spVolumeFraction->values(s_VOL_);
             
-			number rho_s = Inter->Density_s();
-			number rho_a = Inter->Density_a();
-			number interface_value = Inter->interface_value();
+			const number rho_s = Inter->Density_s();
+			const number rho_a = Inter->Density_a();
+			const number interface_value = Inter->interface_value();
+			const number alpha_max = Inter->Alpha_max();
             number c;
             number value;
             for(size_t ip = 0; ip < nip; ++ip)
             {
-                c=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
+                c= alpha_max * fmin(1.0, fmax(vVolumeFraction[ip],0.0));
                 
 
                 switch (m_model) {
                     case 0:
-                        value =Constant_density( c,   rho_a,   rho_s, interface_value);
+                        value =Constant_density( c,   rho_a,   rho_s, alpha_max * interface_value);
 
                         break;
 
@@ -195,7 +198,7 @@ class GranularDensityLinker
             this->set_zero(vvvDeriv, nip);
             
         //  Derivatives of Volume Fraction
-            if(m_spDVolumeFraction.valid() && !m_spDVolumeFraction->zero_derivative() && m_model == 1)
+            /*if(m_spDVolumeFraction.valid() && !m_spDVolumeFraction->zero_derivative() && m_model == 1)
             {
                 for(size_t ip = 0; ip < nip; ++ip)
                 {
@@ -212,13 +215,13 @@ class GranularDensityLinker
                         {
                             for(size_t ip2 = 0; ip2 < nip; ++ip2)
                             {
-                                vvvDeriv[ip2][commonFct][sh]= vDVolumeFraction[sh]*(rho_s-rho_a);
+                                vvvDeriv[ip2][commonFct][sh]= alpha_max * vDVolumeFraction[sh]*(rho_s-rho_a);
                             }
 
                         }
                     }
                 }
-            }
+            }*/
 
         }
     protected:

@@ -579,10 +579,10 @@ class NavierStokesFV1M
 		inline number peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
                                    const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
         template <typename TFVGeom>
-        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, number* StdVol, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do, number* ConvRatio);
+        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do, number* ConvRatio);
     
         template <typename TFVGeom>
-        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdRelVel_t, const DataImport<number, dim>& densitySCV,  const DataImport<MathVector<dim>, dim>& RelVelSCVF);
+        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* Vel_ip, MathVector<dim>* StdCharacteristicVel, MathVector<dim>* Flux,  const DataImport<MathVector<dim>, dim>& RelVelSCV, int* ShockCase);
     
         template <typename TFVGeom>
         inline void vel_grad(const LocalVector& u, const TFVGeom& geo, number* Gamma);
@@ -812,6 +812,11 @@ class NavierStokesFV1M
         void lin_def_sourceSCVF(const LocalVector& u,
                               std::vector<std::vector<MathVector<dim> > > vvvLinDef[],
                               const size_t nip);
+	///    computes the linearized defect w.r.t to the velocity
+		template <typename TElem, typename TFVGeom>
+		void lin_def_diffusion(const LocalVector& u,
+							  std::vector<std::vector<MathMatrix<dim,dim> > > vvvLinDef[],
+							  const size_t nip);
     
     
 	protected:

@@ -158,7 +158,7 @@ compute(const FV1Geometry<TElem, dim>* geo,
 
     // 	switch upwind
         const number flux = VecDot(scvf.normal(), vIPVel[ip]);
-        if(flux > 0.0)
+        if(flux >= 0.0)
         {
         	vUpShapeSh[ip][scvf.from()] = 1.0;
         	vConvLength[ip] = VecDistance(scvf.global_ip(), corners[scvf.from()]);

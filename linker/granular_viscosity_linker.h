@@ -159,11 +159,11 @@ class GranularViscosityLinker
 							elem, vCornerCoords, vLocIP, nip, u, vJT);
 			
 			
-			
+			const number alpha_max = Inter->Alpha_max();
 			const number mu_a = Inter->Viscosity_a();
 			const number nu_s = Inter->KinViscosity_s();
 			const number rho_s = Inter->Density_s();
-			const number interface_volume_fraction = Inter->interface_value();
+			const number interface_volume_fraction = alpha_max * Inter->interface_value();
 			const number dp = Inter->diameter();
 			const number FricMu_1 = Inter->FrictionMu_1();
 			const number FricMu_2 = Inter->FrictionMu_2();
@@ -192,7 +192,7 @@ class GranularViscosityLinker
                 //mu_eins_aux=mu_a;
                 
                 //VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
-				VolFraction=vVolumeFraction[ip];
+				VolFraction= alpha_max * vVolumeFraction[ip];
 
                 switch (m_model) {
                     case 0:
@@ -200,7 +200,7 @@ class GranularViscosityLinker
                         
                         break;
                     case 1:
-                        viscosity_granular_aux = Proportional_viscosity(VolFraction, mu_a, nu_s*rho_s);
+                        viscosity_granular_aux = Proportional_viscosity(VolFraction/alpha_max, mu_a, nu_s*rho_s);
                         
                         break;
                     case 2:
@@ -276,7 +276,7 @@ class GranularViscosityLinker
 			const number mu_a = Inter->Viscosity_a();
 			const number nu_s = Inter->KinViscosity_s();
 			const number rho_s = Inter->Density_s();
-			const number interface_volume_fraction = Inter->interface_value();
+			const number interface_volume_fraction =  alpha_max * Inter->interface_value();
 			const number dp = Inter->diameter();
 			const number FricMu_1 = Inter->FrictionMu_1();
 			const number FricMu_2 = Inter->FrictionMu_2();
@@ -306,7 +306,7 @@ class GranularViscosityLinker
                 //mu_eins_aux=mu_a;
 
                // VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
-				VolFraction=vVolumeFraction[ip] ;
+				VolFraction=alpha_max * vVolumeFraction[ip] ;
 
 
                 switch (m_model) {
@@ -317,7 +317,7 @@ class GranularViscosityLinker
                         break;
                     case 1:
 
-                        viscosity_granular_aux = Proportional_viscosity(VolFraction, mu_a, nu_s*rho_s);
+                        viscosity_granular_aux = Proportional_viscosity(VolFraction / alpha_max, mu_a, nu_s*rho_s);
 
                         
                         break;
@@ -691,7 +691,7 @@ class GranularViscosityLinker
                             
 
                             Inter->MatAddTraspose(Deriv,vDVelocityGrad[sh]);
-                            vvvDeriv[ip][commonFct][sh] += MatMultiplyElment(Mu_deriv,Deriv) ;
+                            vvvDeriv[ip][commonFct][sh] += Inter->MatMultiplyElment(Mu_deriv,Deriv) ;
 
                             
                         }
@@ -705,17 +705,6 @@ class GranularViscosityLinker
 
     protected:
     
-        static number MatMultiplyElment( const MathMatrix<dim,dim> m1, const MathMatrix<dim,dim> m2)
-        {
-            number Sum=0.0;
-            for(size_t i = 0; i < dim; ++i)
-                for(size_t j = 0; j < dim; ++j)
-                {
-                    Sum += m1[i][j] * m2[i][j];
-                }
-            return Sum;
-        }
-
 
         static number Constant_viscosity(const number phi, const number mu_1, const number mu_2, const number interface_volume_fraction)
         {
