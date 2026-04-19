@@ -90,8 +90,8 @@ class GranularDensityLinker
 			
 			number rho_s = Inter->Density_s();
 			number rho_a = Inter->Density_a();
-			number alpha_max = Inter->Alpha_max();
-			number s= alpha_max * volume_fraction;
+			number packing_factor = Inter->packing_factor();
+			number s= packing_factor * volume_fraction;
             value = s*rho_s + (1.0-s)*rho_a ;
         }
 
@@ -114,15 +114,15 @@ class GranularDensityLinker
 			const number rho_s = Inter->Density_s();
 			const number rho_a = Inter->Density_a();
 			const number interface_value = Inter->interface_value();
-			const number alpha_max = Inter->Alpha_max();
+			const number packing_factor = Inter->packing_factor();
             number c;
             number value;
             for(size_t ip = 0; ip < nip; ++ip)
             {
-                c= alpha_max * fmin(1.0, fmax(vVolumeFraction[ip],0.0)) ;
+                c= packing_factor * fmin(1.0, fmax(vVolumeFraction[ip],0.0)) ;
                 switch (m_model) {
                     case 0:
-                        value =Constant_density( c,   rho_a,   rho_s, alpha_max * interface_value);
+                        value =Constant_density( c,   rho_a,   rho_s, packing_factor * interface_value);
 
                         break;
 
@@ -161,17 +161,17 @@ class GranularDensityLinker
 			const number rho_s = Inter->Density_s();
 			const number rho_a = Inter->Density_a();
 			const number interface_value = Inter->interface_value();
-			const number alpha_max = Inter->Alpha_max();
+			const number packing_factor = Inter->packing_factor();
             number c;
             number value;
             for(size_t ip = 0; ip < nip; ++ip)
             {
-                c= alpha_max * fmin(1.0, fmax(vVolumeFraction[ip],0.0));
+                c= packing_factor * fmin(1.0, fmax(vVolumeFraction[ip],0.0));
                 
 
                 switch (m_model) {
                     case 0:
-                        value =Constant_density( c,   rho_a,   rho_s, alpha_max * interface_value);
+                        value =Constant_density( c,   rho_a,   rho_s, packing_factor * interface_value);
 
                         break;
 
@@ -215,7 +215,7 @@ class GranularDensityLinker
                         {
                             for(size_t ip2 = 0; ip2 < nip; ++ip2)
                             {
-                                vvvDeriv[ip2][commonFct][sh]= alpha_max * vDVolumeFraction[sh]*(rho_s-rho_a);
+                                vvvDeriv[ip2][commonFct][sh]= packing_factor * vDVolumeFraction[sh]*(rho_s-rho_a);
                             }
 
                         }

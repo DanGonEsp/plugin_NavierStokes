@@ -214,6 +214,8 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
 				.add_method("set_theta", static_cast<void (T::*)(number)>(&T::set_theta), "", "Theta")
 				.add_method("set_vel", static_cast<void (T::*)(number)>(&T::set_vel), "", "Vel")
+				.add_method("set_gradient_limit", static_cast<void (T::*)(number)>(&T::set_gradient_limit), "", "GradLimit")
+				.add_method("set_phase_parameters", &T::set_phase_parameters)
 				.add_method("update", &T::update)
 		.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "SlipVelocity", tag);
@@ -228,9 +230,10 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
 				.add_method("set_diffusion", static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> >)>(&T::set_diffusion), "", "Diffusion")
 				.add_method("set_theta", static_cast<void (T::*)(number)>(&T::set_theta), "", "Theta")
-				.add_method("set_vel", static_cast<void (T::*)(number)>(&T::set_vel), "", "Vel")
-				.add_method("update", &T::update)
+				.add_method("set_diff", static_cast<void (T::*)(number)>(&T::set_diff), "", "Diff constant")
+				.add_method("set_gradient_limit", static_cast<void (T::*)(number)>(&T::set_gradient_limit), "", "GradLimit")
 				.add_method("set_phase_parameters", &T::set_phase_parameters)
+				.add_method("update", &T::update)
 		.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "SlipDiffusion", tag);
 	}
@@ -246,7 +249,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 			//.add_method("set_ps_grad", static_cast<void (T::*)(number)>(&T::set_ps_grad), "", "F_i")
 			//.add_method("set_viscosity", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_viscosity), "", "Viscosity")
 			.add_method("set_phase_parameters", &T::set_phase_parameters)
-				.add_method("update", &T::update)
+			.add_method("update", &T::update)
 		.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "RelativeVelocity", tag);
 	}
@@ -263,6 +266,21 @@ static void DomainAlgebra(Registry& reg, string grp)
 				.add_method("set_relaxation_parameters", &T::set_relaxation_parameters)
 		.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "RelaxedParticleViscosity", tag);
+	}
+	// MeanNormal
+	{
+		string name = string("DuneNormal").append(suffix);
+		typedef DuneNormal<TFct> T;
+		typedef CplUserData<MathVector<dim>, dim> TBase;
+		typedef INewtonUpdate TBase2;
+		reg.add_class_<T, TBase,TBase2>(name, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
+				.add_method("set_theta", static_cast<void (T::*)(number)>(&T::set_theta), "", "Theta")
+				.add_method("set_gradient_limit", static_cast<void (T::*)(number)>(&T::set_gradient_limit), "", "GradLimit")
+				.add_method("set_phase_parameters", &T::set_phase_parameters)
+				.add_method("update", &T::update)
+		.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "DuneNormal", tag);
 	}
 
 }

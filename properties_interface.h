@@ -87,7 +87,7 @@ class Interface
 			m_packing_factor(0.6),
 			m_gravitation(-9.81),
 			m_RelVelError(2e-01),
-			epsilon(1e-02),
+			epsilon(1e-03),
 			m_bParticleGradientForce(false),
 			m_bConsistentGravity(false),
 			m_init(false)
@@ -121,7 +121,7 @@ class Interface
 		{
 			const number delta = 1e-02;
 			const number Co=alpha_max-delta;
-			const number phi = alpha_max * vol;
+			const number phi = m_packing_factor * vol;
 			//Stokes number
 			const number St=gamma*rho_s*pow(dp,2)/mu_a;
 			
@@ -165,7 +165,7 @@ class Interface
 		{
 			
 			const number gamma = sqrt(pow(deltaGamma,2) + pow(gamma_nr,2.0));
-			const number phi = alpha_max * vol;
+			const number phi = m_packing_factor * vol;
 			number Ps_val, DPs, s, mu_friction;
 			Ps( Ps_val,  DPs, gamma, vol, deriv);
 			
@@ -187,7 +187,7 @@ class Interface
 		void Einstein_viscosity(number& ss, number& Dss,const number vol, const bool deriv)
 		{
 			
-			const number phi = alpha_max * vol;
+			const number phi = m_packing_factor * vol;
 			number C_r = alpha_max - 1e-03;
 			number power = 2.5;
 			if (phi<=C_r)
@@ -292,19 +292,33 @@ class Interface
 			
 		}
 	
-		void F_star(number& F_star, const number FL, const number FR,  const number uL, const number uR, const number Vel_ip, const number  Ws)
+		bool F_star(number& F_star, const number FL, const number FR, const number SL, const number SR, const number uL, const number uR, const number WL, const number WR, const number Vel_ip, const number  Ws)
 		{
 			size_t iter = 0;
 
 			number u_star = 0.5 + Vel_ip/(2.0*Ws);
+			number Second_deriv = -2.0*Ws;
+			bool entropy = false;
 			if(u_star<=fmax(uL,uR) && u_star>=fmin(uL,uR) )
 			{
 				F_star = u_star * (Vel_ip + (1.0-u_star)*Ws);
+				entropy = true;
+				/*if(Second_deriv<=0)
+					F_star = fmin(fmin(F_star,FL),FR);
+				else
+					F_star = fmax(fmax(F_star,FL),FR);*/
+				
 			}
 			else
-			{	UG_LOG("Error \n");
-				F_star = fmin(FR,FL);
+			{
+				/*if(Second_deriv<=0)
+					F_star = fmin(FR,FL);
+				else
+					F_star = fmax(FR,FL);*/
+				//UG_LOG("F* = "<< F_star<<" FL = "<< FL<<" FR = "<<FR<<" SL = "<< SL<<" SR = "<<SR<<" uL = "<<uL<< " uR =  "<<uR<<" WL = "<<WL<< " WR =  "<<WR<< " Vel = "<< Vel_ip<< " Ws = "<<Ws << " u* = "<<u_star<<" \n");
+				entropy = false;
 			}
+			return entropy;
 			
 		}
 	 
@@ -425,6 +439,18 @@ class Interface
 			}*/
 
 		}
+		bool scvf_interface(const number uL, const number uR)
+		{
+			
+			int phaseL=(uL>m_interface_value)? 1:-1;
+			int phaseR=(uR>m_interface_value)? 1:-1;
+		
+			
+			int phase = phaseL * phaseR;
+			//UG_LOG("SCVF uL uR = "<< uL<<"  "<<uR<<"  Phase = "<<phase<<"\n");
+			bool interface = (phase>0)? false:true;
+			return interface;
+		}
 		void cut_element(bool &cut_elem,bool& boolInside, LocalVector* u, const size_t _C_)
 		{
 			
@@ -455,6 +481,7 @@ class Interface
 			boolInside = (inside==numSH)? true:false;
 			cut_elem=cut;
 		}
+	
 		void cut_element(number &value ,bool &cut_elem, bool &phase2, LocalVector* u, const number interface)
 		{
 			
@@ -1194,7 +1221,7 @@ class Interface
 
 		number Density_s(){ return rho_s;}
 		number Density_a(){ return rho_a;}
-		number Density_max(){ return (rho_s-rho_a) * alpha_max + rho_a;}
+		number Density_max(){ return (rho_s-rho_a) * m_packing_factor + rho_a;}
 		number Viscosity_a(){ return mu_a;}
 		number KinViscosity_s(){ return nu_s;}
 		number Alpha_max(){ return alpha_max;}

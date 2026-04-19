@@ -127,7 +127,7 @@ class GranularDiffusionLinker
 			bool inside = false;
 			Inter->cut_element(cut_elem,inside,  u,dim+1);
 			const number deltaGamma = Inter->param_deltaGamma();
-			const number alpha_max = Inter->Alpha_max();
+			const number packing_factor = Inter->packing_factor();
 			
             for(size_t ip = 0; ip < nip; ++ip)
             {
@@ -147,7 +147,7 @@ class GranularDiffusionLinker
 						}
 					}
 					gamma =sqrt(pow(deltaGamma,2)+(0.5*gamma));
-					MatDiagSet(Diff,m_Diff_factor * alpha_max * mu_a * gamma);
+					MatDiagSet(Diff,m_Diff_factor * packing_factor * mu_a * gamma);
 				}
 				else
 					MatDiagSet(Diff,0.0);
@@ -186,7 +186,7 @@ class GranularDiffusionLinker
 			bool inside = false;
 			Inter->cut_element(cut_elem,inside,  u,dim+1);
 			const number deltaGamma = Inter->param_deltaGamma();
-			const number alpha_max = Inter->Alpha_max();
+			const number packing_factor = Inter->packing_factor();
 			
 			const number mu_a = Inter-> Viscosity_a() * Inter->Density_a();
 			number Diffusion[nip];
@@ -210,7 +210,7 @@ class GranularDiffusionLinker
 					
 					gamma =sqrt(pow(deltaGamma,2)+(0.5*gamma));
 					
-					Diffusion[ip] = m_Diff_factor * alpha_max * mu_a * gamma;
+					Diffusion[ip] = m_Diff_factor * packing_factor * mu_a * gamma;
 					
 					
 
@@ -253,7 +253,7 @@ class GranularDiffusionLinker
 					for(size_t d = 0; d < dim; ++d)
 						Diff_Deriv[d][d] = Diff_Deriv[d][d]/2.0;
 					
-					MatScale(Diff_Deriv, pow(m_Diff_factor * alpha_max * mu_a,2.0)/Diffusion[ip] ,Diff_Deriv);
+					MatScale(Diff_Deriv, pow(m_Diff_factor * packing_factor * mu_a,2.0)/Diffusion[ip] ,Diff_Deriv);
 					
 					for(size_t fct = 0; fct < m_spDVelocityGrad->num_fct(); ++fct)
 					{

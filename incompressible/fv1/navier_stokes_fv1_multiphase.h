@@ -582,7 +582,7 @@ class NavierStokesFV1M
         inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do, number* ConvRatio);
     
         template <typename TFVGeom>
-        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* Vel_ip, MathVector<dim>* StdCharacteristicVel, MathVector<dim>* Flux,  const DataImport<MathVector<dim>, dim>& RelVelSCV, int* ShockCase);
+        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* Vel_ip, MathVector<dim>* StdCharacteristicVel, MathVector<dim>* Flux,  const DataImport<MathVector<dim>, dim>& RelVelSCV, const DataImport<MathVector<dim>, dim>& SlipVelSCV, int* ShockCase);
     
         template <typename TFVGeom>
         inline void vel_grad(const LocalVector& u, const TFVGeom& geo, number* Gamma);
@@ -748,13 +748,13 @@ class NavierStokesFV1M
         DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
 		DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCVF;
 	///    Data import for Slip velocity
-		DataImport<MathVector<dim>, dim> m_imSlipVelocitySCVF;
+		DataImport<MathVector<dim>, dim> m_imSlipVelocitySCV;
 	
 	///    Data import for Nodal ShearRate
 		DataImport<number, dim> m_imAverageGammaSCV;
     
     ///    Data import for multiphase flow
-        DataImport<MathVector<dim>, dim> m_imSurfaceNormal;
+        DataImport<MathVector<dim>, dim> m_imSurfaceNormalSCVF;
         Interface<dim>* Inter = NULL;
 
 	///	Stabilization for velocity in continuity equation

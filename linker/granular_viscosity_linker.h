@@ -159,11 +159,11 @@ class GranularViscosityLinker
 							elem, vCornerCoords, vLocIP, nip, u, vJT);
 			
 			
-			const number alpha_max = Inter->Alpha_max();
+			const number packing_factor = Inter->packing_factor();
 			const number mu_a = Inter->Viscosity_a();
 			const number nu_s = Inter->KinViscosity_s();
 			const number rho_s = Inter->Density_s();
-			const number interface_volume_fraction = alpha_max * Inter->interface_value();
+			const number interface_volume_fraction = packing_factor * Inter->interface_value();
 			const number dp = Inter->diameter();
 			const number FricMu_1 = Inter->FrictionMu_1();
 			const number FricMu_2 = Inter->FrictionMu_2();
@@ -192,7 +192,7 @@ class GranularViscosityLinker
                 //mu_eins_aux=mu_a;
                 
                 //VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
-				VolFraction= alpha_max * vVolumeFraction[ip];
+				VolFraction= packing_factor * vVolumeFraction[ip];
 
                 switch (m_model) {
                     case 0:
@@ -200,7 +200,7 @@ class GranularViscosityLinker
                         
                         break;
                     case 1:
-                        viscosity_granular_aux = Proportional_viscosity(VolFraction/alpha_max, mu_a, nu_s*rho_s);
+                        viscosity_granular_aux = Proportional_viscosity(VolFraction/packing_factor, mu_a, nu_s*rho_s);
                         
                         break;
                     case 2:
@@ -272,11 +272,11 @@ class GranularViscosityLinker
 			const number*               vGamma     = m_spGamma->values(s_GAMMA_);
 			
 			
-			const number alpha_max = Inter->Alpha_max();
+			const number packing_factor = Inter->packing_factor();
 			const number mu_a = Inter->Viscosity_a();
 			const number nu_s = Inter->KinViscosity_s();
 			const number rho_s = Inter->Density_s();
-			const number interface_volume_fraction =  alpha_max * Inter->interface_value();
+			const number interface_volume_fraction =  packing_factor * Inter->interface_value();
 			const number dp = Inter->diameter();
 			const number FricMu_1 = Inter->FrictionMu_1();
 			const number FricMu_2 = Inter->FrictionMu_2();
@@ -306,7 +306,7 @@ class GranularViscosityLinker
                 //mu_eins_aux=mu_a;
 
                // VolFraction=fmin(1.0, fmax(vVolumeFraction[ip],0.0));
-				VolFraction=alpha_max * vVolumeFraction[ip] ;
+				VolFraction=packing_factor * vVolumeFraction[ip] ;
 
 
                 switch (m_model) {
@@ -317,7 +317,7 @@ class GranularViscosityLinker
                         break;
                     case 1:
 
-                        viscosity_granular_aux = Proportional_viscosity(VolFraction / alpha_max, mu_a, nu_s*rho_s);
+                        viscosity_granular_aux = Proportional_viscosity(VolFraction / packing_factor, mu_a, nu_s*rho_s);
 
                         
                         break;
@@ -429,11 +429,11 @@ class GranularViscosityLinker
                             mu_dev= (nu_s*rho_s-mu_a);
                             break;
                         case 2:
-                            mu_dev= (2.5*mu_eins[ip]/(1.0-VolFraction/alpha_max));
+                            mu_dev= (2.5*mu_eins[ip]/(1.0-VolFraction/packing_factor));
                             break;
                         case 3:
    
-                            dmu2=2.5*(mu_eins[ip])/(1.0-VolFraction/alpha_max);
+                            dmu2=2.5*(mu_eins[ip])/(1.0-VolFraction/packing_factor);
                             deriv2 = 1.0;
                             //deriv2 = pow(  viscosity_granular[ip] , 2) * ( VolFraction / pow(mu_eins[ip]+mu_sand[ip],2) + (1-VolFraction)/pow(mu_eins[ip],2)    );
                             //deriv = -pow(  viscosity_granular[ip] , 2) * ( 1 / (mu_eins[ip]+mu_sand[ip]) - 1 / mu_eins[ip]    );
@@ -444,7 +444,7 @@ class GranularViscosityLinker
                             break;
                         case 4:
                             
-                            dmu2=2.5*(mu_eins[ip])/(1-vVolumeFraction[ip]/alpha_max);
+                            dmu2=2.5*(mu_eins[ip])/(1-vVolumeFraction[ip]/packing_factor);
                             deriv2 = 1.0;
                             
                             deriv = 0.0;
