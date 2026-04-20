@@ -43,7 +43,7 @@
 #include "stabilization.h"
 #include "nodal_pressure_grad.h"
 #include "shear_stress.h"
-
+#include "pressure_jump.h"
 #include "turbulent_viscosity_fv1.h"
 
 #include "lib_disc/function_spaces/grid_function.h"
@@ -359,6 +359,7 @@ static void Domain(Registry& reg, string grp)
             .add_method("set_diffusion", static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> >)>(&T::set_diffusion), "", "Diffusion")
 			.add_method("set_average_gamma", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_average_gamma), "", "AverageGamma")
             .add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
+			.add_method("set_pressure_jump", static_cast<void (T::*)( const std::string&)>(&T::set_pressure_jump), "", "PressureJump")
             .add_method("set_interface_normal", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_interface_normal), "", "SurfaceNormal")
             .add_method("volume_fraction", &T::volume_fraction)
             .add_method("volume_fraction_grad", &T::volume_fraction_grad)
@@ -505,6 +506,24 @@ static void Dimension(Registry& reg, string grp)
 			.add_constructor()
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesFV1WithoutStabilization", tag);
+	}
+//	INavierStokesPressureJump
+	{
+	   typedef INavierStokesPressureJump<dim> T;
+	   string name = string("INavierStokesPressureJump").append(suffix);
+	   reg.add_class_<T>(name, grp);
+	   reg.add_class_to_group(name, "INavierStokesPressureJump", tag);
+   }
+
+//    INavierStokesViscousPressureJump
+	{
+		typedef NavierStokesViscousPressureJump<dim> T;
+		typedef INavierStokesPressureJump<dim> TBase;
+		string name = string("NavierStokesViscousPressureJump").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "NavierStokesViscousPressureJump", tag);
 	}
 }
 

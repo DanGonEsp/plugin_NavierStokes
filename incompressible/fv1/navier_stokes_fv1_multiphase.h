@@ -46,6 +46,7 @@
 #include "../../upwind_interface.h"
 #include "stabilization.h"
 #include "../../properties_interface.h"
+#include "pressure_jump.h"
 
 namespace ug{
 namespace NavierStokes{
@@ -239,6 +240,23 @@ class NavierStokesFV1M
 				if (m_spStab.valid()) set_upwind(m_spStab);
 				else UG_THROW("Stabilization must be specified previously.\n");
 			}
+		}
+	
+
+		void set_pressure_jump( const std::string& diffLength)
+		{
+			m_spPressureJump = CreateNavierStokesPressureJump<dim>("viscous");
+			m_spPressureJump->set_diffusion_length(diffLength);
+			if (m_spConvUpwind.invalid())
+				UG_THROW("Upwind must be specified before Pressure jump.\n");
+			m_spPressureJump->set_upwind(m_spConvUpwind);
+			
+			if (m_spStab.invalid())
+				UG_THROW("Stabilization must be specified before Pressure jump.\n");
+			m_spStab->set_pressure_jump(m_spPressureJump);
+			
+			m_pressure_jump = true;
+			
 		}
         void set_phase_parameters(Interface<dim>* user)
         {
@@ -733,6 +751,7 @@ class NavierStokesFV1M
 
 	///	Data import for kinematic viscosity
 		DataImport<number, dim> m_imKinViscosity;
+		DataImport<number, dim> m_imKinViscositySCV;
         DataImport<number, dim> m_imKinViscosity_old;
 
 	///	Data import for density
@@ -771,6 +790,9 @@ class NavierStokesFV1M
     ///    Upwinding for VolFraction in convective term of Transport equation
         SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind_vol;
 	
+	///    Pressure jump in Pressure field
+		SmartPtr<INavierStokesPressureJump<dim> > m_spPressureJump;
+	
 
 
 	/// abbreviation for pressure and volume fraction
@@ -784,6 +806,7 @@ class NavierStokesFV1M
 		using base_type::m_bLaplace;
         using base_type::m_gradDivFactor;
 		using base_type::m_div_correction;
+		bool m_pressure_jump = false;
 
 		virtual void init();
 

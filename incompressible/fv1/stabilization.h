@@ -38,6 +38,7 @@
 #define UG_NSSTAB_ASSERT(cond, exp) UG_ASSERT((cond), (exp))
 
 #include "../../upwind_interface.h"
+#include "pressure_jump.h"
 #include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
 #include "lib_disc/spatial_disc/user_data/data_import.h"
 #include "../../properties_interface.h"
@@ -110,6 +111,18 @@ class INavierStokesFV1Stabilization
 		bool upwind_valid() const {return m_spConstUpwind.valid();}
 	/// returns if the upwind pointer is valid
 		bool upwind_valid_rel() const {return m_spConstUpwind_rel.valid();}
+	
+	///    sets the pressure jump method
+		void set_pressure_jump(SmartPtr<INavierStokesPressureJump<dim> >  spPressureJump)
+		{
+			m_spPressureJump = spPressureJump;
+			m_spConstPressureJump = spPressureJump;
+		}
+	///    returns the upwind
+		const ConstSmartPtr<INavierStokesPressureJump<dim> >& pressure_jump() const {return m_spConstPressureJump;}
+	
+	/// returns if the upwind pointer is valid
+		bool pressure_jump_valid() const {return m_spConstPressureJump.valid();}
     
 
 	///	set the FV1 Geometry type to use for next updates
@@ -370,6 +383,11 @@ class INavierStokesFV1Stabilization
 		SmartPtr<INavierStokesUpwind<dim> > m_spUpwind_rel;
 	///	Upwind object (if set), the same as m_spUpwind, but as a const
 		ConstSmartPtr<INavierStokesUpwind<dim> > m_spConstUpwind_rel;
+	
+	///    Pressure jump object (if set)
+		SmartPtr<INavierStokesPressureJump<dim> > m_spPressureJump;
+	///    Pressure jump object (if set), the same as m_spPressureJump, but as a const
+		ConstSmartPtr<INavierStokesPressureJump<dim> > m_spConstPressureJump;
     
 	
 	//////////////////////////

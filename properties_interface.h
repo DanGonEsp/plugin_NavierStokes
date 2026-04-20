@@ -737,12 +737,12 @@ class Interface
 
 		template <typename TElem, typename TFVGeom>
 		inline
-		void PropertiesJump(const TFVGeom& geo, const DataImport<number, dim>& VolFraction, const DataImport<number, dim>& JumpShape, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, DataImport<MathVector<dim>, dim>& SourceSCV,size_t numSh, bool& interface, bool* Phase2, number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& Source_l, MathVector<dim>& Source_g, const number m_interface_vol_fraction)
+		void PropertiesJump(const TFVGeom& geo, number* JumpShape, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, DataImport<MathVector<dim>, dim>& SourceSCV,size_t numSh, const bool interface, bool* Phase2, number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& Source_l, MathVector<dim>& Source_g)
 		{
 			
-			UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
+			/*UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
 			
-			interface = cut_interface(JumpShape, numSh);
+			interface = cut_interface(JumpShape, numSh);*/
 			
 			
 			
@@ -783,7 +783,7 @@ class Interface
 
 			}
 			Cval *= 1.0/vol;*/
-			this->template phase<TFVGeom>(geo,JumpShape.values(), Phase2);
+			this->template phase<TFVGeom>(geo,JumpShape, Phase2);
 			
 		}
 		bool cut_interface(const DataImport<number, dim>& JumpShape, const size_t numSh)
@@ -811,7 +811,7 @@ class Interface
 
 		template <typename TElem, typename TFVGeom>
 		inline
-		void phase(const TFVGeom& geo, const number JumpShape[], bool* Phase2)
+		void phase(const TFVGeom& geo,number* JumpShape, bool* Phase2)
 		{
 			
 			for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -979,7 +979,7 @@ class Interface
 
 		template <typename TElem, typename TFVGeom>
 		inline
-		void InterfaceSCVFShapes( number** SCVFinterShape, const TFVGeom& geo, const DataImport<number, dim>& VolFraction, const DataImport<number, dim>& JumpShape, size_t numSh, const number m_interface_vol_fraction)
+		void InterfaceSCVFShapes( number** SCVFinterShape, const TFVGeom& geo, const LocalVector& u, const DataImport<number, dim>& JumpShape, size_t numSh, const size_t _C_ )
 		{
 			/////////////////////////////////////////////////////////////////////////////
 			// Calculation X_interface
@@ -1016,12 +1016,12 @@ class Interface
 				
 				if (JumpShape[from]*JumpShape[to] < 0.0)
 				{
-					c_from = VolFraction[from];
-					c_to = VolFraction[to];
+					c_from = u(_C_,from);
+					c_to = u(_C_,to);
 
 					DC=c_to-c_from;
 					
-					theta_to=  (c_to   - m_interface_vol_fraction)/DC;
+					theta_to=  (c_to   - m_interface_value)/DC;
 					
 					count_interface += 1.0;
 					VecScaleAppend(vLocIP_SCVF[ip], 1.0  ,geo.scv_local_ips()[to],-1.0 * theta_to, geo.scv_local_ips()[to],theta_to,geo.scv_local_ips()[from]);
@@ -1074,7 +1074,7 @@ class Interface
 
 		template <typename TElem, typename TFVGeom>
 		inline
-		void InterfaceShape(number* InterfaceShape, const TFVGeom& geo, const DataImport<number, dim>& VolFraction, const DataImport<number, dim>& JumpShape, size_t numSh, const number m_interface_vol_fraction)
+		void InterfaceShape(number* InterfaceShape, const TFVGeom& geo, const DataImport<number, dim>& VolFraction, const DataImport<number, dim>& JumpShape, size_t numSh)
 		{
 			/////////////////////////////////////////////////////////////////////////////
 			// Calculation X_interface
@@ -1114,7 +1114,7 @@ class Interface
 
 					DC=c_to-c_from;
 					
-					theta_to=  (c_to   - m_interface_vol_fraction)/DC;
+					theta_to=  (c_to   - m_interface_value)/DC;
 					
 					count_interface += 1.0;
 					VecScaleAppend(vLocIP_inter, 1.0  ,geo.scv_local_ips()[to],-1.0 * theta_to, geo.scv_local_ips()[to],theta_to,geo.scv_local_ips()[from]);
