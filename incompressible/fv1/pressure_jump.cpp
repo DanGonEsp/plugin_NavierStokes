@@ -126,11 +126,11 @@ update(const FV1Geometry<TElem, dim>* geo,
        const LocalVector& vCornerValue,
        const MathVector<dim> vStdVel[],
        const bool bStokes,
-       const DataImport<MathVector<dim>, dim>& n,
+       const DataImport<MathVector<dim>, dim>& Interface_normal,
        const DataImport<number, dim>& kinViscoSCV,
        const DataImport<number, dim>& density,
        const DataImport<number, dim>& densitySCV,
-       const number jump_shape[],
+       const int jump_shape[],
        const LocalVector* pvCornerValueOldTime, number dt,
        const number density_ref,
        const number mu_l,
@@ -154,6 +154,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     static const int refDim = ref_elem_type::dim;
     
     static const size_t numSh = FV1Geometry<TElem, dim>::numSCV;
+	size_t NumSCVF = geo->num_scvf();
     //    size of the system
     static const size_t N = numSh;
     
@@ -182,9 +183,28 @@ update(const FV1Geometry<TElem, dim>* geo,
             }
             
         }
-        
-        
     }
+	for(size_t ip = 0; ip < NumSCVF; ++ip)
+	{
+		VecSet(slip_vel(ip),0.0);
+		VecSet(stab_vel(ip),0.0);
+		stab_factor(ip) = 0.0;
+		VecSet(shear_stress(ip),0.0);
+		
+		for(size_t k = 0; k < numSh; ++k)
+		{
+			for(size_t d1 =0; d1 < dim; ++d1)
+			{
+				for(size_t d =0; d < dim; ++d)
+				{
+					shear_stress_shape_vel(ip, d, d1, k) = 0.0;
+					slip_vel_shape_vel(ip, d, d1, k) = 0.0;
+					stab_vel_shape_vel(ip, d, d1, k) = 0.0;
+				}
+			}
+		}
+		
+	}
     
     
     bool bSurfTensionJump = false;
@@ -192,7 +212,8 @@ update(const FV1Geometry<TElem, dim>* geo,
     bool bSourceJump = false;
     bool bViscJump = true;
     bool bGradientJump = false;
-    bool bSlipVel = false;
+    bool bSlipVel = true;
+	bool bInterfaceVel = true;
     
     
     const number alpha1= 1.0;
@@ -203,18 +224,26 @@ update(const FV1Geometry<TElem, dim>* geo,
     /////////////////////////////////////////////////////////////////////////////
     MathVector<dim> x, DX;
     MathVector<dim> x_interface[numSh];
+	number DX_from[NumSCVF];
+	number DX_to[NumSCVF];
+	number LLL[NumSCVF];
     MathVector<refDim> vLocIP_inter;
+	MathVector<dim> normal; VecSet(normal,0.0);
     VecSet(vLocIP_inter,0.0);
     number interN[numSh];
     number VolFrac[numSh];
-    size_t NumSCVF = geo->num_scvf();
     
-    number theta_to, theta_from, c_to, c_from, DC;
+    number theta_to, theta_from, c_to, c_from, DC, L;
     
+	for(size_t ip = 0; ip < N; ++ip)
+	{
+		VecScaleAppend(normal, 1.0/N, Interface_normal[ip]);
+	}
+	VecScale(normal, normal, 1.0/VecLength(normal));
     
     //vCornerValue.access_all();
     
-    if(bGradientJump || bSlipVel || bHidroPressJump)
+    if(bGradientJump || bSlipVel || bHidroPressJump || bInterfaceVel)
     {
         for(size_t ip = 0; ip < N; ++ip)
         {
@@ -233,18 +262,36 @@ update(const FV1Geometry<TElem, dim>* geo,
             const size_t from=scvf.from();
             const size_t to=scvf.to();
             
+			c_from = VolFrac[from];
+			c_to = VolFrac[to];
+			
+			DC=c_to-c_from;
+			
+			VecSubtract(DX,geo->scv_global_ips()[to],geo->scv_global_ips()[from]);
+			
+			
+			theta_to=  (c_to   - interface_value)/DC;
+			theta_from=(c_from - interface_value)/DC;
+			
+			//L = abs(VecProd(DX, normal));
+			//L = abs(VecProd(DX, normal)) + 1e-02*VecLength(DX);
+			//L = VecLength(DX);
+			LLL[ip] = VecLength(DX);
             if (jump_shape[from]*jump_shape[to] < 0.0)
             {
-                
-                c_from = VolFrac[from];
-                c_to = VolFrac[to];
-                
-                DC=c_to-c_from;
-                
-                VecSubtract(DX,geo->scv_global_ips()[to],geo->scv_global_ips()[from]);
-                
-                theta_to=  (c_to   - interface_value)/DC;
-                theta_from=(c_from - interface_value)/DC;
+				
+				c_from = VolFrac[from];
+				c_to = VolFrac[to];
+				
+				DC=c_to-c_from;
+				
+				VecSubtract(DX,geo->scv_global_ips()[to],geo->scv_global_ips()[from]);
+				
+				
+				theta_to=  (c_to   - interface_value)/DC;
+				theta_from=(c_from - interface_value)/DC;
+				
+	
                 
                 VecScaleAppend(x_interface[to], theta_to,   DX);
                 VecScaleAppend(x_interface[from],   theta_from, DX);
@@ -254,20 +301,119 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 
                 VecScaleAppend(vLocIP_inter, 1.0  ,geo->scv_local_ips()[to],-1.0 * theta_to, geo->scv_local_ips()[to],theta_to,geo->scv_local_ips()[from]);
+				
+				//UG_LOG("Interface from = "<< (DX_from[ip]/L)<<"   to = " <<(DX_to[ip]/L)<<"   L = " <<(L)<<"\n");
+				
+				L = VecLength(DX);//fmax(abs(VecProd(DX, normal)),5e-02*VecLength(DX));
+				DX_from[ip] = -L*theta_from;
+				DX_to[ip] = L*theta_to;
                 
             }
+			else
+			{
+				L = VecLength(DX);
+				DX_from[ip] = L/2;
+				DX_to[ip] = L/2;
+			}
+			
             
         }
         for(size_t sh = 0; sh < N; ++sh)
         {
             
             VecScale(x_interface[sh], x_interface[sh], 1.0 / interN[sh] );
-            VecScale(x_interface[sh], n[sh], VecProd(x_interface[sh],n[sh]) );
+            VecScale(x_interface[sh], normal, VecProd(x_interface[sh],normal) );
             
         }
     }
     
-    
+	/////////////////////////////////////////////////////////////////////////////
+	// InterfaceSlipVelocity
+	/////////////////////////////////////////////////////////////////////////////
+	
+	if(bInterfaceVel)
+	{
+		
+		for(size_t ip = 0; ip < NumSCVF; ++ip)
+		{
+			const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip);
+			
+			const size_t from=scvf.from();
+			const size_t to=scvf.to();
+
+			number mu_from =(jump_shape[from]>0)? mu_l:mu_g;
+			number mu_to =(jump_shape[to]>0)? mu_l:mu_g;
+			
+			number factor = mu_from * mu_to / (DX_from[ip]*mu_to + DX_to[ip]*mu_from) ;
+			
+			number factor2 = (DX_from[ip]*mu_to + DX_to[ip]*mu_from)  ;
+			number factor3 = 2.0*DX_to[ip]*DX_from[ip]*(DX_to[ip] + DX_from[ip]);
+			
+			
+			stab_factor(ip) = factor2/factor3;
+			
+			for(size_t k = 0; k < numSh; ++k)
+			{
+				
+				if(!(k == to) && !(k == from))
+					continue;
+				
+				const number sign = (k == to)? 1.0:-1.0;
+				number VelSum = sign * factor;
+				
+				const number sign2 = (k == to)? DX_from[ip]*mu_to:DX_to[ip]*mu_from;
+				number VelSum2 = sign2 / factor2;
+				number VelSum3 = sign2 / factor3;
+				
+				if(isnan(VelSum) || isnan(VelSum2) || isnan(VelSum3))
+				{
+					UG_THROW("Nan jump_shape to= "<<jump_shape[to]<<"  jump_shape from="<<jump_shape[from]<<"  Volfrom="<<VolFrac[from]<<"  Volto="<<VolFrac[to]<<" \n");
+
+					UG_THROW("Nan Velsum= "<<mu_from<<"  Velsum2="<<mu_to<<"  Velsum3="<<factor2<<" \n");
+					UG_THROW("Nan Velsum= "<<VelSum<<"  Velsum2="<<VelSum2<<"  Velsum3="<<VelSum3<<" \n");
+				}
+				
+				for(size_t d =0; d < dim; ++d)
+				{
+
+					
+					shear_stress_shape_vel(ip, d, d, k) += VelSum;
+					shear_stress(ip)[d] += VelSum * vCornerValue(d, k);
+					/*if(jump_shape[from]*jump_shape[to]<0)
+					{
+						for(size_t d1 =0; d1 < dim; ++d1)
+						{
+							shear_stress_shape_vel(ip, d, d1, k) += -VelSum * normal[d1]*normal[d];
+							shear_stress(ip)[d] += -VelSum * vCornerValue(d1, k);
+						}
+					}*/
+					
+					slip_vel_shape_vel(ip, d, d, k) += VelSum2;
+					slip_vel(ip)[d] += VelSum2 * vCornerValue(d, k);
+					/*if(jump_shape[from]*jump_shape[to]<0)
+					{
+						for(size_t d1 =0; d1 < dim; ++d1)
+						{
+							slip_vel_shape_vel(ip, d, d1, k) += -VelSum2 * normal[d1]*normal[d];
+							slip_vel(ip)[d] += -VelSum2 * vCornerValue(d1, k);
+						}
+					}*/
+					
+					
+					stab_vel_shape_vel(ip, d, d, k) += VelSum3;
+					stab_vel(ip)[d] += VelSum3 * vCornerValue(d, k);
+				
+				}
+			}
+
+		
+			
+		}// loop scvf
+		
+
+
+		
+	}// end if interface slip vel
     
     /////////////////////////////////////////////////////////////////////////////
     // SlipVelocity
@@ -298,14 +444,14 @@ update(const FV1Geometry<TElem, dim>* geo,
         number C_grad_magnitud = sqrt(VecProd(C_grad,C_grad));
         
         VelVel= Tang;
-        VecScale(normal_vel, n[0], VecProd(n[0],Tang));
+        VecScale(normal_vel, normal, VecProd(normal,Tang));
         VecSubtract(Tang,Tang,normal_vel);
         number Tang_mag= sqrt(VecProd(Tang,Tang));
         if( Tang_mag < 1e-08)
         {
             VecSet(Tang,0.0);
             Tang[0] = 1.0;
-            VecScale(normal_vel, n[0], VecProd(n[0],Tang));
+            VecScale(normal_vel, normal, VecProd(normal,Tang));
             VecSubtract(Tang,Tang,normal_vel);
             VecScale(Tang, Tang, 1.0 / sqrt(VecProd(Tang,Tang)));
             
@@ -321,7 +467,7 @@ update(const FV1Geometry<TElem, dim>* geo,
         for(size_t sh = 0; sh < numSh; ++sh)
         {
             number Nl = ( jump_shape[sh]>0) ? 1.0 : 0.0;
-            Visc_eff -= (mu_l - mu_g) * (VolFrac[sh] - interface_value) * Nl * VecProd(scv.global_grad(sh), n[0]) / C_grad_magnitud;
+            Visc_eff -= (mu_l - mu_g) * (VolFrac[sh] - interface_value) * Nl * VecProd(scv.global_grad(sh), normal) / C_grad_magnitud;
             
         }
         
@@ -335,14 +481,15 @@ update(const FV1Geometry<TElem, dim>* geo,
                 number Deriv = 0.0;
                 for(size_t d2 =0; d2 < dim; ++d2)
                 {
-                    Deriv +=  (Tang[d1]*n[0][d2] +Tang[d2]*n[0][d1]) * scv.global_grad(k)[d2];
+                    Deriv +=  (Tang[d1]*normal[d2] +Tang[d2]*normal[d1]) * scv.global_grad(k)[d2];
                 }
                 
                 for(size_t d =0; d < dim; ++d)
                 {
                     for(size_t ip = 0; ip < numSh; ++ip)
                     {
-                        number VelSum =  -VecProd(n[ip],x_interface[ip]) * (mu_l - mu_g) * Deriv * Tang[d] / Visc_eff;
+                        number VelSum =  -VecProd(normal,x_interface[ip]) * (mu_l - mu_g) * Deriv * Tang[d] / Visc_eff;
+						//number VelSum =  - (mu_l - mu_g) * Deriv * Tang[d] / Visc_eff;
                         tang_vel_shape_vel(ip, d, d1, k) +=  VelSum ;
                         tang_vel(ip)[d] += VelSum * vCornerValue(d1, k);
                     }
@@ -615,7 +762,7 @@ update(const FV1Geometry<TElem, dim>* geo,
                     
                     if (bViscJump)
                     {
-                        number sumVel =  inv(ip, ip2) * 2.0 * (mu_l-mu_g) * n[ip][d1] * VecProd(scv.global_grad(k), n[ip] ) ;
+                        number sumVel =  inv(ip, ip2) * 2.0 * (mu_l-mu_g) * normal[d1] * VecProd(scv.global_grad(k), normal ) ;
                         pressure_shape_vel(ip, d1, k) += sumVel;
                         P_jump[ip] += sumVel * vCornerValue(d1, k);
                     }
@@ -684,32 +831,39 @@ update(const FV1Geometry<TElem, dim>* geo,
             
         }
     }
-    bool f= true;
-    for(size_t ip = 0; ip < N; ++ip)
-    {
-    
-        if (!((geo->scv_global_ips()[ip][0] > 24.124) && (geo->scv_global_ips()[ip][0] < 24.376)))
-        {
-            f = f && false;
-            
-        }
-    }
+	bool f = true;
+	for (size_t ip = 0; ip < N; ++ip)
+	{
+		if (
+		(
+			!(
+			(geo->scv_global_ips()[ip][1] > 1.883) &&
+			(geo->scv_global_ips()[ip][1] < 1.995) &&
+			(geo->scv_global_ips()[ip][0] > 15.75) //&&
+			//(geo->scv_global_ips()[ip][0] < 18.061)
+			)
+		)
+			)
+		{
+			f = false;
+		}
+	}
 
     
     for(size_t ip = 0; ip < N; ++ip)
     {
         pressure_jump(ip) = P_jump[ip];
-        if (std::isnan(P_jump[ip]))
-        //if (false)
+        //if (std::isnan(P_jump[ip]))
+        if (false)
         {
             //const typename FV1Geometry<TElem, dim>::SCV& scv = geo->scv(ip);
             if(ip==0)
             {
-                printf("Pressure jump at model   %f------------------------------------------\n",interface_value );
-                printf("rho_l  = %f\n",rho_l);
-                printf("rho_g  = %f\n",rho_g);
-                //printf("mu_l  = %f\n",mu_l);
-                //printf("mu_g  = %f\n",mu_g);
+                UG_LOG("Pressure jump at model   " << interface_value <<"------------------------------------------\n");
+				UG_LOG("rho_l  = "<< rho_l <<"\n");
+				UG_LOG("rho_g  = "<< rho_g <<"\n");
+				UG_LOG("mu_l  = "<< mu_l <<"\n");
+				UG_LOG("mu_g  = "<< mu_g <<"\n");
                 //printf("dt  = %f\n",dt);
                 //printf("Inv_DiffLenSq  = %f\n",Inv_DiffLenSq);
                 /*printf("upwind_conv_length[0]  = %f\n",upwind_conv_length(0));
@@ -749,20 +903,61 @@ update(const FV1Geometry<TElem, dim>* geo,
                  */
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
-                    printf("PressureJump[%zu] = %f\n",ip2, P_jump[ip2]);
+                    UG_LOG("PressureJump["<< ip2 <<"] = "<< P_jump[ip2] <<"\n");
                 }
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
-                    printf("Pressure[%zu] = %f\n",ip2, vCornerValue(_P_, ip2));
+					UG_LOG("Pressure["<< ip2 <<"] = "<<vCornerValue(_P_, ip2)<<"\n");
                 }
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
-                    printf("Velt[%zu] = %lf      %lf\n",ip2, tang_vel(ip2)[0],tang_vel(ip2)[1]);
+					UG_LOG("Velt["<< ip2 <<"] = "<<tang_vel(ip2)[0]<<"      "<<tang_vel(ip2)[1]<<"\n");
                 }
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
-                    printf("U[%zu] = %lf      %lf\n",ip2, vCornerValue(0, ip2),vCornerValue(1, ip2));
+					UG_LOG("U["<< ip2 <<"] = "<<vCornerValue(0, ip2)<<"      "<< vCornerValue(1, ip2) <<"\n");
                 }
+				
+				for(size_t ip2 = 0; ip2 < NumSCVF; ++ip2)
+				{
+					const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip2);
+					
+					const size_t from=scvf.from();
+					const size_t to=scvf.to();
+					UG_LOG("ShearStress["<< from<<"  "<<to <<"] = "<<shear_stress(ip2)[0]<<"      "<<shear_stress(ip2)[1]<<"\n");
+				}
+				for(size_t ip2 = 0; ip2 < NumSCVF; ++ip2)
+				{
+					const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip2);
+					
+					const size_t from=scvf.from();
+					const size_t to=scvf.to();
+					UG_LOG("SlipVel["<< from<<"  "<<to <<"] = "<<slip_vel(ip2)[0]<<"      "<<slip_vel(ip2)[1]<<"\n");
+				}
+				for(size_t ip2 = 0; ip2 < NumSCVF; ++ip2)
+				{
+					const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip2);
+					
+					const size_t from=scvf.from();
+					const size_t to=scvf.to();
+					UG_LOG("StabVel["<< from<<"  "<<to <<"] = "<<stab_vel(ip2)[0]/stab_factor(ip2)<<"      "<<stab_vel(ip2)[1]/stab_factor(ip2)<<"\n");
+				}
+				for(size_t ip2 = 0; ip2 < NumSCVF; ++ip2)
+				{
+					const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip2);
+					
+					const size_t from=scvf.from();
+					const size_t to=scvf.to();
+					
+					MathVector<dim> VelVel; VecSet(VelVel,0.0);
+					for(size_t d = 0; d < dim; ++d)
+						for(size_t d1 = 0; d1 < dim; ++d1)
+							for(size_t k = 0; k < N; ++k)
+								VelVel[d] += stab_vel_shape_vel(ip2, d, d1, k)*vCornerValue(d1, k);
+								
+					
+					UG_LOG("StabVel2["<< from<<"  "<<to <<"] = "<<VelVel[0]/stab_factor(ip2)<<"      "<<VelVel[1]/stab_factor(ip2)<<"\n");
+				}
                 
                 /*for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
@@ -771,11 +966,30 @@ update(const FV1Geometry<TElem, dim>* geo,
                 
                 for(size_t ip2 = 0; ip2 < N; ++ip2)
                 {
-                    printf("vol_fraction[%zu] = %f\n",ip2, vCornerValue(_C_, ip2) );
+					UG_LOG("vol_fraction["<< ip2 <<"] = "<<vCornerValue(_C_, ip2)<<"\n");
                 }
+				for(size_t ip2 = 0; ip2 < N; ++ip2)
+				{
+					UG_LOG("JumpShape["<< ip2 <<"] = "<<jump_shape[ip2]<<"\n");
+				}
 
+				//UG_LOG("Visc Effec = "<<Visc_eff<<"\n");
+				
+
+				for(size_t ip2 = 0; ip2 < N; ++ip2)
+				{
+					UG_LOG("Coor["<<ip2<<"] =   "<<geo->scv_global_ips()[ip2][0]<<"      "<< geo->scv_global_ips()[ip2][1] <<"\n");
+				}
+				for(size_t ip2 = 0; ip2 < NumSCVF; ++ip2)
+				{
+					const typename FV1Geometry<TElem, dim>::SCVF scvf = geo->scvf(ip2);
+					
+					const size_t from=scvf.from();
+					const size_t to=scvf.to();
+					UG_LOG("LLL["<< from<<"  "<<to <<"] = "<<LLL[ip2]<<"\n");
+				}
                 
-                
+				UG_LOG("normal = "<<normal[0]<<"      "<< normal[1] <<"\n");
                 
             }
             
@@ -790,11 +1004,7 @@ update(const FV1Geometry<TElem, dim>* geo,
             //printf("VolFrac[%zu] = %f\n",ip, VolFrac[ip]);
 
             
-            //printf("Visc Effec = %f\n",Visc_eff);
-            
 
-            
-            printf("Coor[%zu] =   %f      %f\n",ip, geo->scv_global_ips()[ip][0], geo->scv_global_ips()[ip][1]);
             
             //printf("Xinter[%zu] = %f        %f\n",ip, x_interface[ip][0], x_interface[ip][1]);
             

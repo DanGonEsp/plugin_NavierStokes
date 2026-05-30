@@ -150,8 +150,8 @@ class StdTurbulentViscosityDataFV1
 	///	returns if grid function is needed for evaluation
 		virtual bool requires_grid_fct() const {return true;}
 
-		void assembleDeformationTensor(aVertexTensor& aaDefTensor,aVertexNumber& aaVol,SmartPtr<TGridFunction> u);
-		void assembleDeformationTensor(aVertexTensor& aaDefTensor,aVertexNumber& aaVol,aVertexDimVector aaU);
+		void assembleDeformationTensor(aVertexTensor& aaDefTensor,ATensor& aa_aDefTensor,aVertexNumber& aaVol,ANumber& aa_aVol,SmartPtr<TGridFunction> u);
+		void assembleDeformationTensor(aVertexTensor& aaDefTensor,ATensor& aa_aDefTensor,aVertexNumber& aaVol,ANumber& aa_aVol,aVertexDimVector aaU);
 
 		number FNorm(MathMatrix<dim,dim> M);
 
@@ -159,9 +159,9 @@ class StdTurbulentViscosityDataFV1
 		void addUiUjTerm(aVertexTensor& aaDefTensor,const number factor,SmartPtr<TGridFunction> u);
 
 		template <typename VType>
-		void elementFilter(PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaUHat,aVertexNumber& aaVol,const PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaU);
+		void elementFilter(PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaUHat, Attachment<VType>& aa_aUHat,aVertexNumber& aaVol, ANumber& aa_aVol,const PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaU);
 
-		void elementFilter(aVertexDimVector& aaUHat,aVertexNumber& aaVol,SmartPtr<TGridFunction> u);
+		void elementFilter(aVertexDimVector& aaUHat, AMathVectorDim& aa_aUHat,aVertexNumber& aaVol, ANumber& aa_aVol,SmartPtr<TGridFunction> u);
 
 		template <typename VType>
 		void scvFilter(PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaUHat,aVertexNumber& aaVol,const PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaU);

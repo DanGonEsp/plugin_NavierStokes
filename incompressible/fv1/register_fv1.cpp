@@ -94,7 +94,7 @@ static void DomainAlgebra(Registry& reg, string grp)
     //    NavierStokesInflow FV1M
     {
         typedef NavierStokesInflowFV1M<TDomain, TAlgebra> T;
-        typedef NavierStokesInflowBase<TDomain, TAlgebra> TBase;
+        typedef NavierStokesInflowBaseMultiphase<TDomain, TAlgebra> TBase;
         string name = string("NavierStokesInflowFV1M").append(suffix);
         reg.add_class_<T, TBase>(name, grp)
             .template add_constructor<void (*)(SmartPtr< NavierStokesFV1M<TDomain> >)>("MasterElemDisc")
@@ -282,6 +282,21 @@ static void DomainAlgebra(Registry& reg, string grp)
 		.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "DuneNormal", tag);
 	}
+	// MeanGradienP
+	{
+		string name = string("PressureGradientMean").append(suffix);
+		typedef PressureGradientMean<TFct> T;
+		typedef CplUserData<MathVector<dim>, dim> TBase;
+		typedef INewtonUpdate TBase2;
+		reg.add_class_<T, TBase,TBase2>(name, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >,SmartPtr<TFct>)>("Approximation space, grid function")
+				.add_method("set_theta", static_cast<void (T::*)(number)>(&T::set_theta), "", "Theta")
+				.add_method("set_gradient_limit", static_cast<void (T::*)(number)>(&T::set_gradient_limit), "", "GradLimit")
+				.add_method("set_phase_parameters", &T::set_phase_parameters)
+				.add_method("update", &T::update)
+		.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "PressureGradientMean", tag);
+	}
 
 }
 
@@ -354,13 +369,14 @@ static void Domain(Registry& reg, string grp)
             .add_method("set_upwind",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind))
             .add_method("set_upwind_vol",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind_vol))
 			.add_method("set_upwind_rel",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind_rel))
-            .add_method("set_relative_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_relative_velocity), "", "RelativeVel")
+            .add_method("set_relative_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >, int)>(&T::set_relative_velocity), "", "RelativeVel")
 			.add_method("set_slip_velocity", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_slip_velocity), "", "SlipVel")
             .add_method("set_diffusion", static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> >)>(&T::set_diffusion), "", "Diffusion")
 			.add_method("set_average_gamma", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_average_gamma), "", "AverageGamma")
             .add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
 			.add_method("set_pressure_jump", static_cast<void (T::*)( const std::string&)>(&T::set_pressure_jump), "", "PressureJump")
             .add_method("set_interface_normal", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_interface_normal), "", "SurfaceNormal")
+			.add_method("set_rhie_chow"       , static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_rhie_chow), "", "PressGradMean")
             .add_method("volume_fraction", &T::volume_fraction)
             .add_method("volume_fraction_grad", &T::volume_fraction_grad)
             .add_method("einstein_viscosity", &T::einstein_viscosity)
@@ -368,6 +384,8 @@ static void Domain(Registry& reg, string grp)
             .add_method("particle_pressure", &T::particle_pressure)
             .add_method("particle_pressure_grad", &T::particle_pressure_grad)
             .add_method("set_phase_parameters", &T::set_phase_parameters)
+			.add_method("set_transport_ip_velocity", &T::set_transport_ip_velocity)
+			.add_method("set_transport_jac", &T::set_transport_jac)
 			.add_method("set_div_correction", &T::set_div_correction)
             .set_construct_as_smart_pointer(true);
         reg.add_class_to_group(name, "NavierStokesFV1M", tag);

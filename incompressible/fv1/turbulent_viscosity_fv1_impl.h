@@ -82,7 +82,7 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::fillAttachment
 // go over all elements, interpolate data to barycenter, average by multiplying with corresponding element volume and deviding by complete adjacent element volume
 template <typename TData, int dim, typename TImpl,typename TGridFunction>
 template <typename VType>
-void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::elementFilter(PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaUHat,aVertexNumber& aaVol,const PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaU){
+void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::elementFilter(PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaUHat, Attachment<VType>& aa_aUHat,aVertexNumber& aaVol, ANumber& aa_aVol,const PeriodicAttachmentAccessor<Vertex,Attachment<VType> >& aaU){
 	//	get domain of grid function
 	domain_type& domain = *m_uInfo->domain().get();
 	DimFV1Geometry<dim> geo;
@@ -166,6 +166,12 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::elementFilter(
 			}
 		}
 	}
+	
+	#ifdef UG_PARALLEL
+		AttachmentAllReduce<Vertex> (*domain.grid(), aa_aVol , PCL_RO_SUM);
+		AttachmentAllReduce<Vertex> (*domain.grid(), aa_aUHat, PCL_RO_SUM);
+	#endif
+	
 	PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
 	// average
 	for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si)
@@ -183,7 +189,7 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::elementFilter(
 
 // go over all elements, interpolate data to barycenter, average by multiplying with corresponding element volume and deviding by complete adjacent element volume
 template <typename TData, int dim, typename TImpl,typename TGridFunction>
-void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::elementFilter(aVertexDimVector& aaUHat,aVertexNumber& aaVol,SmartPtr<TGridFunction> u){
+void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::elementFilter(aVertexDimVector& aaUHat,AMathVectorDim& aa_aUHat,aVertexNumber& aaVol, ANumber& aa_aVol ,SmartPtr<TGridFunction> u){
 	//	get domain of grid function
 	domain_type& domain = *m_uInfo->domain().get();
 	DimFV1Geometry<dim> geo;
@@ -271,6 +277,12 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::elementFilter(
 			}
 		}
 	}
+	
+	#ifdef UG_PARALLEL
+		AttachmentAllReduce<Vertex> (*domain.grid(), aa_aVol , PCL_RO_SUM);
+		AttachmentAllReduce<Vertex> (*domain.grid(), aa_aUHat, PCL_RO_SUM);
+	#endif
+	
 	PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
 	// average
 	for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si)
@@ -501,7 +513,7 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::scvFilter(aVer
 }
 
 template <typename TData, int dim, typename TImpl,typename TGridFunction>
-void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::assembleDeformationTensor(aVertexTensor& aaDefTensor,aVertexNumber& aaVol,SmartPtr<TGridFunction> u){
+void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::assembleDeformationTensor(aVertexTensor& aaDefTensor,ATensor& aa_aDefTensor,aVertexNumber& aaVol,ANumber& aa_aVol,SmartPtr<TGridFunction> u){
 	//	get domain
 	domain_type& domain = *u->domain().get();
 	// get periodic boundary manager
@@ -602,6 +614,12 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::assembleDeform
 				}
 			}
 	}
+	
+	#ifdef UG_PARALLEL
+		AttachmentAllReduce<Vertex> (*domain.grid(), aa_aVol , PCL_RO_SUM);
+		AttachmentAllReduce<Vertex> (*domain.grid(), aa_aDefTensor, PCL_RO_SUM);
+	#endif
+	
 	// average
 	for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
 		VertexIterator vertexIter = u->template begin<Vertex>(si);
@@ -635,7 +653,7 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::scaleTensorByN
 }
 
 template <typename TData, int dim, typename TImpl,typename TGridFunction>
-void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::assembleDeformationTensor(aVertexTensor& aaDefTensor,aVertexNumber& aaVol,aVertexDimVector aaU){
+void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::assembleDeformationTensor(aVertexTensor& aaDefTensor,ATensor& aa_aDefTensor,aVertexNumber& aaVol,ANumber& aa_aVol,aVertexDimVector aaU){
 	//	get domain of grid function
 	domain_type& domain = *m_uInfo->domain().get();
 	// get periodic boundary manager
@@ -737,6 +755,10 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::assembleDeform
 				}
 			}
 	}
+	#ifdef UG_PARALLEL
+		AttachmentAllReduce<Vertex> (*domain.grid(), aa_aVol , PCL_RO_SUM);
+		AttachmentAllReduce<Vertex> (*domain.grid(), aa_aDefTensor, PCL_RO_SUM);
+	#endif
 	// average
 	for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
 		VertexIterator vertexIter = m_uInfo->template begin<Vertex>(si);
@@ -817,6 +839,7 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::addUiUjTerm(aV
 
 template<typename TGridFunction>
 void FV1SmagorinskyTurbViscData<TGridFunction>::update(){
+	UG_LOG("Updating SmagorinskyTurbViscData... \n");
 	//	get domain of grid function
 	domain_type& domain = *m_u->domain().get();
 	SetAttachmentValues(m_acTurbulentViscosity, m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
@@ -825,7 +848,7 @@ void FV1SmagorinskyTurbViscData<TGridFunction>::update(){
 //	Vertex* vVrt[domain_traits<dim>::MaxNumVerticesOfElem];
 
 	// assemble deformation tensor fluxes
-	this->assembleDeformationTensor(m_acDeformation,m_acVolume,m_u);
+	this->assembleDeformationTensor(m_acDeformation,m_aDeformation,m_acVolume,m_aVolume,m_u);
 	// compute turbulent viscosity , loop over vertices
 	for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si)
 	{
@@ -852,6 +875,7 @@ void FV1SmagorinskyTurbViscData<TGridFunction>::update(){
 
 template<typename TGridFunction>
 void FV1DynamicTurbViscData<TGridFunction>::update(){
+	UG_LOG("Updating DynamicTurbViscData... \n");
 	//	get domain of grid function
 	domain_type& domain = *m_u->domain().get();
 	//	get position accessor
@@ -871,29 +895,29 @@ void FV1DynamicTurbViscData<TGridFunction>::update(){
 
 	// compute Lij term \hat{u_i u_j} - \hat{u_i} \hat{u_j}
 	// \hat{u}
-	this->elementFilter(m_acUHat,m_acVolumeHat,m_u);
+	this->elementFilter(m_acUHat, m_aUHat,m_acVolumeHat, m_aVolumeHat,m_u);
 	// use Mij attachment to store first Lij part
 	// u_i u_j
 	this->addUiUjTerm(m_acMij,1.0,m_u);
 	// \hat{u_i u_j}
-	this->elementFilter(m_acLij,m_acVolumeHat,m_acMij);
+	this->elementFilter(m_acLij,m_aLij,m_acVolumeHat,m_aVolumeHat,m_acMij);
 	// \hat{u_i u_j} - \hat{u_i} \hat{u_j}
 	this->addUiUjTerm(m_acLij,-1.0,m_acUHat);
 
 	// Mij term
 	// first term |\hat{S}| \hat{S}
 	// assemble \hat{S} using \hat{u}
-	this->assembleDeformationTensor(m_acDeformationHat,m_acVolume,m_acUHat);
+	this->assembleDeformationTensor(m_acDeformationHat,m_aDeformationHat,m_acVolume,m_aVolume,m_acUHat);
 	// normalize \hat{S}
 	this->scaleTensorByNorm(m_acDeformationHat);
 	// Mij second term \hat{|S|S}
 	// compute S
-	this->assembleDeformationTensor(m_acDeformation,m_acVolumeHat,m_u);
+	this->assembleDeformationTensor(m_acDeformation,m_aDeformation,m_acVolumeHat,m_aVolumeHat,m_u);
 	// compute |S| S
 	this->scaleTensorByNorm(m_acDeformation);
 	// filter |S| S
 	//for debug UG_LOG("------------------------------------------------------\n");
-	this->elementFilter(m_acMij,m_acVolumeHat,m_acDeformation);
+	this->elementFilter(m_acMij, m_aMij,m_acVolumeHat, m_aVolumeHat,m_acDeformation);
 
 	bool use_filter = false;
 
@@ -967,10 +991,10 @@ void FV1DynamicTurbViscData<TGridFunction>::update(){
 	if (m_spaceFilter==true){
 		// filter c
 		if (m_timeFilter==false)
-			this->elementFilter(m_acTurbulentC,m_acVolumeHat,m_acTurbulentViscosity);
+			this->elementFilter(m_acTurbulentC,m_aTurbulentC,m_acVolumeHat,m_aVolumeHat,m_acTurbulentViscosity);
 		else
 			// store c in volumeHat array
-			this->elementFilter(m_acVolumeHat,m_acVolumeHat,m_acTurbulentViscosity);
+			this->elementFilter(m_acVolumeHat, m_aVolumeHat,m_acVolumeHat,m_aVolumeHat,m_acTurbulentViscosity);
 		// compute turbulent viscosity
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si)
 		{

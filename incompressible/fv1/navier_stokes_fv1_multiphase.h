@@ -184,12 +184,13 @@ class NavierStokesFV1M
     ///    returns source
         SmartPtr<CplUserData<MathVector<dim>, dim> > source() {return m_imSourceSCV.user_data ();}
     
-        void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
+        void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user, int upwind_scheme);
 		void set_slip_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_diffusion(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > user);
     
         void set_average_gamma(SmartPtr<CplUserData<number, dim> > user);
         void set_interface_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
+		void set_rhie_chow(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
 
 
 	///	sets the stabilization used to compute the stabilized velocities
@@ -268,6 +269,14 @@ class NavierStokesFV1M
             m_spStab->set_phase_parameters(user);
             Inter = user;
         }
+		void set_transport_ip_velocity(const bool user)
+		{
+			m_transporting_vel_stab = user;
+		}
+		void set_transport_jac(const bool user)
+		{
+			m_transport_jac = user;
+		}
 	
     
     ///    returns the export of the VolumeFractions
@@ -594,10 +603,10 @@ class NavierStokesFV1M
 	 * \return			\f$\omega\f$ 	weighting factor
 	 */
 		template <typename TFVGeom>
-		inline number peclet_blend(MathVector<dim>& UpwindVel, const TFVGeom& geo, size_t ip,
-                                   const MathVector<dim>& StdVel, number kinVisco, number densitySCVF);
+		inline number peclet_blend(MathVector<dim>& UpwindVel, const MathVector<dim>& StdMomentum, const TFVGeom& geo, size_t ip,
+                                   const MathVector<dim>& StdVel, number kinVisco);
         template <typename TFVGeom>
-        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do, number* ConvRatio);
+        inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, MathVector<dim>* StdVel_ip, MathVector<dim>* StdMomentum, const DataImport<number, dim>& densitySCVF, const DataImport<number, dim>& densitySCV, const DataImport<number, dim>&  KinViscositySCV, number* Rho_up, number* Rho_do, number* ConvRatio);
     
         template <typename TFVGeom>
         inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* Vel_ip, MathVector<dim>* StdCharacteristicVel, MathVector<dim>* Flux,  const DataImport<MathVector<dim>, dim>& RelVelSCV, const DataImport<MathVector<dim>, dim>& SlipVelSCV, int* ShockCase);
@@ -767,13 +776,16 @@ class NavierStokesFV1M
         DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
 		DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCVF;
 	///    Data import for Slip velocity
-		DataImport<MathVector<dim>, dim> m_imSlipVelocitySCV;
+		DataImport<MathVector<dim>, dim> m_imSlipVelocitySCVF;
 	
 	///    Data import for Nodal ShearRate
 		DataImport<number, dim> m_imAverageGammaSCV;
     
     ///    Data import for multiphase flow
-        DataImport<MathVector<dim>, dim> m_imSurfaceNormalSCVF;
+		DataImport<MathVector<dim>, dim> m_imSurfaceNormalSCVF;
+		DataImport<MathVector<dim>, dim> m_imSurfaceNormalSCV;
+	
+		DataImport<MathVector<dim>, dim> m_imPressureGradientSCVF;
         Interface<dim>* Inter = NULL;
 
 	///	Stabilization for velocity in continuity equation
@@ -807,6 +819,9 @@ class NavierStokesFV1M
         using base_type::m_gradDivFactor;
 		using base_type::m_div_correction;
 		bool m_pressure_jump = false;
+		bool m_transporting_vel_stab = false;
+		bool m_transport_jac = false;
+		int m_upwind_vol_method = 0;
 
 		virtual void init();
 

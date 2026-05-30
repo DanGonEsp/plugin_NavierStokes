@@ -532,7 +532,19 @@ compute(const FV1Geometry<TElem, dim>* geo,
  			//  \todo: (optional) A convection length is not really defined.
  			//	       but in the computation of a stabilization the term cancels, so
  			//   	   we only have to ensure that the conv_lengh is non-zero
-			vConvLength[ip] = 1.0;
+			
+		// 	switch upwind to full
+			const number flux = VecDot(scvf.normal(), vIPVel[ip]);
+			if(flux > 0.0)
+			{
+				vUpShapeSh[ip][scvf.from()] = 1.0;
+				vConvLength[ip] = VecDistance(scvf.global_ip(), vCornerCoords[scvf.from()]);
+			}
+			else
+			{
+				vUpShapeSh[ip][scvf.to()] = 1.0;
+				vConvLength[ip] = VecDistance(scvf.global_ip(), vCornerCoords[scvf.to()]);
+			}
 			continue;
  		}
 

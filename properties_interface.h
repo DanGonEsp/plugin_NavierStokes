@@ -87,7 +87,8 @@ class Interface
 			m_packing_factor(0.6),
 			m_gravitation(-9.81),
 			m_RelVelError(2e-01),
-			epsilon(1e-03),
+			epsilon(1e-012),
+			m_delta(0.001),
 			m_bParticleGradientForce(false),
 			m_bConsistentGravity(false),
 			m_init(false)
@@ -206,7 +207,7 @@ class Interface
 					Dss =  slope ;
 			}
 			
-			if(std::isnan(ss) || ss<0.0 ) UG_THROW("Error in Einstein ViscosityLinker: Value = NaN" <<"  Volume Fraction = "<<phi<<".");
+			if(std::isnan(ss) || ss<0.0 ) UG_THROW("Error in Einstein ViscosityLinker: Value = NaN" <<"  Volume Fraction = "<<phi<<"  m_packing_factor =  " << m_packing_factor << ".");
 			//if(phi > alpha_max) UG_LOG("Phi > phi_max in Einstein Viscosity\n");
 		}
 
@@ -291,36 +292,689 @@ class Interface
 			//UG_LOG("Iterations = "<<iter<<"\n")
 			
 		}
-	
-		bool F_star(number& F_star, const number FL, const number FR, const number SL, const number SR, const number uL, const number uR, const number WL, const number WR, const number Vel_ip, const number  Ws)
+		void GodunovCharacteristic_ip(MathVector<dim>& vVel, MathVector<dim>& vStdVel, const number RhoL, const number RhoR, const number MuL, const number MuR, const MathVector<dim> vUL, const MathVector<dim> vUR, const MathVector<dim> vNormal)
 		{
-			size_t iter = 0;
-
-			number u_star = 0.5 + Vel_ip/(2.0*Ws);
-			number Second_deriv = -2.0*Ws;
-			bool entropy = false;
-			if(u_star<=fmax(uL,uR) && u_star>=fmin(uL,uR) )
+			number power = 1.0;
+			number FL, SL, FR, SR;
+			number area = VecLength(vNormal);
+			MathVector<dim> normal; VecScale(normal,vNormal, 1.0/area);
+			MathVector<dim> vVel_aux = 0.0;
+			MathVector<dim> vStdVel_aux = 0.0;
+			
+			SL=VecProd(vUL,normal);
+			SR=VecProd(vUR,normal);
+			
+			FL = RhoL*SL;
+			FR = RhoR*SR;
+			
+			VecScaleAdd(vStdVel_aux, RhoR/(RhoL + RhoR), vUR, RhoL/(RhoL + RhoR), vUL );
+			VecScaleAdd(vVel_aux, 0.5 , vUR, 0.5, vUL);
+			number dRho = fabs(RhoR- RhoL);
+			number theta = pow( dRho/(1.0+dRho), power);
+			
+			number S_val = 0.0;
+			
+			if(fabs(RhoR-RhoL)< 1e-08)
 			{
-				F_star = u_star * (Vel_ip + (1.0-u_star)*Ws);
-				entropy = true;
-				/*if(Second_deriv<=0)
-					F_star = fmin(fmin(F_star,FL),FR);
-				else
-					F_star = fmax(fmax(F_star,FL),FR);*/
+				//vStdVel = vVel_aux;
+				//vVel = vVel_aux;
+			}
+			else
+			{
+				S_val = RankineHugoniot(FR, FL, RhoR,  RhoL);
+
+				if(SL * SR >=0.0)
+				{
+
+					vStdVel = vStdVel_aux;
+					vVel = vStdVel_aux;
+					
+				}else if(SL > 0.0 && SR <0.0)
+				{
+					vStdVel = vStdVel_aux;
+					vVel = vStdVel_aux;
+				}else if(SL < 0.0 && SR > 0.0)
+				{
+					vStdVel = vStdVel_aux;
+					vVel = vStdVel_aux;
+					
+				}else
+				{
+					
+					
+					 UG_LOG("Shock or Rarefaction S_val   = "<< S_val   <<".\n");
+					 UG_LOG("Shock or Rarefaction VL   = " << VecLength(vUL)  <<"  VR   = "<< VecLength(vUR)   <<".\n");
+					 UG_LOG("Shock or Rarefaction SL   = " << SL  <<"  SR   = "<< SR   <<".\n");
+					 UG_LOG("Shock or Rarefaction RhoL = "<< RhoL <<"  RhoR = "<< RhoR <<".\n");
+					 UG_LOG("Shock or Rarefaction FL   = " << FL  <<"  FR   = "<< FR   <<".\n");
+					UG_THROW("Starting point.\n");
+				}
+					
+	
+			
+					
+				
+			}
+			
+			
+			//VecScaleAdd(vStdVel, 0.5, vUR, 0.5, vUL );
+			
+			/*if(SL*SR >= 0 )
+				//S_ip = vStdVel;
+			else
+			{
+				//number power = 1.0;
+				//number theta = 0.0;//pow(fabs(MuR- MuL) /(MuR + MuL), power);
+				//VecScaleAdd(Vel, 0.5 , vUR, 0.5, vUL);
+				
+				//VecScaleAdd(S_ip, 1.0 - theta, vStdVel, theta, Vel);
+				
+				
+			}*/
+			
+			//VecScaleAdd(vVel,   1.0 - theta, vStdVel, theta, vStdVel_aux);
+				
+	
+		}
+	
+	
+
+	
+		number RankineHugoniot(const number wFR, const number wFL, const number UR, const number UL)
+		{
+			return (wFR-wFL)/(UR-UL);
+		}
+		number RankineHugoniotCharac(const number uL, const number uR, const number Vn, const number Wn)
+		{
+			return Vn + (1.0-(uL+uR))*Wn;
+		}
+		
+		
+		bool Compute_F_star(number& F_star, const number wFL, const number wFR, const number wSL, const number wSR, const number uL, const number uR, const number wL, const number wR, const number V)
+		{
+
+			number w_star = 0.5 * (wL + wR);
+			number u_star = 0.5*(1.0 + V/w_star);
+			F_star = u_star * V + u_star * (1.0 - u_star) * w_star;
+			
+			number F_L = uL * V + uL * (1.0 - uL) * wL;
+			number F_R = uR * V + uR * (1.0 - uR) * wR;
+			
+			if(!(u_star < fmax(uL,uR) && u_star > fmin(uL,uR)))
+			{
+				
+				F_star = 0.0;
+				UG_LOG("Non valid number rarafection sonic V = " <<V<<"  uL = "<< uL << "  uR = "<< uR<<".\n");
+				UG_LOG("Non valid number rarafection sonic u_star = " <<u_star<<"  F_star = "<< F_star << "  F_L = "<< F_L<<"  F_R = "<< F_R <<".\n");
+				UG_THROW("RareFaction");
+				
+			}
+			
+			//Rusanov_flux(F_star, uL, uR,  SL,  SR,  wFL,  wFR);
+			//printf("rare");
+			
+		}
+		bool Compute_F_star_jac(number& F_star_jacL, number& F_star_jacR, const number wFL, const number wFR, const number wSL, const number wSR, const number uL, const number uR, const number WL, const number WR, const number Vel_ip)
+		{
+			F_star_jacL = 0.0;
+			F_star_jacR = 0.0;
+			/*size_t iter = 0;
+
+			number u_star = uL-SL*(uR-uL)/(SR-SL);
+			number w_star = WL + (WR-WL) * (u_star - uL) / (uR-uL);
+			
+			F_star_jacL = u_star*Vel_ip + u_star * (1.0-u_star)*w_star;*/
+			
+			//Rusanov_jac(F_star_jacL,F_star_jacR, uL, uR,  SL,  SR,  wFL,  wFR);
+			
+		}
+
+		void Flux_ip(number& Flux_ip, const number UL, const number UR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method)
+		{
+			
+			number wFL, wSL, wFR, wSR, WL, WR, Vn, Flux;
+			bool GeoDegL, GeoDegR;
+			bool MagDegL, MagDegR;
+			number area = VecLength(vNormal);
+			MathVector<dim> normal; VecScale(normal,vNormal, 1.0/area);
+			
+			Flux_function_interface(wFL,wSL, UL, WL, vWL, GeoDegL, MagDegL,
+									wFR,wSR, UR, WR, vWR, GeoDegR, MagDegR, Vn, vVel_ip, normal, true,true);
+			
+				
+			switch (upwind_vol_method) {
+				case 1:
+					Godunov_flux(Flux,UL,UR,wSL,wSR,wFL,wFR, WL,WR,Vn);
+					break;
+				case 2:
+					Rusanov_flux(Flux, UL,UR,wSL,wSR,wFL,wFR,Vn);
+					break;
+				case 3:
+					Roe_flux(Flux, UL,UR,wSL,wSR,wFL,wFR, WL,WR,Vn);
+					break;
+				default:
+					UG_THROW("Wrong model selected for solving riemman problem: PropInterface has options"
+							 " model= 0, 1 , 2, 3");
+					break;
+			}
+			if(isnan(Flux))
+			{
+				UG_THROW("Non valid number for FLUX = " <<Flux<<".\n");
+				
+			}
+			
+			
+			
+			Flux_ip = area * Flux;
+			
+			
+		}
+		void Flux_Jac_ip(number& JacVL, number& JacVR, number& JacWL, number& JacWR, const number UL, const number UR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method)
+		{
+			
+			number wFL, wSL, wFR, wSR, WL, WR, Vn, Flux;
+			bool GeoDegL, GeoDegR;
+			bool MagDegL, MagDegR;
+			number area = VecLength(vNormal);
+			MathVector<dim> normal; VecScale(normal,vNormal, 1.0/area);
+			
+			Flux_function_interface(wFL,wSL, UL, WL, vWL, GeoDegL, MagDegL,
+									wFR,wSR, UR, WR, vWR, GeoDegR, MagDegR, Vn, vVel_ip, normal, true,true);
+			
+				
+			switch (upwind_vol_method) {
+				case 1:
+					Godunov_jac(JacVL,JacVR, JacWL,JacWR,  UL, UR, wSL, wSR, wFL, wFR,  WL, WR,  Vn);
+					break;
+				case 2:
+					Rusanov_jac(JacVL,JacVR,JacWL,JacWR, UL, UR,  wSL,  wSR,  wFL,  wFR,  Vn);
+					break;
+				case 3:
+					Roe_jac(JacVL,JacVR,JacWL,JacWR, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
+					break;
+				default:
+					UG_THROW("Wrong model selected for solving riemman problem: PropInterface has options"
+								   " model= 0, 1 , 2")
+					break;
+			}
+			
+			if(isnan(JacWL + JacWR + JacVL + JacVR))
+			{
+				
+				UG_THROW("Non valid number for Jacobian in NonLinearTransportEquation JacWL = " <<JacWL<<"  JacWR = "<< JacWR << "  JacVL = "<< JacVL<<"  JacVR = "<< JacVR <<".\n");
+				
+			}
+			
+			JacWL = area * JacWL;
+			JacWR = area * JacWR;
+			JacVL = area * JacVL;
+			JacVR = area * JacVR;
+			
+			
+		}
+		void Flux_function_interface( number& wFL, number& wSL, const number uL, number& WL, const MathVector<dim> vWL, bool& boolGeomDegL, bool& boolMagDegL,
+									  number& wFR, number& wSR, const number uR, number& WR, const MathVector<dim> vWR, bool& boolGeomDegR, bool& boolMagDegR,
+						    number& Vn, const MathVector<dim> Vel_ip, const MathVector<dim> normal, const bool boolFlux, const bool boolFluxDeriv )
+		{
+			bool boolSameU = false;
+			
+			MathVector<dim> vDW;
+			VecSubtract(vDW, vWR,vWL);
+			number du = uR-uL;
+			boolSameU = true;
+			vDW = 0.0;
+			/*if(fabs(du)> epsilon)
+			{
+				VecScale(vDW,vDW,1.0/du);
+				boolSameU = false;
+			}*/
+	
+			
+			Flux_function( uL, wFL,  wSL, WL,  vWL, Vel_ip, vDW, normal, boolGeomDegL, boolMagDegL,  boolFlux, boolFluxDeriv );
+			Flux_function( uR, wFR,  wSR, WR,  vWR, Vel_ip, vDW, normal, boolGeomDegR, boolMagDegR,  boolFlux, boolFluxDeriv );
+			Vn = VecProd(Vel_ip,normal);
+			
+			
+		}
+	
+		void Flux_function( const number u, number& Flux, number& Flux_prime, number& Wn, const MathVector<dim> vW, const MathVector<dim> Vel_ip, const MathVector<dim> vDW, const MathVector<dim> normal,
+						   bool& boolGeomDeg, bool& boolMagDeg, const bool boolFlux, const bool boolFluxDeriv )
+		{
+			boolMagDeg = false;
+			boolGeomDeg = false;
+			
+			MathVector<dim> vFlux;
+			MathVector<dim> vFlux_prime;
+			
+			const number func = u*(1.0-u);
+			const number func_prime = 1.0-2.0*u;
+			
+			VecScale(vFlux, vW,func);
+			VecScaleAdd(vFlux_prime, func_prime, vW, func, vDW);
+			
+			
+			number Smag = VecLength(vFlux_prime);
+
+			Flux = VecProd(vFlux, normal);
+			Flux_prime = VecProd(vFlux_prime, normal);
+			
+			
+			if (Smag < epsilon)
+				boolMagDeg = true;
+			if(Flux_prime/Smag < epsilon &&  Smag>epsilon)
+				boolGeomDeg = true;
+				
+			Wn = VecProd(vW, normal);
+			if(isnan(Wn))
+				UG_LOG("  U = "<< u << "  normal = " <<normal[0]<<"  "<<normal[1]<< "  vW = "<< vW[0]<<"  "<< vW[1] <<".\n");
+				
+			
+		}
+
+		void Godunov_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
+		{
+			
+			number fL = Vn*UL + wFL;
+			number fR = Vn*UR + wFR;
+			
+			number w_star = 0.5 * (WL + WR);
+			number u_star = 0.5*(1.0 + Vn/w_star);
+			number F_star = u_star * Vn + u_star * (1.0 - u_star) * w_star;
+			
+			const number SL = Vn + wSL;
+			const number SR = Vn + wSR;
+			const number Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
+			const number S_abs = m_delta * fmax(fabs(SL), fabs(SR));
+
+			if (UL <= UR) {
+				// Rarefaction/Increasing case: Look for a Minimum
+				if (UL <= u_star && u_star <= UR) {
+					// Sonic point is inside the range
+					Flux =  fmin(fmin(fL, fR),F_star);
+					Flux += -0.5*S_abs*(UR-UL);
+				}else{
+					Flux = (Sw > 0)? fL:fR;
+				}
+			} else {
+				// Shock/Decreasing case: Look for a Maximum
+				if (UR <= u_star && u_star <= UL) {
+					// Sonic point is inside the range
+					Flux =  fmax(fmax(fL, fR),F_star);
+					Flux += -0.5*S_abs*(UR-UL);
+				} else {
+					Flux = (Sw > 0)? fL:fR;
+				}
+			}
+			/*
+			number Sw = 0.0;
+			number SR = Vn + wSR;
+			number SL = Vn + wSL;
+			int ShockCase; bool shock_elem = false; bool rarefaction_elem = false;
+			const number Smax = fmax(fabs(SR), fabs(SL));
+			const number Smin = fmin(fabs(SR), fabs(SL));
+			number GodunovFlux = 0.0;
+			
+			if ((SR * SL > 0.0))
+			{
+				
+				ShockCase = 0;
+
+				
+				Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
+				
+				GodunovFlux = (Sw > 0)? UL*Vn + wFL:UR*Vn +wFR;
+				
+				
+			}
+			else if ( SL >0.0 && SR<0.0  || fabs(UR-UL)<)
+			{
+				
+
+				shock_elem = true;
+				ShockCase= 1;
+
+				
+				Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
+				
+				GodunovFlux = (Sw > 0)? UL*Vn + wFL:UR*Vn +wFR;
+				
+				
+			}
+			else if((SL <=0.0 && SR>=0.0 ) )
+			{
+				
+				number F_star = 0.0;
+				Compute_F_star( F_star,  wFL,  wFR, SL, SR, UL,  UR, WL,  WR,  Vn);
+
+				ShockCase= 2;
+				rarefaction_elem = true;
+				
+				//if(!entropy)
+				//UG_LOG("Rarefaction error \n");
+				
+				GodunovFlux = F_star;
 				
 			}
 			else
 			{
-				/*if(Second_deriv<=0)
-					F_star = fmin(FR,FL);
-				else
-					F_star = fmax(FR,FL);*/
-				//UG_LOG("F* = "<< F_star<<" FL = "<< FL<<" FR = "<<FR<<" SL = "<< SL<<" SR = "<<SR<<" uL = "<<uL<< " uR =  "<<uR<<" WL = "<<WL<< " WR =  "<<WR<< " Vel = "<< Vel_ip<< " Ws = "<<Ws << " u* = "<<u_star<<" \n");
-				entropy = false;
+				UG_THROW("Non valid state in Godunov  .\n");
 			}
-			return entropy;
+			
+			Flux = GodunovFlux;// - 0.5 * 0.01 *Smax * (UR-UL);*/
 			
 		}
+		void Godunov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
+		{
+			
+			
+			const number SL = Vn + wSL;
+			const number SR = Vn + wSR;
+			number Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
+			const number S_abs = m_delta * fmax(fabs(SL), fabs(SR));
+			
+			int ShockCase; bool shock_elem; bool rarefaction_elem = false;
+			const number Smax = fmax(fabs(SR), fabs(SL));
+			const number Smin = fmin(fabs(SR), fabs(SL));
+			JacVL = 0.0;
+			JacVR = 0.0;
+			JacWL = 0.0;
+			JacWR = 0.0;
+			
+			number eps_diss = 1e-02;
+			
+			
+			
+			
+			
+			number fL = Vn*UL + wFL;
+			number fR = Vn*UR + wFR;
+			
+			number w_star = 0.5 * (WL + WR);
+			number u_star = 0.5*(1.0 + Vn/w_star);
+			number F_star = u_star * Vn + u_star * (1.0 - u_star) * w_star;
+
+			if (UL <= UR) {
+				// Rarefaction/Increasing case: Look for a Minimum
+				if (UL <= u_star && u_star <= UR) {
+					// Sonic point is inside the range
+					if(fmin(fL, fR) <= F_star)
+					{
+						JacWL = (Sw > 0)?  wSL: 0.0;
+						JacWR = (Sw > 0)? 0.0 : wSR;
+						
+						JacVL = (Sw > 0)?  Vn : 0.0;
+						JacVR = (Sw > 0)? 0.0 : Vn;
+						
+						
+					}
+					
+					
+					JacWL +=   0.5*S_abs;
+					JacWR += - 0.5*S_abs;
+					
+				}
+				else{
+					JacWL = (Sw > 0)?  wSL: 0.0;
+					JacWR = (Sw > 0)? 0.0 : wSR;
+					
+					JacVL = (Sw > 0)?  Vn : 0.0;
+					JacVR = (Sw > 0)? 0.0 : Vn;
+				}
+			} else {
+				// Shock/Decreasing case: Look for a Maximum
+				if (UR <= u_star && u_star <= UL)
+				{
+					// Sonic point is inside the range
+					if(fmax(fL, fR) >= F_star)
+					{
+						JacWL = (Sw > 0)?  wSL: 0.0;
+						JacWR = (Sw > 0)? 0.0 : wSR;
+						
+						JacVL = (Sw > 0)?  Vn : 0.0;
+						JacVR = (Sw > 0)? 0.0 : Vn;
+						
+						
+					}
+					
+					JacWL +=   0.5*S_abs;
+					JacWR += - 0.5*S_abs;
+						
+				}
+				else {
+					
+					JacWL = (Sw > 0)?  wSL: 0.0;
+					JacWR = (Sw > 0)? 0.0 : wSR;
+					
+					JacVL = (Sw > 0)?  Vn : 0.0;
+					JacVR = (Sw > 0)? 0.0 : Vn;
+					
+				}
+			}
+			
+			/*if(fabs(UL-UR)< epsilon)
+			{
+				
+			}
+			
+			if(Smin < epsilon || fabs(uR-uL)< epsilon || fabs(FR-FL)< epsilon)
+			 {
+			 //VecScale( StdCharacteristicVel[ip],scvf.normal(), Smax/ face_norm);
+			 //ShockCase[ip] = 3;
+			 //chararcter[ip] = false;
+			 //continue;
+			 number Vel_n = VecProd(Vel_ip[ip],scvf.normal())/ face_norm;
+			 number Ws_n = 0.0;
+			 
+			 number WL = 0.0;
+			 number WR = 0.0;
+			 
+			 if(RelVelSCV.data_given())
+			 {
+			 Ws_n += 0.5 * (VecProd(RelVelSCV[shR],scvf.normal()) + VecProd(RelVelSCV[shL],scvf.normal()))/ face_norm;
+			 WL +=  VecProd(RelVelSCV[shL],scvf.normal()) / face_norm;
+			 WR +=  VecProd(RelVelSCV[shR],scvf.normal()) / face_norm;
+			 }
+			 if(SlipVelSCV.data_given())
+			 {
+			 Ws_n += 0.5 * (VecProd(SlipVelSCV[shR],scvf.normal()) + VecProd(SlipVelSCV[shL],scvf.normal()))/ face_norm;
+			 WL +=  VecProd(SlipVelSCV[shL],scvf.normal()) / face_norm;
+			 WR +=  VecProd(SlipVelSCV[shR],scvf.normal()) / face_norm;
+			 
+			 }
+			 
+			 UG_LOG("Ip = "<<ip<<" FL = "<< FL<<" FR = "<<FR<<" SL = "<< SL<<" SR = "<<SR<<" uL = "<<uL<< " uR =  "<<uR<<" WL = "<<WL<< " WR =  "<<WR<< " Vel = "<< Vel_n<< " Ws = "<<Ws_n << " \n");
+			 
+			 }*/
+			
+			/*if(fabs(uR-uL)< eps )
+			 {
+			 VecScaleAdd(StdCharacteristicVel[ip],  0.5, LocalCharact_total_L, 0.5,  LocalCharact_total_R );
+			 ShockCase[ip] = 0;
+			 chararcter[ip] = false;
+			 }*/
+			
+			
+			/*if ((SR * SL > 0.0) )
+			{
+				
+
+				ShockCase = 0;
+				
+				Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
+				
+				JacWL = (Sw > 0)?  wSL: 0.0;
+				JacWR = (Sw > 0)? 0.0 : wSR;
+				
+				JacVL = (Sw > 0)?  Vn : 0.0;
+				JacVR = (Sw > 0)? 0.0 : Vn;
+				
+				
+			}
+			else if ( (SL >0.0 && SR<0.0 ) )
+			{
+				
+				shock_elem = true;
+				ShockCase= 1;
+				
+				Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
+				
+				JacWL = (Sw > 0)?  wSL: 0.0;
+				JacWR = (Sw > 0)? 0.0 : wSR;
+				
+				JacVL = (Sw > 0)?  Vn : 0.0;
+				JacVR = (Sw > 0)? 0.0 : Vn;
+				
+				//Roe_jac(JacVL,JacVR,JacWL,JacWR, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
+				
+				
+			}
+			else if((SL <=0.0 && SR>=0.0 ) )
+			{
+				
+				//number F_star_jacL = 0.0;
+				//number F_star_jacR = 0.0;
+				//Compute_F_star_jac( F_star_jacL, F_star_jacR,  wFL,  wFR, SL, SR, UL,  UR, WL,  WR,  Vn);
+
+				ShockCase= 2;
+				rarefaction_elem = true;
+				
+				//if(!entropy)
+				//UG_LOG("Rarefaction error \n");
+				
+				number w_star = 0.5*(WL + WR);
+				number u_star = 0.5*(UL + UR);
+				
+				number wS_star =  (1- 2.0*u_star)*w_star;
+				
+				JacWL = 0.0;//0.5*wS_star;
+				JacWR = 0.0;//0.5*wS_star;
+				JacVL = 0.0;// 0.5 * Vn;
+				JacVR = 0.0;//0.5 * Vn;
+				
+				//Roe_jac(JacVL,JacVR,JacWL,JacWR, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
+				
+			}
+			else
+			{
+				UG_THROW("Non valid state in Godunov Jac .\n");
+			}*/
+
+			//JacVL +=  +0.5 * eps_diss * Smax;
+			//JacVR +=  -0.5 * eps_diss * Smax;
+		
+			
+			
+		}
+		void Rusanov_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR,  const number Vn )
+		{
+
+			const number S=fmax(fabs(wSL),fabs(wSR));
+			
+			Flux = (Vn > 0)? UL*Vn:UR*Vn;
+			Flux +=  0.5 * (wFL + wFR) - 0.5*S*(UR-UL);
+			
+		}
+		void Rusanov_jac(number& JacVL,number& JacVR,number& JacWL,number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
+		{
+
+			const number S=fmax(fabs(wSL),fabs(wSR));
+			
+			JacWL = 0.5*(wSL) + 0.5*S;
+			JacVR = 0.5*(wSR) - 0.5*S;
+			
+			JacVL = (Vn > 0)?  Vn : 0.0;
+			JacVR = (Vn > 0)? 0.0 : Vn;
+			
+			
+		}
+		void Roe_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
+		{
+
+			number S;
+			const number SR =Vn + wSR;
+			const number SL =Vn + wSL;
+			
+			
+			S = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
+			//Entropy fixing Harten-Hyman
+			number S_abs = Harten_Hyman( S, SL, SR);
+			
+			
+			//Flux = (Vn > 0)? UL*Vn:UR*Vn;
+			
+			
+			Flux = 0.5 * (UL + UR)*Vn;
+			Flux +=   0.5 * (wFL + wFR) - 0.5*S_abs*(UR-UL);
+			
+		}
+		void Roe_jac(number& JacVL,number& JacVR, number& JacWL,number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
+		{
+			number S;
+			const number SR =Vn + wSR;
+			const number SL =Vn + wSL;
+			
+			
+			S = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
+
+			number S_abs = Harten_Hyman( S, SL, SR);
+			
+			JacWL = 0.5*(wSL) + 0.5*S_abs;
+			JacWR = 0.5*(wSR) - 0.5*S_abs;
+			
+			
+			//JacVL = (Vn > 0)?  Vn : 0.0;
+			//JacVR = (Vn > 0)? 0.0 : Vn;
+			JacVL =  0.5 * Vn;
+			JacVR =  0.5 * Vn;
+			
+			
+		}
+		//Entropy fixing Harten-Hyman
+		number Harten_Hyman(const number S, const number SL, const number SR)
+		{
+			// 1. Global Background Diffusion (The "Epsilon")
+			// This ensures the matrix is never singular.
+			const number S_max = fmax(fabs(SL), fabs(SR));
+			const number epsilon = m_delta * S_max + 1e-12; // Small floor to avoid div by zero
+	
+			// 2. Initial smoothed absolute value
+			number S_abs = (fabs(S) < epsilon) ? (S*S + epsilon*epsilon)/(2.0*epsilon) : fabs(S);
+
+			// 3. Rarefaction (Entropy) Fix
+			if(SL < 0.0 && SR > 0.0)
+			{
+				// Use the physical speeds to determine the fan width
+				number delta = fmax(fmax(0.0, S - SL), SR - S);
+				
+				// Ensure delta is at least as large as our global epsilon
+				delta = fmax(delta, epsilon);
+
+				if (fabs(S) < delta) {
+					S_abs = (S*S + delta*delta) / (2.0 * delta);
+				}
+			}
+			
+			return S_abs;
+		}
+	
+		//Entropy fixing Harten-Hyman
+		/*number Harten_Hyman(const number S, const number SL, const number SR)
+		{
+
+			number S_abs;
+		
+			
+			// Use the physical speeds to determine the fan width
+			number delta = fmax(fmax(0.0, S - SL), SR - S);
+			S_abs = fabs(S);
+			if (S_abs <= delta) {
+				S_abs = (S*S + delta*delta) / (2.0 * delta);
+			}
+
+
+			
+			return S_abs;
+		}*/
 	 
 
 		/*
@@ -737,7 +1391,7 @@ class Interface
 
 		template <typename TElem, typename TFVGeom>
 		inline
-		void PropertiesJump(const TFVGeom& geo, number* JumpShape, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, DataImport<MathVector<dim>, dim>& SourceSCV,size_t numSh, const bool interface, bool* Phase2, number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& Source_l, MathVector<dim>& Source_g)
+		void PropertiesJump(LocalVector* u, const size_t _C_, const TFVGeom& geo, int* JumpShape, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, DataImport<MathVector<dim>, dim>& SourceSCV,size_t numSh, const bool interface, bool* Phase2, number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& Source_l, MathVector<dim>& Source_g, bool* GFM)
 		{
 			
 			/*UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.");
@@ -751,6 +1405,7 @@ class Interface
 				return;
 			}
 			
+			Jump_Shape( u, _C_, numSh, JumpShape);
 			/*if (true)
 			{
 				
@@ -783,9 +1438,24 @@ class Interface
 
 			}
 			Cval *= 1.0/vol;*/
-			this->template phase<TFVGeom>(geo,JumpShape, Phase2);
+			this->template phase<TFVGeom>(geo,JumpShape, Phase2, GFM);
 			
 		}
+	
+		void Jump_Shape( LocalVector* u, const size_t _C_, const size_t numSH,  int* JumpShape)
+		{
+			
+			for(size_t sh = 0; sh < numSH; ++sh)
+			{
+				number c =(*u)(_C_,sh);
+				if (c>m_interface_value)
+					JumpShape[sh]= 1;
+				else
+					JumpShape[sh]= -1;
+			}
+			
+		}
+	
 		bool cut_interface(const DataImport<number, dim>& JumpShape, const size_t numSh)
 		{
 			
@@ -811,22 +1481,22 @@ class Interface
 
 		template <typename TElem, typename TFVGeom>
 		inline
-		void phase(const TFVGeom& geo,number* JumpShape, bool* Phase2)
+		void phase(const TFVGeom& geo,int* JumpShape, bool* Phase2, bool* GFM)
 		{
 			
 			for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 			{
 				//     get current SCV
 				const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+				GFM[ip]=true;
 				if(JumpShape[scvf.to()]*JumpShape[scvf.from()]<0.0)
 				{
-
 					Phase2[ip]=true;
-					
 				}
 				else
 				{
-
+					
+					
 					if(JumpShape[scvf.to()]>0.0)
 					{
 						Phase2[ip]=true;
@@ -893,7 +1563,7 @@ class Interface
 
 		}
 
-		void RhoMuSource( number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& vSource_l, MathVector<dim>& vSource_g, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, const DataImport<MathVector<dim>, dim>& SourceSCV, const DataImport<number, dim>& JumpShape, const size_t numSh)
+		void RhoMuSource( number& mu_l, number& mu_g, number& rho_l, number& rho_g, MathVector<dim>& vSource_l, MathVector<dim>& vSource_g, const DataImport<number, dim>& DensitySCV, const DataImport<number, dim>& KinViscSCV, const DataImport<MathVector<dim>, dim>& SourceSCV, int* JumpShape, const size_t numSh)
 		{
 
 			bool boolSource = (SourceSCV.data_given()) ? true : false;
@@ -916,7 +1586,7 @@ class Interface
 			{
 				if (JumpShape[sh]>0)
 				{
-					mu_2  +=  (DensitySCV[sh] * KinViscSCV[sh]);
+					mu_2  +=  1.0/(DensitySCV[sh] * KinViscSCV[sh]);
 					rho_2 +=  (DensitySCV[sh]) ;
 
 					if(boolSource) {VecScaleAppend(Source_2 , 1.0  ,SourceSCV[sh] );}
@@ -926,7 +1596,7 @@ class Interface
 				}
 				else
 				{
-					mu_1  +=  (DensitySCV[sh] * KinViscSCV[sh]);
+					mu_1  +=  1.0/(DensitySCV[sh] * KinViscSCV[sh]);
 					rho_1 +=  DensitySCV[sh] ;
 					if(boolSource) {VecScaleAppend(Source_1   , 1.0  ,SourceSCV[sh] );}
 					Count_1 +=1;
@@ -934,8 +1604,8 @@ class Interface
 				}
 				
 			}
-			mu_1 =  mu_1 / Count_1 ;
-			mu_2 =  mu_2 / Count_2 ;
+			mu_1 =  Count_1 / mu_1  ;
+			mu_2 =  Count_2 / mu_2  ;
 			rho_1 = rho_1 / Count_1;
 			rho_2 = rho_2 / Count_2;
 			
@@ -974,6 +1644,58 @@ class Interface
 
 			vSource_l = Source_2;
 			vSource_g = Source_1;
+
+		}
+		void InterMu( number& mu_l, number& mu_g, const number Mu[], int JumpShape[], const size_t numSh)
+		{
+
+	
+			
+			number mu_2 = 0.0, mu_1 = 0.0;
+			
+			
+			int Count_1 = 0;
+			int Count_2 = 0;
+			
+			for(size_t sh = 0; sh < numSh; ++sh)
+			{
+				if (JumpShape[sh]>0)
+				{
+					mu_2  +=  1.0/Mu[sh];
+					Count_2 +=1;
+					
+				}
+				else
+				{
+					mu_1  +=  1.0/Mu[sh];
+					Count_1 +=1;
+					
+				}
+				
+			}
+			mu_1 =  Count_1 / mu_1  ;
+			mu_2 =  Count_2 / mu_2  ;
+
+			
+			if ((mu_2 < mu_1)||(mu_2<=0.0)||(mu_1<=0.0))
+			{
+				printf("Mu2 = %f    Mu1 = %f\n",mu_2,mu_1);
+				
+				for(size_t sh = 0; sh < numSh; ++sh)
+					printf("mu[%zu] = %f\n", sh, Mu[sh]);
+				for(size_t sh = 0; sh < numSh; ++sh)
+					printf("JumpShape[%zu] = %f\n", sh, JumpShape[sh] );
+				
+				
+				
+				UG_THROW("Viscosity in phase 1 is lower that phase 2");
+			}
+			
+			
+			
+			
+			mu_l = mu_2;
+			mu_g = mu_1;
 
 		}
 
@@ -1246,7 +1968,7 @@ class Interface
 
 
 	protected:
-		float m_P0, rho_s, rho_a, mu_a, nu_s, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, FricMu_1, FricMu_2, I_0, deltaI, deltaPs, m_limit, m_dt, m_interface_value, m_packing_factor, m_gravitation, m_RelVelError, epsilon;
+		float m_P0, rho_s, rho_a, mu_a, nu_s, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, FricMu_1, FricMu_2, I_0, deltaI, deltaPs, m_limit, m_dt, m_interface_value, m_packing_factor, m_gravitation, m_RelVelError, epsilon, m_delta;
 		size_t drag_model;
 		bool m_bParticleGradientForce, m_bConsistentGravity, m_init;
         

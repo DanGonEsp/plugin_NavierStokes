@@ -76,7 +76,7 @@ class INavierStokesPressureJump
     public:
     ///    constructor
         INavierStokesPressureJump()
-        :    m_numScv(0), m_numSh(0), m_spUpwind(NULL)
+        :    m_numScvf(0), m_numScv(0), m_numSh(0), m_spUpwind(NULL)
         {
             m_vUpdateFunc.clear();
             //    default setup
@@ -114,6 +114,7 @@ class INavierStokesPressureJump
         //    set sizes
             TFVGeom& geo = GeomProvider<TFVGeom>::get();
             m_numScv = geo.num_scv();
+			m_numScvf = geo.num_scvf();
             m_numSh = geo.num_sh();
             if(m_spUpwind.valid()) m_spUpwind->template set_geometry_type<TFVGeom>();
 
@@ -149,8 +150,11 @@ class INavierStokesPressureJump
 
     public:
     
-    ///    number of integration points
-        size_t num_ip () const {return m_numScv;}
+    ///    number of scv integration points
+        size_t num_scv () const {return m_numScv;}
+	
+	///    number of scvf integration points
+		size_t num_scvf () const {return m_numScvf;}
         
     ///    number of shapes (corners)
         size_t num_sh () const {return m_numSh;}
@@ -197,6 +201,63 @@ class INavierStokesPressureJump
             UG_NSSTAB_ASSERT(sh < m_numSh,  "Invalid index.");
             return m_vvvvTangVelShapeVel[sh1][compOut][compIn][sh];
         }
+	/// Slip vel
+		const MathVector<dim>& slip_vel(size_t ip) const
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			return m_vSlipVel[ip];
+		}
+		number slip_vel_shape_vel(size_t ip, size_t compOut, size_t compIn, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim,  "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh,  "Invalid index.");
+			return m_vvvvSlipVelShapeVel[ip][compOut][compIn][sh];
+		}
+	/// Slip vel
+		const MathVector<dim>& stab_vel(size_t ip) const
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			return m_vStabVel[ip];
+		}
+		number stab_vel_shape_vel(size_t ip, size_t compOut, size_t compIn, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim,  "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh,  "Invalid index.");
+			return m_vvvvStabVelShapeVel[ip][compOut][compIn][sh];
+		}
+	/// Slip vel
+		const number& stab_factor(size_t ip) const
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			return m_vStabFactor[ip];
+		}
+	/// ShearStressl
+		const MathVector<dim>& shear_stress(size_t ip) const
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			return m_vShearStress[ip];
+		}
+		number shear_stress_shape_vel(size_t ip, size_t compOut, size_t compIn, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim,  "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh,  "Invalid index.");
+			return m_vvvvShearStressShapeVel[ip][compOut][compIn][sh];
+		}
+	
+		const number& visc_l() const
+		{
+			return m_Visc_l;
+		}
+		const number& visc_g() const
+		{
+			return m_Visc_g;
+		}
 
 
 
@@ -209,7 +270,7 @@ class INavierStokesPressureJump
                     const DataImport<number, dim>& kinViscoSCV,
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number JumpShape[],
+                    const int JumpShape[],
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const number mu_l,
@@ -271,12 +332,74 @@ class INavierStokesPressureJump
             UG_NSSTAB_ASSERT(sh2 < m_numSh, "Invalid index.");
             return m_vvvvTangVelShapeVel[sh1][compOut][compIn][sh2];
         }
+	/// Slip Vel vector
+		MathVector<dim>& slip_vel(size_t ip)
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			return m_vSlipVel[ip];
+		}
+	
+		number& slip_vel_shape_vel(size_t ip, size_t compOut, size_t compIn, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim,  "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvvSlipVelShapeVel[ip][compOut][compIn][sh];
+		}
+	/// Stab Vel vector
+		MathVector<dim>& stab_vel(size_t ip)
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			return m_vStabVel[ip];
+		}
+	
+		number& stab_vel_shape_vel(size_t ip, size_t compOut, size_t compIn, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim,  "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvvStabVelShapeVel[ip][compOut][compIn][sh];
+		}
+	/// Stab  factor
+		number& stab_factor(size_t ip)
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			return m_vStabFactor[ip];
+		}
+	/// ShearStress  vector
+		MathVector<dim>& shear_stress(size_t ip)
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			return m_vShearStress[ip];
+		}
+	
+		number& shear_stress_shape_vel(size_t ip, size_t compOut, size_t compIn, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(ip < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim,  "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvvShearStressShapeVel[ip][compOut][compIn][sh];
+		}
     ///    diff length
         number diff_length_sq_inv(size_t scvf) const
         {
             UG_NSSTAB_ASSERT(scvf < this_type::num_ip(), "Invalid index.");
             return m_vDiffLengthSqInv[scvf];
         }
+	
+	/// Viscosity
+		number& Visc_l()
+		{
+			return m_Visc_l;
+		}
+	/// Viscosity
+		number& Visc_g()
+		{
+			return m_Visc_g;
+		}
     
     /////////////////////////////////////////
     // forward methods of Upwind Velocity
@@ -341,6 +464,9 @@ class INavierStokesPressureJump
     
     private:
 
+	///    number of current scvf
+		size_t m_numScvf;
+	
     ///    number of current scv
         size_t m_numScv;
 
@@ -355,17 +481,44 @@ class INavierStokesPressureJump
 
     ///    pressure shapes w.r.t pressure
         number m_vvvPressureShapeP[maxNumSH][maxNumSH];
-    
+	
+	///    values of GF Velocity  at sh
         MathVector<dim> m_vTangVel[maxNumSH];
 
     ///    velocity jump shapes w.r.t vel
         number m_vvvvTangVelShapeVel[maxNumSH][dim][dim][maxNumSH];
+	
+	///    values of Slip Velocity  at interface (scvf)
+		MathVector<dim> m_vSlipVel[maxNumSCVF];
+
+	///    velocity jump shapes w.r.t vel
+		number m_vvvvSlipVelShapeVel[maxNumSCVF][dim][dim][maxNumSH];
+	
+	///    values of Slip Velocity  at interface (scvf)
+		MathVector<dim> m_vStabVel[maxNumSCVF];
+
+	///    velocity jump shapes w.r.t vel
+		number m_vvvvStabVelShapeVel[maxNumSCVF][dim][dim][maxNumSH];
+	
+	///    values of Stab Velocity  factor (scvf)
+		number m_vStabFactor[maxNumSCVF];
+	
+	///    values of Slip Velocity  at interface (scvf)
+		MathVector<dim> m_vShearStress[maxNumSCVF];
+
+	///    velocity jump shapes w.r.t vel
+		number m_vvvvShearStressShapeVel[maxNumSCVF][dim][dim][maxNumSH];
     
     ///    type of diffusion length computation
         DiffusionLength m_diffLengthType;
 
     ///    vector holding diffusion Length squared and inverted
         number m_vDiffLengthSqInv[this_type::maxNumSCVF];
+	
+	///    values of Slip Velocity  at interface (scvf)
+		number m_Visc_l;
+	///    values of Slip Velocity  at interface (scvf)
+		number m_Visc_g;
 
 
     
@@ -396,7 +549,7 @@ class INavierStokesPressureJump
                                               const DataImport<number, dim>& kinViscoSCV,
                                               const DataImport<number, dim>& density,
                                               const DataImport<number, dim>& densitySCV,
-                                              const number JumpShape[],
+                                              const int JumpShape[],
                                               const LocalVector* pvCornerValueOldTime, number dt,
                                               const number density_ref,
                                               const number mu_l,
@@ -456,6 +609,19 @@ class NavierStokesViscousPressureJump
     
         using base_type::tang_vel_shape_vel;
         using base_type::tang_vel;
+	
+		using base_type::slip_vel_shape_vel;
+		using base_type::slip_vel;
+	
+		using base_type::stab_vel_shape_vel;
+		using base_type::stab_vel;
+		using base_type::stab_factor;
+	
+		using base_type::shear_stress_shape_vel;
+		using base_type::shear_stress;
+	
+		using base_type::Visc_l;
+		using base_type::Visc_g;
     
     
         using base_type::diff_length_sq_inv;
@@ -497,7 +663,7 @@ class NavierStokesViscousPressureJump
                     const DataImport<number, dim>& kinViscoSCV,
                     const DataImport<number, dim>& density,
                     const DataImport<number, dim>& densitySCV,
-                    const number JumpShape[],
+                    const int JumpShape[],
                     const LocalVector* pvCornerValueOldTime, number dt,
                     const number density_ref,
                     const number mu_l,
@@ -525,7 +691,7 @@ class NavierStokesViscousPressureJump
                                              const DataImport<number, dim>& kinViscoSCV,
                                              const DataImport<number, dim>& density,
                                              const DataImport<number, dim>& densitySCV,
-                                             const number JumpShape[],
+                                             const int JumpShape[],
                                              const LocalVector* pvCornerValueOldTime, number dt,
                                              const number density_ref,
                                              const number mu_l,

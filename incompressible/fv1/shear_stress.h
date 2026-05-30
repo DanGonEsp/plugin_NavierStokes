@@ -780,8 +780,8 @@ class ParticlePressureFV1
 concept derived from grid_function_user_data.h
  */
 template <typename TGridFunction>
-class SlipVelocity
-:     public StdUserData<SlipVelocity<TGridFunction>, MathVector<TGridFunction::dim>, TGridFunction::dim>,
+class PressureGradientMean
+:     public StdUserData<PressureGradientMean<TGridFunction>, MathVector<TGridFunction::dim>, TGridFunction::dim>,
 	  virtual public INewtonUpdate
 {
 	///    domain type
@@ -823,8 +823,8 @@ class SlipVelocity
 private:
 
 	//    Normal attachment accessor (average normal in vertices)
-	AMathVectorDim m_aNormal;
-	aVertexDimVector m_normal;
+	AMathVectorDim m_aGradient;
+	aVertexDimVector m_gradient;
 	
 	//    Normal attachment accessor (average normal in vertices)
 	//AMathVectorDim m_aTang;
@@ -844,8 +844,8 @@ private:
 	grid_type* m_grid;
 	
 	number m_limit = 1e-03;
+	number m_limit_grad = 1e-03;
 	number m_theta_cr = 34.0*3.1416/180.0;
-	number m_vel = 0.15;
 
 private:
 
@@ -858,13 +858,10 @@ private:
 	{
 		m_theta_cr = data*3.1416/180.0;
 	}
-	void set_vel(number data)
-	{
-		m_vel = data;
-	}
 	void set_gradient_limit(number data)
 	{
 		m_limit = data;
+		m_limit_grad = 0.001 * data;
 	}
 	
 	void set_phase_parameters(Interface<dim>* user)
@@ -877,7 +874,7 @@ private:
 
 public:
 	/// constructor
-	SlipVelocity(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
+	PressureGradientMean(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
 		
 		if (spGridFct->num_fct() != dim+2)
 			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
@@ -892,20 +889,20 @@ public:
 		grid_type& grid = *domain.grid();
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
-		grid.template attach_to<Vertex>(m_aNormal);
+		grid.template attach_to<Vertex>(m_aGradient);
 		//grid.template attach_to<Vertex>(m_aTang);
 		grid.template attach_to<Vertex>(m_aVol);
-		m_normal.access(grid,m_aNormal);
+		m_gradient.access(grid,m_aGradient);
 		//m_tang.access(grid,m_aTang);
 		m_vol.access(grid,m_aVol);
 		// set all values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_gradient, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		//this->update();
 	}
 
-	virtual ~SlipVelocity(){};
+	virtual ~PressureGradientMean(){};
 
 	template <int refDim>
 	inline void evaluate(MathVector<dim> vValue[],
@@ -964,79 +961,22 @@ public:
 		
 		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
 		
-		bool cut_elem=false;
-		bool inside = false;
-		Inter->cut_element(cut_elem,inside,  u,dim+1);
-		bool ComputeSlipVel =(cut_elem || inside || !inside)? true : false;
 		
 		for (size_t ip=0;ip<nip;ip++)
 		{
-			MathVector<dim> tang = 0.0;
-			MathVector<dim> normal = 0.0;
+			MathVector<dim> gradientP = 0.0;
 			
-			if(ComputeSlipVel)
-			{
-				MathVector<dim> GradC = 0.0;
-				rTrialSpace.shapes(shapes,vLocIP[ip]);
-				
-				
-				//    evaluate at shapes at ip
-				rTrialSpace.grads(vLocGrad, vLocIP[ip]);
-				//    compute grad at ip
-				VecSet(locGrad, 0.0);
-				for(size_t sh = 0; sh < numVertices; ++sh)
-					VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
-				
-				//    compute global grad
-				mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
-				MatVecMult(GradC, JTInv, locGrad);
-				
-				
-				for (size_t sh=0;sh<numVertices;sh++)
-					for(int d = 0; d < refDim; ++d)
-					{
-						normal[d] += m_normal[vVrt[sh]][d]*shapes[sh];
-					}
-				number normal_mag =  VecTwoNorm(normal);
-				number gradc_mag =  VecTwoNorm(GradC);
-				if(normal_mag<m_limit)
+			//MathVector<dim> GradC = 0.0;
+			rTrialSpace.shapes(shapes,vLocIP[ip]);
+			
+			
+			for (size_t sh=0;sh<numVertices;sh++)
+				for(int d = 0; d < refDim; ++d)
 				{
-					VecSet(normal,0.0);
-					normal[dim-1] = 1.0;
+					gradientP[d] += m_gradient[vVrt[sh]][d]*shapes[sh];
 				}
-
-				VecScale(normal,normal,1.0/normal_mag);
-				
-				number tang_mag =  0.0;
-				for(int d = 0; d < refDim-1; ++d)
-					tang_mag += pow(normal[d],2.0);
-				tang_mag = sqrt(tang_mag);
-				
-				VecSet(tang,0.0);
-				if(tang_mag>m_limit && gradc_mag > m_limit)
-				{
-					for(int d = 0; d < refDim-1; ++d)
-						tang[d] = normal[d]*cos(m_theta_cr) / tang_mag;
-					tang[dim-1] = -sin(m_theta_cr);
-				}
-				number eps_slope = 1e-04;
-				number theta = acos(normal[dim-1]);
-				number slope = fabs(tan(theta));
-				number Value = slope - tan(m_theta_cr);
-				Value = (Value + sqrt(pow(Value,2.0) + eps_slope)) / 2.0;
-				//Value = (Value + fabs(Value))/2.0;
-				Value /= sqrt(1.0 + pow(slope,2.0));
-				
-				
-				VecScale(tang,tang,m_vel*Value);
-			}
-			//vValue[ip] = normal;
-			//MathVector<dim> W = 0.0; W[dim-1] = -6.85985 * sin(30*3.1416/180); W[dim-2] = 6.85985 * cos(30*3.1416/180);
-			//tang[dim-1]=0.0;
-			vValue[ip] = tang;
 			
-			
-			
+			vValue[ip] = gradientP;
 		}
 		
 		
@@ -1045,7 +985,7 @@ public:
 
 	void update(){
 		//    get domain
-		UG_LOG("Updating Slip Velocity... \n");
+		UG_LOG("Updating PressureGradientMean... \n");
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1061,7 +1001,7 @@ public:
 
 		// set volume, tang and normal values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_gradient, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		// compute pressure in vertices by averaging
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
@@ -1079,35 +1019,25 @@ public:
 				for(size_t i = 0; i < numVertices; ++i){
 					number scvVol = geo.scv(i).volume();
 					
-					MathVector<dim> GradC; VecSet(GradC,0.0);
-					MathVector<dim> Normal; VecSet(Normal,0.0);
+					MathVector<dim> GradP; VecSet(GradP,0.0);
 					
 					//    sum up contributions of each shape
 					for(size_t sh = 0; sh < numVertices; ++sh)
 					{
-						m_u->dof_indices(elem->vertex(sh), _C_, multInd);
+						m_u->dof_indices(elem->vertex(sh), _P_, multInd);
 						//    read value of index from vector
 						number uVal = DoFRef(*m_u,multInd[0]);
-						
+						//uVal = fmax(uVal, 0.0);
 						//  Loop dimensions for derivative
 						for(int d1 = 0; d1 <dim; ++d1)
 						{
-							GradC[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
+							GradP[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
 						}
 					}
-					number grad_c_mag = VecTwoNorm(GradC);
-					if(grad_c_mag<0.01*m_limit)
-					{
-						VecSet(Normal,0.0);
-					}
-					else
-					{
-						VecScale(Normal,GradC,-1.0/grad_c_mag);
-						m_vol[vVrt[i]]+=scvVol;
-					}
-					
+
+					m_vol[vVrt[i]]+=scvVol;
 					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol;
+						m_gradient[vVrt[i]][d1] += GradP[d1] * scvVol;
 					
 					
 				}
@@ -1116,7 +1046,7 @@ public:
 		
 		#ifdef UG_PARALLEL
 			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol, PCL_RO_SUM);
-			AttachmentAllReduce<Vertex> (*domain.grid(), m_aNormal, PCL_RO_SUM);
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aGradient, PCL_RO_SUM);
 		#endif
 		
 		PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
@@ -1128,16 +1058,10 @@ public:
 			{
 				Vertex* vrt = *iter;
 				if (pbm && pbm->is_slave(vrt)) continue;
-				if(m_vol[vrt] > 1e-10)
-				{
-					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vrt][d1] /= m_vol[vrt];
-				}
-				else
-				{
-					VecSet(m_normal[vrt],0.0);
-					m_normal[vrt][dim-1] = 1.0;
-				}
+
+				for(int d1 = 0; d1 <dim; ++d1)
+					m_gradient[vrt][d1] /= m_vol[vrt];
+
 				/*MathVector<dim> tang; VecSet(tang,0.0);
 				if(dim == 2)
 				{
@@ -1155,9 +1079,9 @@ public:
 					tang[0] = -m_normal[vrt][0]*m_normal[vrt][1];
 					tang[1] = -m_normal[vrt][1]*m_normal[vrt][2];
 					tang[2] =  m_normal[vrt][0]*m_normal[vrt][0] + m_normal[vrt][1]*m_normal[vrt][1];
-					UG_THROW("SlipVelocity: Works only for Dim = 2");
+					UG_THROW("MeanPressureGradient: Works only for Dim = 2");
 				}
-				else UG_THROW("SlipVelocity: Works only for Dim = 2 , 3");
+				else UG_THROW("MeanPressureGradient: Works only for Dim = 2 , 3");
 
 				//VecScale(tang, tang,1.0/VecTwoNorm(tang));
 				m_tang[vrt] = tang;*/
@@ -1174,14 +1098,14 @@ public:
 							 const MathVector<dim>& globIP,
 							 number time, int si) const
 	{
-		UG_THROW("SlipVel: Need element.");
+		UG_THROW("PressureGradientMean: Need element.");
 	}
 
 	virtual void operator() (MathVector<dim> vValue[],
 							 const MathVector<dim> vGlobIP[],
 							 number time, int si, const size_t nip) const
 	{
-		UG_THROW("SlipVel: Need element.");
+		UG_THROW("PressureGradientMean: Need element.");
 	}
 
 	virtual void compute(LocalVector* u, GridObject* elem,
@@ -1210,7 +1134,6 @@ public:
 	///    returns if grid function is needed for evaluation
 	virtual bool requires_grid_fct() const {return true;}
 };
-
 
 /**
 concept derived from grid_function_user_data.h
@@ -1280,6 +1203,7 @@ private:
 	grid_type* m_grid;
 	
 	number m_limit = 1e-03;
+	number m_limit_grad = 1e-03;
 	number m_theta_cr = 34.0*3.1416/180.0;
 
 private:
@@ -1296,6 +1220,7 @@ private:
 	void set_gradient_limit(number data)
 	{
 		m_limit = data;
+		m_limit_grad = 0.001 * data;
 	}
 	
 	void set_phase_parameters(Interface<dim>* user)
@@ -1400,7 +1325,7 @@ public:
 		{
 			MathVector<dim> normal = 0.0;
 			
-			MathVector<dim> GradC = 0.0;
+			//MathVector<dim> GradC = 0.0;
 			rTrialSpace.shapes(shapes,vLocIP[ip]);
 			
 			
@@ -1410,12 +1335,6 @@ public:
 					normal[d] += m_normal[vVrt[sh]][d]*shapes[sh];
 				}
 			number normal_mag =  VecTwoNorm(normal);
-
-			if(normal_mag<m_limit)
-			{
-				VecSet(normal,0.0);
-				normal[dim-1] = 1.0;
-			}
 
 			VecScale(normal,normal,1.0/normal_mag);
 			
@@ -1464,6 +1383,7 @@ public:
 					
 					MathVector<dim> GradC; VecSet(GradC,0.0);
 					MathVector<dim> Normal; VecSet(Normal,0.0);
+					MathVector<dim> nn; VecSet(Normal,0.0); nn[dim-1] = -1.0;
 					
 					//    sum up contributions of each shape
 					for(size_t sh = 0; sh < numVertices; ++sh)
@@ -1471,15 +1391,20 @@ public:
 						m_u->dof_indices(elem->vertex(sh), _C_, multInd);
 						//    read value of index from vector
 						number uVal = DoFRef(*m_u,multInd[0]);
-						
+						//uVal = fmax(uVal, 0.0);
 						//  Loop dimensions for derivative
 						for(int d1 = 0; d1 <dim; ++d1)
 						{
 							GradC[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
 						}
 					}
-					number grad_c_mag = VecTwoNorm(GradC);
-					if(grad_c_mag<0.01*m_limit)
+					const number grad_c_mag = VecTwoNorm(GradC);
+					const number eps = 5e-01;
+					const number p = 2.0;
+					const number alpha = fmin(pow(grad_c_mag,p)/(pow(grad_c_mag,p) + eps),1.0 );
+					VecScaleAdd(GradC,alpha, GradC, 1.0-alpha,nn);
+					const number GRAD_c_mag = VecTwoNorm(GradC);
+					/*if(grad_c_mag<=m_limit_grad)
 					{
 						VecSet(Normal,0.0);
 					}
@@ -1487,10 +1412,12 @@ public:
 					{
 						VecScale(Normal,GradC,-1.0/grad_c_mag);
 						m_vol[vVrt[i]]+=scvVol;
-					}
+					}*/
+					VecScale(Normal,GradC,-1.0/GRAD_c_mag);
+					m_vol[vVrt[i]]+=scvVol*alpha;
 					
 					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol;
+						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol * alpha;
 					
 					
 				}
@@ -1594,6 +1521,473 @@ public:
 	virtual bool requires_grid_fct() const {return true;}
 };
 
+
+/**
+concept derived from grid_function_user_data.h
+ */
+template <typename TGridFunction>
+class SlipVelocity
+:     public StdUserData<SlipVelocity<TGridFunction>, MathVector<TGridFunction::dim>, TGridFunction::dim>,
+	  virtual public INewtonUpdate
+{
+	///    domain type
+	typedef typename TGridFunction::domain_type domain_type;
+
+	///    algebra type
+	typedef typename TGridFunction::algebra_type algebra_type;
+
+	/// position accessor type
+	typedef typename domain_type::position_accessor_type position_accessor_type;
+
+	///    world dimension
+	static const int dim = domain_type::dim;
+	///    Pressure
+	static const int _P_ = domain_type::dim;
+	///    Pressure
+	static const int _C_ = domain_type::dim+1;
+
+	///    grid type
+	typedef typename domain_type::grid_type grid_type;
+
+	/// element type
+	typedef typename TGridFunction::template dim_traits<dim>::grid_base_object elem_type;
+
+	/// MathVector<dim> attachment
+	typedef MathVector<dim> vecDim;
+	typedef Attachment<vecDim> AMathVectorDim;
+
+	/// attachment accessor
+	typedef PeriodicAttachmentAccessor<Vertex,ANumber > aVertexNumber;
+	typedef PeriodicAttachmentAccessor<Vertex,AMathVectorDim > aVertexDimVector;
+
+	/// element iterator
+	typedef typename TGridFunction::template dim_traits<dim>::const_iterator ElemIterator;
+
+	/// vertex iterator
+	typedef typename TGridFunction::template traits<Vertex>::const_iterator VertexIterator;
+
+private:
+
+	//    Normal attachment accessor (average normal in vertices)
+	AMathVectorDim m_aNormal;
+	aVertexDimVector m_normal;
+	
+	//    Normal attachment accessor (average normal in vertices)
+	//AMathVectorDim m_aTang;
+	//aVertexDimVector m_tang;
+
+	//  volume attachment accessor
+	ANumber m_aVol;
+	aVertexNumber m_vol;
+
+	// level set grid function
+	SmartPtr<TGridFunction> m_u;
+
+	//    approximation space for level and surface grid
+	SmartPtr<ApproximationSpace<domain_type> > m_spApproxSpace;
+
+	//  grid
+	grid_type* m_grid;
+	
+	number m_limit = 1e-03;
+	number m_limit_grad = 1e-03;
+	number m_theta_cr = 34.0*3.1416/180.0;
+	number m_vel = 0.15;
+
+private:
+
+	///    Data import for source
+	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imSource;
+	Interface<dim>* Inter;
+
+		  public:
+	void set_theta(number data)
+	{
+		m_theta_cr = data*3.1416/180.0;
+	}
+	void set_vel(number data)
+	{
+		m_vel = data;
+	}
+	void set_gradient_limit(number data)
+	{
+		m_limit = data;
+		m_limit_grad = 0.001 * data;
+	}
+	
+	void set_phase_parameters(Interface<dim>* user)
+	{
+		if (!user) UG_THROW("Interface pointer is null!");
+		if (!user->valid())
+			UG_THROW("Interface parameters has not been initialized");
+		Inter = user;
+	}
+
+public:
+	/// constructor
+	SlipVelocity(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
+		
+		if (spGridFct->num_fct() != dim+2)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		for (int d=0;d<dim+2;d++)
+		{
+			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
+				UG_THROW("Component " << d << " in approximation space must be of Lagrange P1 type.");
+			}
+		}
+		m_u = spGridFct;
+		domain_type& domain = *m_u->domain().get();
+		grid_type& grid = *domain.grid();
+		m_grid = &grid;
+		m_spApproxSpace = approxSpace;
+		grid.template attach_to<Vertex>(m_aNormal);
+		//grid.template attach_to<Vertex>(m_aTang);
+		grid.template attach_to<Vertex>(m_aVol);
+		m_normal.access(grid,m_aNormal);
+		//m_tang.access(grid,m_aTang);
+		m_vol.access(grid,m_aVol);
+		// set all values to zero
+		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//this->update();
+	}
+
+	virtual ~SlipVelocity(){};
+
+	template <int refDim>
+	inline void evaluate(MathVector<dim> vValue[],
+						 const MathVector<dim> vGlobIP[],
+						 number time, int si,
+						 GridObject* elem,
+						 const MathVector<dim> vCornerCoords[],
+						 const MathVector<refDim> vLocIP[],
+						 const size_t nip,
+						 LocalVector* u,
+						 const MathMatrix<refDim, dim>* vJT = NULL) const
+	{
+		UG_ASSERT(dynamic_cast<elem_type*>(elem) != NULL, "Unsupported element type");
+		elem_type* element = static_cast<elem_type*>(elem);
+
+		//    reference object id
+		ReferenceObjectID roid = elem->reference_object_id();
+
+		const size_t numVertices = element->num_vertices();
+		const size_t MaxVertices = domain_traits<dim>::MaxNumVerticesOfElem;
+		//    get domain of grid function
+		const domain_type& domain = *m_u->domain().get();
+
+		//    get position accessor
+		typedef typename domain_type::position_accessor_type position_accessor_type;
+		const position_accessor_type& posAcc = domain.position_accessor();
+
+//        position_accessor_type aaPos = m_u->domain()->position_accessor();
+
+		// coord and vertex array
+		MathVector<dim> coCoord[numVertices];
+		Vertex* vVrt[numVertices];
+		DimFV1Geometry<dim> geo;
+
+		for(size_t i = 0; i < numVertices; ++i){
+			vVrt[i] = element->vertex(i);
+			coCoord[i] = posAcc[vVrt[i]];
+		};
+
+		// evaluate finite volume geometry
+		geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+
+		// Lagrange 1 trial space
+		const LocalShapeFunctionSet<refDim>& rTrialSpace =
+				LocalFiniteElementProvider::get<refDim>(roid, LFEID(LFEID::LAGRANGE, refDim, 1));
+
+		std::vector<number> shapes;
+		
+
+	//    storage for shape function at ip
+		MathVector<refDim> vLocGrad[numVertices];
+		MathVector<refDim> locGrad;
+
+	//    Reference Mapping
+		MathMatrix<dim, refDim> JTInv;
+		
+		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
+		
+		bool cut_elem=false;
+		bool boolInside = false;
+		Inter->cut_element(cut_elem,boolInside,  u,_C_);
+		bool ComputeSlipVel =(cut_elem || boolInside || !boolInside)? true : false;
+		
+		for (size_t ip=0;ip<nip;ip++)
+		{
+			MathVector<dim> tang = 0.0;
+			MathVector<dim> normal; VecSet(normal, 0.0);
+			const number eps_n = 1e-10;
+			const number eps_t = 1e-10;
+			const number eps_slope = 1e-05;
+			
+			if(ComputeSlipVel)
+			{
+				MathVector<dim> GradC = 0.0;
+				rTrialSpace.shapes(shapes,vLocIP[ip]);
+				
+				
+				//    evaluate at shapes at ip
+				rTrialSpace.grads(vLocGrad, vLocIP[ip]);
+				//    compute grad at ip
+				VecSet(locGrad, 0.0);
+				for(size_t sh = 0; sh < numVertices; ++sh)
+					VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
+				
+				//    compute global grad
+				mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
+				MatVecMult(GradC, JTInv, locGrad);
+				
+				number gradc_mag =  VecTwoNorm(GradC);
+				
+				for (size_t sh=0;sh<numVertices;sh++)
+				{
+					for(int d = 0; d < refDim; ++d)
+					{
+						normal[d] += m_normal[vVrt[sh]][d]*shapes[sh];
+					}
+				}
+				number normal_mag =  sqrt(pow(VecTwoNorm(normal),2.0) + eps_n*eps_n);
+
+				VecScale(normal,normal,1.0/normal_mag);
+				
+				number nxy2 = 0.0;
+				for(int d = 0; d < dim-1; ++d)
+					nxy2 += normal[d]*normal[d];
+
+				number nxy = sqrt(nxy2 + eps_t*eps_t);
+				number nz = sqrt(normal[dim-1]*normal[dim-1] + eps_n*eps_n);
+				
+
+
+				
+				MathVector<dim> h = normal;
+				h[dim-1] = 0.0;
+
+				number hmag = sqrt(VecProd(h,h) + eps_t*eps_t);
+				VecScale(h, h, 1.0 / hmag);
+				
+				MathVector<dim> z = 0.0;
+				z[dim-1] = 1.0;
+				VecScaleAdd(tang,cos(m_theta_cr),  h, - sin(m_theta_cr),z);
+				
+				
+				
+				
+				number slope = nxy / nz;
+				number Value = slope - tan(m_theta_cr);
+				Value = (Value + sqrt(pow(Value,2.0) + eps_slope)) / 2.0;
+				//Value = (Value + fabs(Value))/2.0;
+				Value /= sqrt(1.0 + pow(slope,2.0));
+				
+				if(isnan(Value))
+				{
+					UG_LOG("  normal = " <<normal[0]<<"  "<<normal[1]<<".\n");
+					
+					UG_LOG("  normal0 = " <<m_normal[vVrt[0]][0]<<"  "<<m_normal[vVrt[0]][1]<<".\n");
+					UG_LOG("  normal1 = " <<m_normal[vVrt[1]][0]<<"  "<<m_normal[vVrt[1]][1]<<".\n");
+					UG_LOG("  normal2 = " <<m_normal[vVrt[2]][0]<<"  "<<m_normal[vVrt[2]][1]<<".\n");
+					
+					
+					UG_THROW("Non valid number SlipVel  Value = " <<Value<<"  slope = "<< slope <<"  tang_mag = .\n");
+				}
+				VecScale(tang,tang,m_vel*Value);
+			}
+			//vValue[ip] = normal;
+			//MathVector<dim> W = 0.0; W[dim-1] = -6.85985 * sin(30*3.1416/180); W[dim-2] = 6.85985 * cos(30*3.1416/180);
+			//tang[dim-1]=0.0;
+			vValue[ip] = tang;
+			
+			
+			
+		}
+		
+		
+			
+	}; // evaluate
+
+	void update(){
+		//    get domain
+		UG_LOG("Updating Slip Velocity... \n");
+		domain_type& domain = *m_u->domain().get();
+		//    create Multiindex
+		std::vector<DoFIndex> multInd;
+		DimFV1Geometry<dim> geo;
+		//    coord and vertex array
+		MathVector<dim> coCoord[domain_traits<dim>::MaxNumVerticesOfElem];
+		MathVector<dim> coGrad[domain_traits<dim>::MaxNumVerticesOfElem];
+		Vertex* vVrt[domain_traits<dim>::MaxNumVerticesOfElem];
+
+		//    get position accessor
+		typedef typename domain_type::position_accessor_type position_accessor_type;
+		const position_accessor_type& posAcc = domain.position_accessor();
+
+		// set volume, tang and normal values to zero
+		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		// compute pressure in vertices by averaging
+		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
+			ElemIterator iter = m_u->template begin<elem_type>(si);
+			ElemIterator iterEnd = m_u->template end<elem_type>(si);
+			for(  ;iter !=iterEnd; ++iter)
+			{
+				elem_type* elem = *iter;
+				const size_t numVertices = elem->num_vertices();
+				for(size_t i = 0; i < numVertices; ++i){
+					vVrt[i] = elem->vertex(i);
+					coCoord[i] = posAcc[vVrt[i]];
+				};
+				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+				for(size_t i = 0; i < numVertices; ++i){
+					number scvVol = geo.scv(i).volume();
+					
+					MathVector<dim> GradC; VecSet(GradC,0.0);
+					MathVector<dim> Normal; VecSet(Normal,0.0);
+					MathVector<dim> nn; VecSet(Normal,0.0); nn[dim-1] = -1.0;
+					
+					//    sum up contributions of each shape
+					for(size_t sh = 0; sh < numVertices; ++sh)
+					{
+						m_u->dof_indices(elem->vertex(sh), _C_, multInd);
+						//    read value of index from vector
+						number uVal = DoFRef(*m_u,multInd[0]);
+						//uVal = fmax(uVal, 0.0);
+						//  Loop dimensions for derivative
+						for(int d1 = 0; d1 <dim; ++d1)
+						{
+							GradC[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
+						}
+					}
+					const number grad_c_mag = VecTwoNorm(GradC);
+					const number eps = 5e-01;
+					const number p = 2.0;
+					const number alpha = pow(grad_c_mag,p)/(pow(grad_c_mag,p) + eps) ;
+					VecScaleAdd(GradC,alpha, GradC, 1.0-alpha,nn);
+					const number GRAD_c_mag = VecTwoNorm(GradC);
+					
+					/*if(grad_c_mag<=m_limit_grad)
+					{
+						VecSet(Normal,0.0);
+					}
+					else
+					{
+						VecScale(Normal,GradC,-1.0/grad_c_mag);
+						m_vol[vVrt[i]]+=scvVol;
+					}*/
+					
+					VecScale(Normal,GradC,-1.0/GRAD_c_mag);
+					m_vol[vVrt[i]]+=scvVol*alpha;
+					
+					for(int d1 = 0; d1 <dim; ++d1)
+						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol*alpha;
+					
+					
+				}
+			}
+		}
+		
+		#ifdef UG_PARALLEL
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol, PCL_RO_SUM);
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aNormal, PCL_RO_SUM);
+		#endif
+		
+		PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
+		// go over all vertices and average
+		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
+			VertexIterator iter = m_u->template begin<Vertex>(si);
+			VertexIterator iterEnd = m_u->template end<Vertex>(si);
+			for(  ;iter !=iterEnd; ++iter)
+			{
+				Vertex* vrt = *iter;
+				if (pbm && pbm->is_slave(vrt)) continue;
+				if(m_vol[vrt] > 1e-10)
+				{
+					for(int d1 = 0; d1 <dim; ++d1)
+						m_normal[vrt][d1] /= m_vol[vrt];
+				}
+				else
+				{
+					VecSet(m_normal[vrt],0.0);
+					m_normal[vrt][dim-1] = 1.0;
+				}
+				/*MathVector<dim> tang; VecSet(tang,0.0);
+				if(dim == 2)
+				{
+					number ss;
+					if(fabs(m_normal[vrt][0])<m_limit)
+						ss = 1.0;
+					else
+						ss = (m_normal[vrt][0]*m_normal[vrt][1]>0.0)? 1.0 : -1.0;
+					
+					tang[0] =   ss * m_normal[vrt][1];
+					tang[1] = - fabs(m_normal[vrt][0]);
+				}
+				else if (dim == 3)
+				{
+					tang[0] = -m_normal[vrt][0]*m_normal[vrt][1];
+					tang[1] = -m_normal[vrt][1]*m_normal[vrt][2];
+					tang[2] =  m_normal[vrt][0]*m_normal[vrt][0] + m_normal[vrt][1]*m_normal[vrt][1];
+					UG_THROW("SlipVelocity: Works only for Dim = 2");
+				}
+				else UG_THROW("SlipVelocity: Works only for Dim = 2 , 3");
+
+				//VecScale(tang, tang,1.0/VecTwoNorm(tang));
+				m_tang[vrt] = tang;*/
+				
+			}
+		}
+	}
+
+private:
+	static const size_t max_number_of_ips = 20;
+
+public:
+	virtual void operator() (MathVector<dim>& value,
+							 const MathVector<dim>& globIP,
+							 number time, int si) const
+	{
+		UG_THROW("SlipVel: Need element.");
+	}
+
+	virtual void operator() (MathVector<dim> vValue[],
+							 const MathVector<dim> vGlobIP[],
+							 number time, int si, const size_t nip) const
+	{
+		UG_THROW("SlipVel: Need element.");
+	}
+
+	virtual void compute(LocalVector* u, GridObject* elem,
+						 const MathVector<dim> vCornerCoords[], bool bDeriv = false)
+	{
+		const int si = this->subset();
+		for(size_t s = 0; s < this->num_series(); ++s)
+			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
+						  this->num_ip(s), u);
+	}
+
+	virtual void compute(LocalVectorTimeSeries* u, GridObject* elem,
+						 const MathVector<dim> vCornerCoords[], bool bDeriv = false)
+	{
+		const int si = this->subset();
+		for(size_t s = 0; s < this->num_series(); ++s)
+			evaluate<dim>(this->values(s), this->ips(s), this->time(s), si,
+						  elem, vCornerCoords, this->template local_ips<dim>(s),
+						  this->num_ip(s), &(u->solution(this->time_point(s))));
+	}
+
+	///    returns if provided data is continuous over geometric object boundaries
+	virtual bool continuous() const {return false;}
+
+	///    returns if grid function is needed for evaluation
+	virtual bool requires_grid_fct() const {return true;}
+};
+
 /**
 concept derived from grid_function_user_data.h
  */
@@ -1662,13 +2056,16 @@ private:
 	grid_type* m_grid;
 	
 	number m_limit = 1e-03;
+	number m_limit_grad = 1e-03;
 	number m_theta_cr = 34.0*3.1416/180.0;
 	number m_diff = 0.15;
 
 private:
 
-	///    Data import for source
+	///    Data import for Diffusion source
 	SmartPtr<CplUserData<MathMatrix<dim,dim>,dim> > m_imDiffusion;
+	///    Data import for normal
+	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imNormal;
 	Interface<dim>* Inter;
 	
 public:
@@ -1684,6 +2081,52 @@ public:
 		f->set_diag_tensor(f_x);
 		set_diffusion(f);
 	}
+	void set_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+	{
+		m_imNormal = data;
+	}
+	void set_normal(number f_x)
+	{
+		SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+		for (int i=0;i<dim;i++){
+			f->set_entry(i, f_x);
+		}
+		set_normal(f);
+	}
+	void set_normal(number f_x, number f_y)
+	{
+		if (dim!=2){
+			UG_THROW("NavierStokes: Setting source vector of dimension 2"
+					" to a Discretization for world dim " << dim);
+		} else {
+			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+			f->set_entry(0, f_x);
+			f->set_entry(1, f_y);
+			set_normal(f);
+		}
+	}
+
+	void set_normal(number f_x, number f_y, number f_z)
+	{
+		if (dim<3){
+			UG_THROW("NavierStokes: Setting source vector of dimension 3"
+					" to a Discretization for world dim " << dim);
+		}
+		else
+		{
+			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+			f->set_entry(0, f_x);
+			f->set_entry(1, f_y);
+			f->set_entry(2, f_z);
+			set_normal(f);
+		}
+	}
+#ifdef UG_FOR_LUA
+	void set_normal(const char* fctName)
+	{
+		set_normal(LuaUserDataFactory<MathVector<dim>, dim>::create(fctName));
+	}
+#endif
 
 	void set_theta(number data)
 	{
@@ -1696,6 +2139,7 @@ public:
 	void set_gradient_limit(number data)
 	{
 		m_limit = data;
+		m_limit_grad = 0.001 * data;
 	}
 	
 	void set_phase_parameters(Interface<dim>* user)
@@ -1724,6 +2168,8 @@ public:
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
 		set_diffusion(0.0);
+		set_normal(0.0);
+
 		grid.template attach_to<Vertex>(m_aNormal);
 		//grid.template attach_to<Vertex>(m_aTang);
 		grid.template attach_to<Vertex>(m_aVol);
@@ -1790,20 +2236,23 @@ public:
 		
 
 	//    storage for shape function at ip
-		MathVector<refDim> vLocGrad[numVertices];
+		//MathVector<refDim> vLocGrad[numVertices];
 		MathVector<refDim> locGrad;
 
 	//    Reference Mapping
-		MathMatrix<dim, refDim> JTInv;
+		//MathMatrix<dim, refDim> JTInv;
 		
 		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
 		
 		(*m_imDiffusion)(vValue, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 		
+		std::vector<MathVector<dim> > vNormal(nip);
+		(*m_imNormal)(&vNormal[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
+		
 		bool cut_elem = false;
 		bool boolInside = false;
 		Inter->cut_element(cut_elem,boolInside, u, _C_);
-		bool ComputeSlipDiff =(cut_elem || boolInside )? true : false;
+		bool ComputeSlipDiff =(cut_elem || boolInside)? true : false;
 		
 		for (size_t ip=0;ip<nip;ip++)
 		{
@@ -1813,19 +2262,19 @@ public:
 			
 			if(ComputeSlipDiff)
 			{
-				MathVector<dim> GradC = 0.0;
+				//MathVector<dim> GradC = 0.0;
 				rTrialSpace.shapes(shapes,vLocIP[ip]);
 				
 				//    evaluate at shapes at ip
-				rTrialSpace.grads(vLocGrad, vLocIP[ip]);
+				//rTrialSpace.grads(vLocGrad, vLocIP[ip]);
 				//    compute grad at ip
-				VecSet(locGrad, 0.0);
-				for(size_t sh = 0; sh < numVertices; ++sh)
-					VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
+				//VecSet(locGrad, 0.0);
+				//for(size_t sh = 0; sh < numVertices; ++sh)
+					//VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
 				
 				//    compute global grad
-				mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
-				MatVecMult(GradC, JTInv, locGrad);
+				//mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
+				//MatVecMult(GradC, JTInv, locGrad);
 				
 				
 				for (size_t sh=0;sh<numVertices;sh++)
@@ -1835,7 +2284,7 @@ public:
 						//tang[d] += m_tang[vVrt[sh]][d]*shapes[sh];
 					}
 				number normal_mag =  VecTwoNorm(normal);
-				number gradc_mag =  VecTwoNorm(GradC);
+				//number gradc_mag =  VecTwoNorm(GradC);
 				if(normal_mag<m_limit)
 				{
 					VecSet(normal,0.0);
@@ -1860,7 +2309,7 @@ public:
 				//if((cut_elem || boolInside) && VecProd(tang,-GradC) > 0)
 				if(true)// VecProd(tang,-GradC) > 0)
 				{
-					number eps_slope = 1e-02;
+					number eps_slope = 1e-03;
 					number theta = acos(normal[dim-1]);
 					//UG_LOG("theta = "<< theta<<"\n");
 					number slope = tan(theta);
@@ -1919,7 +2368,6 @@ public:
 				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
 				for(size_t i = 0; i < numVertices; ++i){
 					number scvVol = geo.scv(i).volume();
-					m_vol[vVrt[i]]+=scvVol;
 					
 					MathVector<dim> GradC; VecSet(GradC,0.0);
 					MathVector<dim> Normal; VecSet(Normal,0.0);
@@ -1930,7 +2378,7 @@ public:
 						m_u->dof_indices(elem->vertex(sh), _C_, multInd);
 						//    read value of index from vector
 						number uVal = DoFRef(*m_u,multInd[0]);
-						
+						//uVal = fmax(uVal, 0.0);
 						//  Loop dimensions for derivative
 						for(int d1 = 0; d1 <dim; ++d1)
 						{
@@ -1938,7 +2386,7 @@ public:
 						}
 					}
 					number grad_c_mag = VecTwoNorm(GradC);
-					if(grad_c_mag<m_limit)
+					if(grad_c_mag<m_limit_grad)
 					{
 						VecSet(Normal,0.0);
 					}

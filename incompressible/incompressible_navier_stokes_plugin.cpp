@@ -43,6 +43,7 @@
 #include "filter.h"
 
 #include "bnd/inflow_base.h"
+#include "bnd/inflow_base_multiphase.h"
 #include "bnd/wall.h"
 #include "bnd/no_normal_stress_outflow_base.h"
 
@@ -98,6 +99,21 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.add_method("add", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >, const char*)>(&T::add), "", "Velocity, Subset")
 			.add_method("add", static_cast<void (T::*)(const std::vector<number>&, const char*)>(&T::add), "", "Velocity, Subset");
 		reg.add_class_to_group(name, "NavierStokesInflowBase", tag);
+	}
+	
+	
+	//	NavierStokesInflowBaseMultiphase
+	{
+		typedef NavierStokesInflowBaseMultiphase<TDomain, TAlgebra> T;
+		typedef IDiscretizationItem<TDomain, TAlgebra> TBase;
+		string name = string("NavierStokesInflowBaseMultiphase").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+#ifdef UG_FOR_LUA
+			.add_method("add", static_cast<void (T::*)(const char*, const char*, const char*)>(&T::add), "", "VelMass")
+#endif
+			.add_method("add", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >, SmartPtr<CplUserData<MathVector<dim>, dim> >, const char*)>(&T::add), "", "VelMass, Subset")
+			.add_method("add", static_cast<void (T::*)(const std::vector<number>&, const std::vector<number>&, const char*)>(&T::add), "", "Vel, Mass, Subset");
+		reg.add_class_to_group(name, "NavierStokesInflowBaseMultiphase", tag);
 	}
 
 //	NavierStokesWall bnd condition

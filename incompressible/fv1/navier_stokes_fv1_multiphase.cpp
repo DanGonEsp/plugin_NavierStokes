@@ -103,10 +103,13 @@ void NavierStokesFV1M<TDomain>::init()
     m_imKinViscosity_old.set_comp_lin_defect(false);
     
     m_imSurfaceNormalSCVF.set_comp_lin_defect(false);
+	m_imSurfaceNormalSCV.set_comp_lin_defect(false);
+	
+	m_imPressureGradientSCVF.set_comp_lin_defect(false);
     
     m_imRelativeVelocitySCV.set_comp_lin_defect(false);
 	m_imRelativeVelocitySCVF.set_comp_lin_defect(false);
-	m_imSlipVelocitySCV.set_comp_lin_defect(false);
+	m_imSlipVelocitySCVF.set_comp_lin_defect(false);
     //m_imDiffusion.set_comp_lin_defect(false);
     
     //	register imports
@@ -120,10 +123,13 @@ void NavierStokesFV1M<TDomain>::init()
     this->register_import(m_imDensitySCV);
 	this->register_import(m_imDensitySCV_old);
     this->register_import(m_imSurfaceNormalSCVF);
+	this->register_import(m_imSurfaceNormalSCV);
+	
+	this->register_import(m_imPressureGradientSCVF);
     
     this->register_import(m_imRelativeVelocitySCV);
 	this->register_import(m_imRelativeVelocitySCVF);
-	this->register_import(m_imSlipVelocitySCV);
+	this->register_import(m_imSlipVelocitySCVF);
     this->register_import(m_imDiffusion);
     
     m_imSourceSCV.set_rhs_part();
@@ -192,20 +198,31 @@ void NavierStokesFV1M<TDomain>::
 set_interface_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 {
     m_imSurfaceNormalSCVF.set_data(data);
+	m_imSurfaceNormalSCV.set_data(data);
+}
+template<typename TDomain>
+void NavierStokesFV1M<TDomain>::
+set_rhie_chow(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+{
+	m_imPressureGradientSCVF.set_data(data);
 }
 
 template<typename TDomain>
 void NavierStokesFV1M<TDomain>::
-set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data, int upwind_scheme)
 {
     m_imRelativeVelocitySCV.set_data(data);
 	m_imRelativeVelocitySCVF.set_data(data);
+	if(upwind_scheme == 0)
+		UG_THROW("Upwinding schem for non linear transport not implemented. \n");
+		
+	m_upwind_vol_method = upwind_scheme;
 }
 template<typename TDomain>
 void NavierStokesFV1M<TDomain>::
 set_slip_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 {
-	m_imSlipVelocitySCV.set_data(data);
+	m_imSlipVelocitySCVF.set_data(data);
 }
 
 //////// Diffusion
@@ -268,6 +285,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 			else
 				UG_THROW("Relative Velocity has not been set, but relative vel upwinding already set.");
 		}
+		
     }
     
     //	check, that kinematic Viscosity has been set
@@ -284,6 +302,15 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
     if(!m_imDensitySCV.data_given())
         UG_THROW("NavierStokes::prep_elem_loop:"
                  " Density has not been set, but is required.");
+	
+	if(m_imRelativeVelocitySCV.data_given() || m_imRelativeVelocitySCVF.data_given())
+	{
+		if (m_upwind_vol_method == 0)
+			UG_THROW("Umpwind scheme not implemented for non linear transport in with Relative Velocity");
+			
+		
+	}
+	
 	if(this->is_time_dependent())
 		if(!m_imDensitySCV_old.data_given() || !m_imDensitySCVF_old.data_given())
 			UG_THROW("NavierStokes::prep_elem_loop:"
@@ -295,7 +322,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 		if(!m_imKinViscositySCV.data_given())
 			UG_THROW("NavierStokes::prep_elem_loop:"
 					 " Kinematic Viscosity has not been set, but is required for pressure jump.");
-		if(!m_imSurfaceNormalSCVF.data_given() )
+		if(!m_imSurfaceNormalSCVF.data_given() || !m_imSurfaceNormalSCV.data_given())
 			UG_THROW("NavierStokes::prep_elem_loop:"
 							 " normal at interface has not been set, but required for pressure jump.");
 			
@@ -331,10 +358,13 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
         m_imSourceSCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         m_imSourceSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
 		m_imSurfaceNormalSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
+		m_imSurfaceNormalSCV.template set_local_ips<refDim>(vSCVip,numSCVip);
+		
+		m_imPressureGradientSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         
         m_imRelativeVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
 		m_imRelativeVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
-		m_imSlipVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
+		m_imSlipVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
 		m_imDensitySCV_old.template set_local_ips<refDim>(vSCVip,numSCVip,1,true);
@@ -380,10 +410,13 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
         m_imSourceSCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         m_imSourceSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
 		m_imSurfaceNormalSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
+		m_imSurfaceNormalSCV.template set_local_ips<refDim>(vSCVip,numSCVip,true);
         
+		m_imPressureGradientSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
+		
         m_imRelativeVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
 		m_imRelativeVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
-		m_imSlipVelocitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
+		m_imSlipVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
         
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
@@ -404,10 +437,13 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
     m_imSourceSCV.set_global_ips(vSCVip, numSCVip);
     m_imSourceSCVF.set_global_ips(vSCVFip, numSCVFip);
 	m_imSurfaceNormalSCVF.set_global_ips(vSCVFip, numSCVFip);
+	m_imSurfaceNormalSCV.set_global_ips(vSCVip, numSCVip);
+	
+	m_imPressureGradientSCVF.set_global_ips(vSCVFip, numSCVFip);
     
     m_imRelativeVelocitySCV.set_global_ips(vSCVip, numSCVip);
 	m_imRelativeVelocitySCVF.set_global_ips(vSCVFip, numSCVFip);
-	m_imSlipVelocitySCV.set_global_ips(vSCVip, numSCVip);
+	m_imSlipVelocitySCVF.set_global_ips(vSCVFip, numSCVFip);
     
     m_imDiffusion.set_global_ips(vSCVFip, numSCVFip);
     if(this->is_time_dependent())
@@ -456,10 +492,12 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     //	interpolate velocity at ip with standard lagrange interpolation
 
 	MathVector<dim> StdVel[numSCVF];
+	MathVector<dim> StdVel_ip[numSCVF];
+	MathVector<dim> StdMomentum[numSCVF];
 	MathVector<dim> StdCharacteristicVel[numSCVF];
 	MathVector<dim> Flux[numSCVF];
-	MathVector<dim> Vel[numSCVF];
 	MathVector<dim> Vel_ip[numSCVF];
+	MathVector<dim> TransportingVel_ip[numSCVF];
 	number Gamma[numSh];
 	number Rho_up[numSCVF];
 	number Rho_do[numSCVF];
@@ -476,9 +514,43 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	//const number rhos = Inter->Density_s();
 	//const number rhoa = Inter->Density_a();
 	const number alpha_max = Inter->Alpha_max();
+	
+	
+	int JumpShape[numSh];
+	bool Phase2[numSCVF];
+	bool GFM[numSCVF] = {false};
+	number mu_l, rho_l;
+	number mu_g, rho_g;
+	MathVector<dim> Source_1;
+	MathVector<dim> Source_g;
+	const number borrar = 0.0;
+	//std::vector<number> buffer(numSCVF * numSh);
+	//std::vector<number*> SCVFinterShape(numSCVF);
+	//for (size_t i = 0; i < numSCVF; ++i)
+		//SCVFinterShape[i] = buffer.data() + i * numSh;
+	
+	
+	
+	const INavierStokesPressureJump<dim>& press_jump = *m_spPressureJump;
+	
+	if ( m_pressure_jump)
+	{
+		Inter->cut_element(cut_elem,boolInside, u_aux,  _C_);
+		
+		if(cut_elem)
+		{
+			Inter->template PropertiesJump<TElem>(u_aux, _C_, geo, JumpShape, m_imDensitySCV, m_imKinViscositySCV, m_imSourceSCV, numSh, cut_elem, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_1, Source_g, GFM);
+			
+			m_spPressureJump->update( &geo, *pSol, StdVel_ip, m_bStokes, m_imSurfaceNormalSCV, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, JumpShape, pOldSol, dt, borrar, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, Inter->interface_value());
+			//Inter->template InterfaceSCVFShapes<TElem>(SCVFinterShape.data(), geo, u, JumpShape, numSh, _C_);
+			//UG_LOG("mu_l  =  "<< mu_l <<"  mu_g  =  "<< mu_g <<" rho_l  =  "<< rho_l <<" rho_g  =  "<< rho_g << "\n");
+			
+		}
+	}
     
-    
-    std_vel(  u,  geo, StdVel, Vel, m_imDensitySCV,Rho_up,Rho_do,ConvRatio);
+	
+	std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCVF, m_imDensitySCV, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
+	
     if(Inter->ParticleGradientForce())
 	{
 		vel_grad(  u,  geo,  Gamma);
@@ -486,14 +558,14 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	}
     
 
-	m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
     
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
         //	compute stabilized velocities and shapes for convection upwind
         if(m_spConvStab.valid())
             if(m_spConvStab != m_spStab)
-                m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+                m_spConvStab->update(&geo, *pSol, StdVel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
     }
     //    get a const (!!) reference to the stabilization
     const INavierStokesFV1Stabilization<dim>& stab = *m_spStab;
@@ -502,17 +574,22 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 	{
 		Vel_ip[ip] = stab.stab_vel(ip);
+		
+		if(m_transporting_vel_stab)
+			TransportingVel_ip[ip] = Vel_ip[ip];
+		else
+			TransportingVel_ip[ip] = StdVel_ip[ip];
 	}
 	
-	if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCV.data_given())
-		std_rel_vel(  u,  geo, Vel_ip, StdCharacteristicVel, Flux, m_imRelativeVelocitySCV, m_imSlipVelocitySCV, ShockCase);
+	//if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
+		//std_rel_vel(  u,  geo, Vel_ip, StdCharacteristicVel, Flux, m_imRelativeVelocitySCV, m_imSlipVelocitySCVF, ShockCase);
 	
 	// Estimation of the veloctity at ip for upwind shape and continuity equations
-	if(!m_imRelativeVelocitySCV.data_given() && !m_imSlipVelocitySCV.data_given())
+	/*if(!m_imRelativeVelocitySCV.data_given() && !m_imSlipVelocitySCVF.data_given())
 		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 		{
 			StdCharacteristicVel[ip] = Vel_ip[ip];
-		}
+		}*/
     
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
@@ -520,28 +597,31 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 		if(m_spConvUpwind.valid())
 			if(m_spStab->upwind() != m_spConvUpwind)
             {
-                m_spConvUpwind->update(&geo, StdVel);
-                m_spConvUpwind->update_downwind(&geo, StdVel);
+                m_spConvUpwind->update(&geo, StdVel_ip);
+                m_spConvUpwind->update_downwind(&geo, StdVel_ip);
             }
 	}
 	
 
-    
-    //    compute upwind shapes
-    if(m_spConvUpwind_vol.valid())
-        m_spConvUpwind_vol->update(&geo, StdCharacteristicVel);
-	//    compute upwind shapes
-	if(m_spConvUpwind_rel.valid() && m_imRelativeVelocitySCVF.data_given())
+	if(m_upwind_vol_method == 0)
 	{
-		m_spConvUpwind_rel->update(&geo, m_imRelativeVelocitySCVF.values());
-		m_spConvUpwind_rel->update_downwind(&geo, m_imRelativeVelocitySCVF.values());
+		//    compute upwind shapes
+		if(m_spConvUpwind_vol.valid())
+			m_spConvUpwind_vol->update(&geo, TransportingVel_ip);
 	}
+
+	//    compute upwind shapes
+	//if(m_spConvUpwind_rel.valid() && m_imRelativeVelocitySCVF.data_given())
+	//{
+		//m_spConvUpwind_rel->update(&geo, m_imRelativeVelocitySCVF.values());
+		//m_spConvUpwind_rel->update_downwind(&geo, m_imRelativeVelocitySCVF.values());
+	//}
     
 
 	const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
 	const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
     const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;
-	const INavierStokesUpwind<dim>& upwind_rel = *m_spConvUpwind_rel;
+	//const INavierStokesUpwind<dim>& upwind_rel = *m_spConvUpwind_rel;
     
 
 // 	loop Sub Control Volume Faces (SCVF)
@@ -549,6 +629,50 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	{
 	// 	get current SCVF
 		const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+		
+		number Flux_ip_jacV[numSh] = {0};
+		number Flux_ip_jacW[numSh] = {0};
+		
+		if(m_upwind_vol_method != 0)
+		{
+			if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
+			{
+				const size_t from = scvf.from();
+				const size_t to = scvf.to();
+				number Flux_ip = 0.0;
+				MathVector<dim> Wrel_L = 0, Wrel_R = 0.0;
+				MathVector<dim> Wslip_L = 0, Wslip_R = 0.0;
+				
+				if(m_imRelativeVelocitySCV.data_given())
+				{
+					Wrel_L = m_imRelativeVelocitySCV[from];
+					Wrel_R = m_imRelativeVelocitySCV[to];
+				}
+				if(m_imSlipVelocitySCVF.data_given())
+				{
+					VecAdd(Wrel_L, m_imSlipVelocitySCVF[ip], Wrel_L );
+					VecAdd(Wrel_R, m_imSlipVelocitySCVF[ip], Wrel_R );
+				}
+					
+				number JacWL = 0.0;
+				number JacWR = 0.0;
+				
+				number JacVL = 0.0;
+				number JacVR = 0.0;
+		
+				Inter->Flux_Jac_ip(JacVL,JacVR,JacWL, JacWR, u(_C_,from), u(_C_,to), Wrel_L, Wrel_R,  TransportingVel_ip[ip], scvf.normal(), m_upwind_vol_method);
+				
+				
+				Flux_ip_jacV[from] = JacVL;
+				Flux_ip_jacV[to]  = JacVR;
+				
+				
+				Flux_ip_jacW[from] = JacWL;
+				Flux_ip_jacW[to]  = JacWR;
+					
+			}
+			
+		}
 
 	// 	loop shape functions
 		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
@@ -562,29 +686,46 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             ////////////////////////////////////////////////////
             // Diffusive Term (Momentum Equation)
             ////////////////////////////////////////////////////
-            
-            //     Compute flux derivative at IP
-            const number flux_sh =  -1.0 * m_imKinViscosity[ip] * m_imDensitySCVF[ip] *
-             VecDot(scvf.global_grad(sh), scvf.normal())   ;
-            
-            //     Add flux derivative  to local matrix
-            for(int d1 = 0; d1 < dim; ++d1)
-            {
-                J(d1, scvf.from(), d1, sh) += flux_sh;
-                J(d1, scvf.to()  , d1, sh) -= flux_sh;
-            }
-            
-            if(!m_bLaplace)
-            {
-                for(int d1 = 0; d1 < dim; ++d1)
-                    for(int d2 = 0; d2 < dim; ++d2)
-                    {
-                        const number flux2_sh = -1.0 * m_imKinViscosity[ip] * m_imDensitySCVF[ip] *
-                        ( scvf.global_grad(sh)[d1] * scvf.normal()[d2] );
-                        J(d1, scvf.from(), d2, sh) += flux2_sh;
-                        J(d1, scvf.to()  , d2, sh) -= flux2_sh;
-                    }
-            }
+			if(!GFM[ip] )
+			{
+				//     Compute flux derivative at IP
+				const number flux_sh =  -1.0 * m_imKinViscosity[ip] * m_imDensitySCVF[ip] *
+				VecDot(scvf.global_grad(sh), scvf.normal())   ;
+				
+				//     Add flux derivative  to local matrix
+				for(int d1 = 0; d1 < dim; ++d1)
+				{
+					J(d1, scvf.from(), d1, sh) += flux_sh;
+					J(d1, scvf.to()  , d1, sh) -= flux_sh;
+				}
+				
+				if(!m_bLaplace)
+				{
+					for(int d1 = 0; d1 < dim; ++d1)
+						for(int d2 = 0; d2 < dim; ++d2)
+						{
+							const number flux2_sh = -1.0 * m_imKinViscosity[ip] * m_imDensitySCVF[ip] *
+							( scvf.global_grad(sh)[d1] * scvf.normal()[d2] );
+							J(d1, scvf.from(), d2, sh) += flux2_sh;
+							J(d1, scvf.to()  , d2, sh) -= flux2_sh;
+						}
+				}
+			}
+			else
+			{
+				const number area = VecLength(scvf.normal());
+				
+				
+				for(int d1 = 0; d1 < dim; ++d1)
+				{
+					for(int d2 = 0; d2 < dim; ++d2)
+					{
+						number flux_sh = -1.0 * area * press_jump.shear_stress_shape_vel(ip,d1,d2,sh) ;
+						J(d1, scvf.from(), d2, sh) += flux_sh;
+						J(d1, scvf.to()  , d2, sh) -= flux_sh;
+					}
+				}
+			}
             if (false){
                 for (int d1=0;d1<dim;d1++)
                     for (int d2=0;d2<dim;d2++){
@@ -598,22 +739,38 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             ////////////////////////////////////////////////////
             // Pressure Term (Momentum Equation)
             ////////////////////////////////////////////////////
-
-			//	Add flux derivative for local matrix
-			for(int d1 = 0; d1 < dim; ++d1)
+			if(true)//!GFM[ip] )
 			{
-				const number flux_sh = scvf.shape(sh) * scvf.normal()[d1];
-				J(d1, scvf.from(), _P_, sh) += flux_sh;
-				J(d1, scvf.to()  , _P_, sh) -= flux_sh;
-			}
-			if(Inter->ParticleGradientForce())
-			{
+				//	Add flux derivative for local matrix
 				for(int d1 = 0; d1 < dim; ++d1)
 				{
-					const number flux_sh_c = DPs[sh] * scvf.shape(sh) * scvf.normal()[d1];
-					J(d1, scvf.from(), _C_, sh) += flux_sh_c;
-					J(d1, scvf.to()  , _C_, sh) -= flux_sh_c;
+					const number flux_sh = scvf.shape(sh) * scvf.normal()[d1];
+					J(d1, scvf.from(), _P_, sh) += flux_sh;
+					J(d1, scvf.to()  , _P_, sh) -= flux_sh;
 				}
+				if(Inter->ParticleGradientForce())
+				{
+					for(int d1 = 0; d1 < dim; ++d1)
+					{
+						const number flux_sh_c = DPs[sh] * scvf.shape(sh) * scvf.normal()[d1];
+						J(d1, scvf.from(), _C_, sh) += flux_sh_c;
+						J(d1, scvf.to()  , _C_, sh) -= flux_sh_c;
+					}
+				}
+			}
+			else
+			{
+				if(sh == scvf.from() || sh == scvf.to() )
+				{
+					//	Add flux derivative for local matrix
+					for(int d1 = 0; d1 < dim; ++d1)
+					{
+						const number flux_sh = 0.5 * scvf.normal()[d1];
+						J(d1, scvf.from(), _P_, sh) += flux_sh;
+						J(d1, scvf.to()  , _P_, sh) -= flux_sh;
+					}
+				}
+				
 			}
 					
             
@@ -637,12 +794,12 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 //	peclet blend
                 number w = 1.0;
                 if(m_bPecletBlend)
-                    w = peclet_blend(UpwindMomentum, geo, ip, StdVel[ip], m_imKinViscosity[ip],m_imDensitySCVF[ip]);
+                    w = peclet_blend(UpwindMomentum, StdMomentum[ip], geo, ip, StdVel[ip], m_imKinViscosity[ip]);
 				
-				VecScaleAdd(UpwindMomentum, ConvRatio[ip], UpwindMomentum, (1.0-ConvRatio[ip])*Rho_up[ip],Vel[ip]);
+				//VecScaleAdd(UpwindMomentum, ConvRatio[ip], UpwindMomentum, (1.0-ConvRatio[ip])*Rho_up[ip],Vel[ip]);
                 
                 //	compute product of stabilized vel and normal
-                const number prod = VecProd(StdVel[ip], scvf.normal());// * m_imDensitySCVF[ip];
+                const number prod = VecProd(StdVel_ip[ip], scvf.normal());// * m_imDensitySCVF[ip];
                 
                 ///////////////////////////////////
                 //	Add fixpoint linearization
@@ -681,8 +838,9 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 //	Upwind used as upwind
                 if(m_spConvUpwind.valid())
                 {
-                    number convFlux_vel =  ConvRatio[ip]*m_imDensitySCV[sh] * upwind.upwind_shape_sh(ip, sh);
-					convFlux_vel += Rho_up[ip]*(1.0 - ConvRatio[ip]) * (Rho_up[ip] * upwind.downwind_conv_length(ip) * upwind.upwind_shape_sh(ip, sh) + Rho_do[ip] * upwind.upwind_conv_length(ip) * upwind.downwind_shape_sh(ip, sh) ) / ( Rho_up[ip] * upwind.downwind_conv_length(ip) + Rho_do[ip] * upwind.upwind_conv_length(ip));
+                    number convFlux_vel = m_imDensitySCV[sh] * upwind.upwind_shape_sh(ip, sh);
+					//number convFlux_vel =  ConvRatio[ip]*m_imDensitySCV[sh] * upwind.upwind_shape_sh(ip, sh);
+					//convFlux_vel += Rho_up[ip]*(1.0 - ConvRatio[ip]) * (Rho_up[ip] * upwind.downwind_conv_length(ip) * upwind.upwind_shape_sh(ip, sh) + Rho_do[ip] * upwind.upwind_conv_length(ip) * upwind.downwind_shape_sh(ip, sh) ) / ( Rho_up[ip] * upwind.downwind_conv_length(ip) + Rho_do[ip] * upwind.upwind_conv_length(ip));
 					 
                     
                     //	in some cases (e.g. PositiveUpwind, RegularUpwind) the upwind
@@ -714,7 +872,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 //	derivative due to peclet blending
                 if(m_bPecletBlend)
                 {
-                    const number convFluxPe = prod * (1.0-w) * m_imDensitySCVF[ip] * scvf.shape(sh);
+                    const number convFluxPe = prod * (1.0-w) * m_imDensitySCV[sh] * scvf.shape(sh);
                     for(int d1 = 0; d1 < dim; ++d1)
                     {
                         J(d1, scvf.from(), d1, sh) += convFluxPe;
@@ -729,20 +887,24 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 //	Add remaining term for exact jacobian
                 if(m_boolFullNewton)
                 {
-                    // Jacobian for std Vel as convecting velocity
-                    for(int d = 0; d < dim; ++d)
-                    {
-                        for(int d1 = 0; d1 < dim; ++d1)
-                        {
-
-                            number contFlux_vel =  m_bFullNewtonFactor * scvf.shape(sh) * scvf.normal()[d1];
-                            J(d, scvf.from(), d1, sh) += contFlux_vel * UpwindMomentum[d];
-                            J(d, scvf.to()  , d1, sh) -= contFlux_vel * UpwindMomentum[d];
-                            
-                        }
-                        
-
-                    }
+					if(sh == scvf.from() || sh == scvf.to())
+					{
+						number rho_h = m_imDensitySCV[sh]/(m_imDensitySCV[scvf.from()] + m_imDensitySCV[scvf.to()]);
+						// Jacobian for std Vel as convecting velocity
+						for(int d = 0; d < dim; ++d)
+						{
+							for(int d1 = 0; d1 < dim; ++d1)
+							{
+								
+								number contFlux_vel =  m_bFullNewtonFactor * rho_h * scvf.shape(sh) * scvf.normal()[d1];
+								J(d, scvf.from(), d1, sh) += contFlux_vel * UpwindMomentum[d];
+								J(d, scvf.to()  , d1, sh) -= contFlux_vel * UpwindMomentum[d];
+								
+							}
+							
+							
+						}
+					}
                     
                 } // end exact jacobian part
 				
@@ -946,228 +1108,251 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             // Convective Term (Transport Equation)
             ////////////////////////////////////////////////////
             
-			number ratio_up = 1.0;
 			number ratio_diff = 1.0;
 			number ratio_star = 1.0;
 			number S = VecLength(StdCharacteristicVel[ip]);
 			number eps = fmax(Inter->Epsilon(),S);
 		
-			if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCV.data_given())
+			if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
 			{
 			
 				if(ShockCase[ip] == 0 || ShockCase[ip] == 1 )
 				{
-					ratio_up = 1.0;
 					ratio_diff = 0.0;
 					ratio_star = 0.0;
 				}
 				if(ShockCase[ip] == 2)
 				{
-					ratio_up = 0.0;
 					ratio_diff = 0.0;
 					ratio_star = 1.0;
 				}
 				if (ShockCase[ip] == 3)
 				{
-					ratio_up = fmin(S/eps,1.0);
-					ratio_diff = 1.0 - ratio_up;
+					ratio_diff = 1.0;// - ratio_up;
 					ratio_star = 0.0;
 					
 				}
 				
 			}
-	
-			const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
-			const number conv_flux_vol_sh = ratio_up * upwind_vol.upwind_shape_sh(ip, sh)* VecProd(Vel_ip[ip], scvf.normal());
-			
-			
-			//    Add flux term to local matrix
-			J(_C_, scvf.from(), _C_, sh) += conv_flux_vol_sh;
-			J(_C_, scvf.to(),   _C_, sh) -= conv_flux_vol_sh;
-			
-			
-			//    Add derivative of stabilized flux w.r.t velocity comp to local matrix
-			/*if(stab.vel_comp_connected())
+			if(m_upwind_vol_method==0)
 			{
-				for(int d1 = 0; d1 < dim; ++d1)
-				{
-					number contFlux_vel = 0.0;
-					for(int d2 = 0; d2 < dim; ++d2)
-						contFlux_vel += C_up_vol *stab.stab_shape_vel(ip, d2, d1, sh)
-						* scvf.normal()[d2];
-					contFlux_vel *= ratio_up;
-					J(_C_, scvf.from(), d1, sh) += contFlux_vel;
-					J(_C_, scvf.to()  , d1, sh) -=  contFlux_vel;
-				}
+				const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
+				const number conv_flux_vol_sh = upwind_vol.upwind_shape_sh(ip, sh)* VecProd(TransportingVel_ip[ip], scvf.normal());
+				
+				
+				//    Add flux term to local matrix
+				J(_C_, scvf.from(), _C_, sh) += conv_flux_vol_sh;
+				J(_C_, scvf.to(),   _C_, sh) -= conv_flux_vol_sh;
+				
+				
+				
+				//    Add derivative of stabilized flux w.r.t velocity comp to local matrix
+				/*if(stab.vel_comp_connected())
+				 {
+				 for(int d1 = 0; d1 < dim; ++d1)
+				 {
+				 number contFlux_vel = 0.0;
+				 for(int d2 = 0; d2 < dim; ++d2)
+				 contFlux_vel += C_up_vol *stab.stab_shape_vel(ip, d2, d1, sh)
+				 * scvf.normal()[d2];
+				 contFlux_vel *= ratio_up;
+				 J(_C_, scvf.from(), d1, sh) += contFlux_vel;
+				 J(_C_, scvf.to()  , d1, sh) -=  contFlux_vel;
+				 }
+				 }
+				 else
+				 {
+				 for(int d1 = 0; d1 < dim; ++d1)
+				 {
+				 const number contFlux_vel =  ratio_up * C_up_vol * stab.stab_shape_vel(ip, d1, d1, sh)
+				 * scvf.normal()[d1];
+				 
+				 J(_C_, scvf.from(), d1, sh) += contFlux_vel;
+				 J(_C_, scvf.to()  , d1, sh) -= contFlux_vel;
+				 }
+				 }
+				 
+				 
+				 //    Add derivative of stabilized flux w.r.t pressure to local matrix
+				 number contVolFractionFlux_p = 0.0;
+				 for(int d1 = 0; d1 < dim; ++d1)
+				 contVolFractionFlux_p += C_up_vol * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1];
+				 contVolFractionFlux_p *= ratio_up;
+				 J(_C_, scvf.from(), _P_, sh) += contVolFractionFlux_p;
+				 J(_C_, scvf.to()  , _P_, sh) -= contVolFractionFlux_p;*/
+				
+				//    Add derivative of stabilized flux w.r.t pressure to local matrix
+				/*number contVolFractionFlux_c = 0.0;
+				 for(int d1 = 0; d1 < dim; ++d1)
+				 contVolFractionFlux_c += C_up_vol * stab.stab_shape_c(ip, d1, sh) * scvf.normal()[d1];
+				 contVolFractionFlux_c *= ratio_up;
+				 J(_C_, scvf.from(), _C_, sh) += contVolFractionFlux_c;
+				 J(_C_, scvf.to()  , _C_, sh) -= contVolFractionFlux_c;*/
+				
+				/*if(Inter->ParticleGradientForce())
+				 {
+				 number contFlux_c2 = 0.0;
+				 for(int d1 = 0; d1 < dim; ++d1)
+				 contFlux_c2 += C_up_vol * DPs[sh] * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1];
+				 contFlux_c2 *=ratio_up;
+				 J(_C_, scvf.from(), _C_, sh) += contFlux_c2;
+				 J(_C_, scvf.to()  , _C_, sh) -= contFlux_c2;
+				 }*/
 			}
 			else
 			{
-				for(int d1 = 0; d1 < dim; ++d1)
+				
+				if(sh == scvf.from() || sh == scvf.to())
 				{
-					const number contFlux_vel =  ratio_up * C_up_vol * stab.stab_shape_vel(ip, d1, d1, sh)
-					* scvf.normal()[d1];
+					J(_C_, scvf.from(), _C_, sh) += Flux_ip_jacV[sh];
+					J(_C_, scvf.to(),   _C_, sh) -= Flux_ip_jacV[sh];
 					
-					J(_C_, scvf.from(), d1, sh) += contFlux_vel;
-					J(_C_, scvf.to()  , d1, sh) -= contFlux_vel;
-				}
-			}
-			
-			
-			//    Add derivative of stabilized flux w.r.t pressure to local matrix
-			number contVolFractionFlux_p = 0.0;
-			for(int d1 = 0; d1 < dim; ++d1)
-				contVolFractionFlux_p += C_up_vol * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1];
-			contVolFractionFlux_p *= ratio_up;
-			J(_C_, scvf.from(), _P_, sh) += contVolFractionFlux_p;
-			J(_C_, scvf.to()  , _P_, sh) -= contVolFractionFlux_p;*/
-			
-			//    Add derivative of stabilized flux w.r.t pressure to local matrix
-			/*number contVolFractionFlux_c = 0.0;
-			for(int d1 = 0; d1 < dim; ++d1)
-				contVolFractionFlux_c += C_up_vol * stab.stab_shape_c(ip, d1, sh) * scvf.normal()[d1];
-			contVolFractionFlux_c *= ratio_up;
-			J(_C_, scvf.from(), _C_, sh) += contVolFractionFlux_c;
-			J(_C_, scvf.to()  , _C_, sh) -= contVolFractionFlux_c;*/
-			
-			/*if(Inter->ParticleGradientForce())
-			{
-				number contFlux_c2 = 0.0;
-				for(int d1 = 0; d1 < dim; ++d1)
-					contFlux_c2 += C_up_vol * DPs[sh] * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1];
-				contFlux_c2 *=ratio_up;
-				J(_C_, scvf.from(), _C_, sh) += contFlux_c2;
-				J(_C_, scvf.to()  , _C_, sh) -= contFlux_c2;
-			}*/
-            
-            if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCV.data_given())
-			{
-				const size_t from = scvf.from();
-				const size_t to = scvf.to();
-				if(ShockCase[ip] == 0 || ShockCase[ip] == 1 || ShockCase[ip] == 3 )
-				{
-					
-					const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
-					
-					if(m_imRelativeVelocitySCV.data_given())
+					if(m_transport_jac)
 					{
-						const number prod_rel = VecProd(m_imRelativeVelocitySCV[sh], scvf.normal());
-						
-						number conv_flux_rel_sh =  ratio_up * upwind_vol.upwind_shape_sh(ip, sh) * (1.0 - 2.0*C_up_vol) * prod_rel;
-						
-						//    Add flux term to local matrix
-						J(_C_, scvf.from(), _C_, sh) += conv_flux_rel_sh;
-						J(_C_, scvf.to(),   _C_, sh) -= conv_flux_rel_sh;
-						
-						
-						MathVector<dim> RelVel_deriv = 0.0;
-						Inter->RelativeVelDeriv(RelVel_deriv, fabs(m_imRelativeVelocitySCV[sh][dim-1]), C_up_vol);
-						
-						const number prod_rel_deriv = VecProd(RelVel_deriv, scvf.normal());
-						
-						number conv_flux_rel_deriv_sh =  ratio_up * upwind_vol.upwind_shape_sh(ip, sh) * C_up_vol * (1.0 - C_up_vol) * prod_rel_deriv;
-						
-						
-						J(_C_, scvf.from(), _C_, sh) += conv_flux_rel_deriv_sh;
-						J(_C_, scvf.to(),   _C_, sh) -= conv_flux_rel_deriv_sh;
+						J(_C_, scvf.from(), _C_, sh) += Flux_ip_jacW[sh];
+						J(_C_, scvf.to(),   _C_, sh) -= Flux_ip_jacW[sh];
 					}
-					if(m_imSlipVelocitySCV.data_given())
+					else
 					{
-						const number prod_slip = VecProd(m_imSlipVelocitySCV[sh], scvf.normal());
-						
-						number conv_flux_slip_sh =  ratio_up * upwind_vol.upwind_shape_sh(ip, sh) * (1.0 - 2.0*C_up_vol) * prod_slip;
-						
-						//    Add flux term to local matrix
-						J(_C_, scvf.from(), _C_, sh) += conv_flux_slip_sh;
-						J(_C_, scvf.to(),   _C_, sh) -= conv_flux_slip_sh;
+						if(sh == scvf.from())
+							J(_C_, scvf.from(), _C_, sh) += Flux_ip_jacW[sh];
+						if(sh == scvf.to())
+							J(_C_, scvf.to(),   _C_, sh) -= Flux_ip_jacW[sh];
 						
 					}
 					
 					
-					
-					
-					/*if(ShockCase[ip] == 1 && (sh == to || sh == from) )
-					{
-						number charcater_value = VecProd(StdCharacteristicVel[ip] , scvf.normal());
-						const size_t shhhh =(sh == to )? to : from;
-						const number sign_tf = (sh == to )? 1.0: -1.0;
-						const number ConvLength = 2.0*upwind_vol.upwind_conv_length(ip);
-						number conv_flux_borrar_sh =  -Inter->Epsilon() * sign_tf * fabs(charcater_value) /ConvLength;
-						
-						J(_C_, scvf.from(), _C_, shhhh) += conv_flux_borrar_sh;
-						J(_C_, scvf.to(),   _C_, shhhh) -= conv_flux_borrar_sh;
-					}*/
-					
 				}
-				else
+				/*if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
 				{
-					if(ShockCase[ip] == 3)
+					const size_t from = scvf.from();
+					const size_t to = scvf.to();
+					if(ShockCase[ip] == 0 || ShockCase[ip] == 1 || ShockCase[ip] == 3 )
 					{
-
-						if(sh == from || sh == to)
+						
+						const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
+						
+						if(m_imRelativeVelocitySCV.data_given())
 						{
-							number conv_flux_vol_diff = 0.0;
+							const number prod_rel = VecProd(m_imRelativeVelocitySCV[sh], scvf.normal());
 							
-							conv_flux_vol_diff += 0.5 * VecProd(Vel_ip[ip], scvf.normal());
-							
-							//--------------------------------------------------------
-							
-							number prod_vel_total = 0.0;
-							number conv_flux_rel_deriv_sh = 0.0;
-							if (m_imRelativeVelocitySCV.data_given())
-							{
-								prod_vel_total += VecProd(m_imRelativeVelocitySCV[sh], scvf.normal());
-								
-								
-								MathVector<dim> RelVel_deriv = 0.0;
-								Inter->RelativeVelDeriv(RelVel_deriv, fabs(m_imRelativeVelocitySCV[sh][dim-1]), u(_C_,sh));
-								
-								const number prod_rel_deriv = VecProd(RelVel_deriv, scvf.normal());
-								number conv_flux_rel_deriv_sh =  u(_C_,sh) * (1.0 - u(_C_,sh)) * prod_rel_deriv;
-								
-								
-							}
-							if (m_imSlipVelocitySCV.data_given())
-								prod_vel_total += VecProd(m_imSlipVelocitySCV[sh], scvf.normal());
-							
-							number conv_flux_total_sh =  (1.0 - 2.0*(u(_C_,sh))) * prod_vel_total;
-							
-							
-							conv_flux_vol_diff += 0.5 * (conv_flux_total_sh + conv_flux_rel_deriv_sh);
-							
-							//--------------------------------------------------------
-							
-							
-							if(sh == to)
-								conv_flux_vol_diff += -0.5 * eps;
-							if(sh == from)
-								conv_flux_vol_diff += +0.5 * eps;
-							
-							conv_flux_vol_diff *= ratio_diff;
+							number conv_flux_rel_sh =  upwind_vol.upwind_shape_sh(ip, sh) * (1.0 - 2.0*C_up_vol) * prod_rel;
 							
 							//    Add flux term to local matrix
-							J(_C_, scvf.from(), _C_, sh) += conv_flux_vol_diff;
-							J(_C_, scvf.to(),   _C_, sh) -= conv_flux_vol_diff;
+							J(_C_, scvf.from(), _C_, sh) += conv_flux_rel_sh;
+							J(_C_, scvf.to(),   _C_, sh) -= conv_flux_rel_sh;
+							
+							
+							MathVector<dim> RelVel_deriv = 0.0;
+							Inter->RelativeVelDeriv(RelVel_deriv, fabs(m_imRelativeVelocitySCV[sh][dim-1]), C_up_vol);
+							
+							const number prod_rel_deriv = VecProd(RelVel_deriv, scvf.normal());
+							
+							number conv_flux_rel_deriv_sh = upwind_vol.upwind_shape_sh(ip, sh) * C_up_vol * (1.0 - C_up_vol) * prod_rel_deriv;
+							
+							
+							J(_C_, scvf.from(), _C_, sh) += conv_flux_rel_deriv_sh;
+							J(_C_, scvf.to(),   _C_, sh) -= conv_flux_rel_deriv_sh;
+						}
+						if(m_imSlipVelocitySCVF.data_given())
+						{
+							const number prod_slip = VecProd(m_imSlipVelocitySCVF[sh], scvf.normal());
+							
+							number conv_flux_slip_sh = upwind_vol.upwind_shape_sh(ip, sh) * (1.0 - 2.0*C_up_vol) * prod_slip;
+							
+							//    Add flux term to local matrix
+							J(_C_, scvf.from(), _C_, sh) += conv_flux_slip_sh;
+							J(_C_, scvf.to(),   _C_, sh) -= conv_flux_slip_sh;
 							
 						}
 						
 						
+						
+						
+						if(ShockCase[ip] == 1 && (sh == to || sh == from) )
+						 {
+						 number charcater_value = VecProd(StdCharacteristicVel[ip] , scvf.normal());
+						 const size_t shhhh =(sh == to )? to : from;
+						 const number sign_tf = (sh == to )? 1.0: -1.0;
+						 const number ConvLength = 2.0*upwind_vol.upwind_conv_length(ip);
+						 number conv_flux_borrar_sh =  -Inter->Epsilon() * sign_tf * fabs(charcater_value) /ConvLength;
+						 
+						 J(_C_, scvf.from(), _C_, shhhh) += conv_flux_borrar_sh;
+						 J(_C_, scvf.to(),   _C_, shhhh) -= conv_flux_borrar_sh;
+						 }
+						
+					}
+					else
+					{
+						if(ShockCase[ip] == 3)
+						{
+							
+							if(sh == from || sh == to)
+							{
+								number conv_flux_vol_diff = 0.0;
+								
+								conv_flux_vol_diff += 0.5 * VecProd(TransportingVel_ip[ip], scvf.normal());
+								
+								//--------------------------------------------------------
+								
+								number prod_vel_total = 0.0;
+								number conv_flux_rel_deriv_sh = 0.0;
+								if (m_imRelativeVelocitySCV.data_given())
+								{
+									prod_vel_total += VecProd(m_imRelativeVelocitySCV[sh], scvf.normal());
+									
+									
+									MathVector<dim> RelVel_deriv = 0.0;
+									Inter->RelativeVelDeriv(RelVel_deriv, fabs(m_imRelativeVelocitySCV[sh][dim-1]), u(_C_,sh));
+									
+									const number prod_rel_deriv = VecProd(RelVel_deriv, scvf.normal());
+									number conv_flux_rel_deriv_sh =  u(_C_,sh) * (1.0 - u(_C_,sh)) * prod_rel_deriv;
+									
+									
+								}
+								if (m_imSlipVelocitySCVF.data_given())
+									prod_vel_total += VecProd(m_imSlipVelocitySCVF[sh], scvf.normal());
+								
+								number conv_flux_total_sh =  (1.0 - 2.0*(u(_C_,sh))) * prod_vel_total;
+								
+								
+								conv_flux_vol_diff += 0.5 * (conv_flux_total_sh + conv_flux_rel_deriv_sh);
+								
+								//--------------------------------------------------------
+								
+								
+								if(sh == to)
+									conv_flux_vol_diff += -0.5 * eps;
+								if(sh == from)
+									conv_flux_vol_diff += +0.5 * eps;
+								
+								conv_flux_vol_diff *= ratio_diff;
+								
+								//    Add flux term to local matrix
+								J(_C_, scvf.from(), _C_, sh) += conv_flux_vol_diff;
+								J(_C_, scvf.to(),   _C_, sh) -= conv_flux_vol_diff;
+								
+							}
+							
+							
+						}
+						
+						
+						
+						
+						
 					}
 					
 					
-					
-
-
-				}
-				
-                
-            }
+				}*/
+			}
 
             
         } //end ip shapes
 		
 		if (m_div_correction)
 		{
-			const number conv_flux = VecProd(Vel_ip[ip], scvf.normal());
+			const number conv_flux = VecProd(TransportingVel_ip[ip], scvf.normal());
 			
 			J(_C_, scvf.from(), _C_, scvf.from()) +=  -conv_flux;
 			J(_C_, scvf.to()  , _C_, scvf.to()  ) -=  -conv_flux;
@@ -1231,6 +1416,203 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 			
 		}
 	} //end ips
+	
+	if ( false && m_pressure_jump && cut_elem)
+	{
+		//     loop Sub Control Volumes (SCV)
+		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+		{
+			//     get current SCV
+			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+			//    1. Add contributions to local defect
+			size_t from = scvf.from();
+			size_t to   = scvf.to();
+			
+			MathVector<dim> dA = scvf.normal();
+			MathVector<dim> dA1 = scvf.normal();
+
+			if (JumpShape[from]*JumpShape[to]<0.0)
+			{
+				//VecScale(dA1,m_imSurfaceNormal[scvf.from()],VecProd(m_imSurfaceNormal[scvf.from()],dA1));
+				//VecScale(dA,m_imSurfaceNormal[scvf.from()],VecProd(m_imSurfaceNormal[scvf.from()],dA));
+			}
+			
+		//    1. Interpolate pressure at ip
+			
+			number MU = (Phase2[ip]) ? mu_l : mu_g;
+			
+			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+			{
+				////////////////////////////////////////////////////
+				////////////////////////////////////////////////////
+				// Momentum Equation ()
+				////////////////////////////////////////////////////
+				////////////////////////////////////////////////////
+				
+				
+				////////////////////////////////////////////////////
+				// Diffusive Term (Momentum Equation)
+				////////////////////////////////////////////////////
+				
+				//     Compute flux derivative at IP
+				
+				/*number flux_sh_jump = 0.0;
+				//const number flux_sh_aux = -1.0 * ( MU ) * VecDot(scvf.global_grad(sh), dA1);
+				//const number flux_sh =  -1.0 * ( - m_imKinViscosity[ip] * m_imDensitySCVF[ip]) * VecDot(scvf.global_grad(sh), scvf.normal());
+				
+				if ((Phase2[ip] && JumpShape[sh]<0.0) || (!Phase2[ip] && JumpShape[sh]>0.0))
+					flux_sh_jump +=  1.0 * MU * JumpShape[sh] * VecDot(scvf.global_grad(sh), dA1);
+				
+				//     Add flux derivative  to local matrix
+				for(int d1 = 0; d1 < dim; ++d1)
+				{
+					//J(d1, scvf.from(), d1, sh) += flux_sh_aux + flux_sh ;
+					//J(d1, scvf.to()  , d1, sh) -= flux_sh_aux + flux_sh ;
+					
+					for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
+						for(int d2 = 0; d2 < dim; ++d2)
+						{
+							J(d1, scvf.from(), d2, sh) += flux_sh_jump *  press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
+							J(d1, scvf.to()  , d2, sh) -= flux_sh_jump *  press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
+						}
+				}
+				
+			   
+				if(!m_bLaplace)
+				{
+					for(int d1 = 0; d1 < dim; ++d1)
+						for(int d2 = 0; d2 < dim; ++d2)
+						{
+							
+							//const number flux2_sh = -1.0 * (-m_imKinViscosity[ip] * m_imDensitySCVF[ip]) * scvf.global_grad(sh)[d1] * scvf.normal()[d2];
+							//const number flux2_sh_aux = -1.0 * MU * scvf.global_grad(sh)[d1] * dA1[d2];
+							//J(d1, scvf.from(), d2, sh) += flux2_sh_aux+flux2_sh;
+							//J(d1, scvf.to()  , d2, sh) -= flux2_sh_aux+flux2_sh;
+					
+							number flux2_sh_jump = 0.0;
+
+							if ((Phase2[ip] && JumpShape[sh]<0.0) || (!Phase2[ip] && JumpShape[sh]>0.0))
+								flux2_sh_jump =  1.0 * MU * JumpShape[sh] * scvf.global_grad(sh)[d1] * dA1[d2];
+							
+							for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
+							for(int d3 = 0; d3 < dim; ++d3)
+							{
+								J(d1, scvf.from(), d3, sh2) += flux2_sh_jump *  press_jump.tang_vel_shape_vel(sh,d2,d3,sh2);
+								J(d1, scvf.to()  , d3, sh2) -= flux2_sh_jump *  press_jump.tang_vel_shape_vel(sh,d2,d3,sh2);
+							}
+							
+						}
+				}*/
+				
+				
+				////////////////////////////////////////////////////
+				// Pressure Term (Momentum Equation)
+				////////////////////////////////////////////////////
+				/*number deriv_pressure_g;
+				number deriv_pressure_l;
+				
+				if(JumpShape[sh]>0.0)
+					deriv_pressure_g = -scvf.shape(sh) * JumpShape[sh];
+					//deriv_pressure_g = -SCVFinterShape[ip][sh] * JumpShape[sh];
+				else
+					deriv_pressure_l = -scvf.shape(sh) * JumpShape[sh];
+					//deriv_pressure_l = -SCVFinterShape[ip][sh] * JumpShape[sh];
+				
+				
+				
+			//    2. Add contributions to local defect
+				for(int d1 = 0; d1 < dim; ++d1)
+				{
+					//const number flux_sh_p =  (SCVFinterShape[ip][sh] * dA[d1] - scvf.shape(sh) * scvf.normal()[d1]);
+					//const number flux_sh_p =  (scvf.shape(sh) * dA[d1] - scvf.shape(sh) * scvf.normal()[d1]);
+					
+					//J(d1, scvf.from(), _P_, sh) += flux_sh_p;
+					//J(d1, scvf.to()  , _P_, sh) -= flux_sh_p;
+					
+					
+					
+					for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
+					{
+						if (JumpShape[from]<0.0)
+							J(d1, from, _P_, sh2) += deriv_pressure_g * dA[d1] * press_jump.pressure_shape_p(sh,sh2);
+						else
+							J(d1, from, _P_, sh2) += deriv_pressure_l * dA[d1] * press_jump.pressure_shape_p(sh,sh2);
+						if (JumpShape[to]<0.0)
+							J(d1, to, _P_, sh2) -= deriv_pressure_g * dA[d1] * press_jump.pressure_shape_p(sh,sh2);
+						else
+							J(d1, to, _P_, sh2) -= deriv_pressure_l * dA[d1] * press_jump.pressure_shape_p(sh,sh2);
+						
+						for(size_t sh3 = 0; sh3 < scvf.num_sh(); ++sh3)
+						{
+							for(int d2 = 0; d2 < dim; ++d2)
+							{
+								if (JumpShape[from]<0.0)
+									J(d1, from, d2, sh2) += deriv_pressure_g * dA[d1] * press_jump.pressure_shape_vel(sh2,d2,sh3);
+								else
+									J(d1, from, d2, sh2) += deriv_pressure_l * dA[d1] * press_jump.pressure_shape_vel(sh2,d2,sh3);
+								if (JumpShape[to]<0.0)
+									J(d1, to, d2, sh2) -= deriv_pressure_g * dA[d1] * press_jump.pressure_shape_vel(sh2,d2,sh3);
+								else
+									J(d1, to, d2, sh2) -= deriv_pressure_l * dA[d1] * press_jump.pressure_shape_vel(sh2,d2,sh3);
+							}
+						}
+					}
+
+				}*/
+
+				////////////////////////////////////////////////////
+				////////////////////////////////////////////////////
+				// Continuity Equation (conservation of mass)
+				////////////////////////////////////////////////////
+				////////////////////////////////////////////////////
+				/*MathVector<dim> dA2 = scvf.normal();
+
+				//    Add derivative of stabilized flux w.r.t pressure to local matrix
+				number contFlux_p = 0.0;
+
+				for(int d1 = 0; d1 < dim; ++d1)
+				{
+					contFlux_p += stab.stab_shape_p_jump(ip, d1, sh) * dA2[d1];
+				}
+				
+
+			   
+				for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
+				{
+					J(_P_, from, _P_, sh2) += contFlux_p * press_jump.pressure_shape_p(sh,sh2);
+					J(_P_, to  , _P_, sh2) -= contFlux_p * press_jump.pressure_shape_p(sh,sh2);
+					
+					for(int d1 = 0; d1 < dim; ++d1)
+					{
+						J(_P_, from, d1, sh2) += contFlux_p * press_jump.pressure_shape_vel(sh,d1,sh2);
+						J(_P_, to  , d1, sh2) -= contFlux_p * press_jump.pressure_shape_vel(sh,d1,sh2);
+					}
+
+				}
+
+				for(int d1 = 0; d1 < dim; ++d1)
+				{
+					number contFlux_vel = stab.stab_shape_slip_vel(ip, d1, d1, sh) * dA2[d1];
+
+					
+					for(int d2 = 0; d2 < dim; ++d2)
+						for(size_t sh2 = 0; sh2 < scvf.num_sh(); ++sh2)
+						{
+							J(_P_, scvf.from(), d2, sh2) += contFlux_vel * press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
+							J(_P_, scvf.to()  , d2, sh2) -= contFlux_vel * press_jump.tang_vel_shape_vel(sh,d1,d2,sh2);
+						}
+					
+					
+					
+				}*/
+				
+			}
+
+
+			
+		}
+		
+	}
     
     
 }
@@ -1271,10 +1653,12 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     
     
 	MathVector<dim> StdVel[numSCVF];
+	MathVector<dim> StdVel_ip[numSCVF];
+	MathVector<dim> StdMomentum[numSCVF];
 	MathVector<dim> StdCharacteristicVel[numSCVF];
 	MathVector<dim> Flux[numSCVF];
-	MathVector<dim> Vel[numSCVF];
 	MathVector<dim> Vel_ip[numSCVF];
+	MathVector<dim> TransportingVel_ip[numSCVF];
 	number Gamma[numSh];
 	number Rho_up[numSCVF];
 	number Rho_do[numSCVF];
@@ -1290,12 +1674,14 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	//const number rhoa = Inter->Density_a();
 	const number alpha_max = Inter->Alpha_max();
 	
-	number JumpShape[numSh];
+	int JumpShape[numSh];
 	bool Phase2[numSCVF];
+	bool GFM[numSCVF] = {false};
 	number mu_l, rho_l;
 	number mu_g, rho_g;
 	MathVector<dim> Source_1;
 	MathVector<dim> Source_g;
+	const number borrar = 0.0;
 	//std::vector<number> buffer(numSCVF * numSh);
 	//std::vector<number*> SCVFinterShape(numSCVF);
 	//for (size_t i = 0; i < numSCVF; ++i)
@@ -1310,15 +1696,17 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		
 		if(cut_elem)
 		{
-			Inter->template PropertiesJump<TElem>( geo, JumpShape, m_imDensitySCV, m_imKinViscositySCV, m_imSourceSCV, numSh, cut_elem, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_1, Source_g);
+			Inter->template PropertiesJump<TElem>(u_aux, _C_, geo, JumpShape, m_imDensitySCV, m_imKinViscositySCV, m_imSourceSCV, numSh, cut_elem, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_1, Source_g, GFM);
 			
-			m_spPressureJump->update( &geo, *pSol, StdVel, m_bStokes, m_imSurfaceNormalSCVF, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, JumpShape, pOldSol, dt, 0.0, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, Inter->interface_value());
+			m_spPressureJump->update( &geo, *pSol, StdVel_ip, m_bStokes, m_imSurfaceNormalSCV, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, JumpShape, pOldSol, dt, borrar, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, Inter->interface_value());
 			//Inter->template InterfaceSCVFShapes<TElem>(SCVFinterShape.data(), geo, u, JumpShape, numSh, _C_);
+			//UG_LOG("mu_l  =  "<< mu_l <<"  mu_g  =  "<< mu_g <<" rho_l  =  "<< rho_l <<" rho_g  =  "<< rho_g << "\n");
 			
 		}
 	}
-   
-    std_vel(  u,  geo, StdVel, Vel, m_imDensitySCV,Rho_up,Rho_do,ConvRatio);
+
+	std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCVF, m_imDensitySCV, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
+	
     if(Inter->ParticleGradientForce())
 	{
 		vel_grad(  u,  geo,  Gamma);
@@ -1330,13 +1718,13 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     //	compute stabilized velocities and shapes for continuity equation
     // \todo: (optional) Here we can skip the computation of shapes, implement?
 
-	m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
         //	compute stabilized velocities and shapes for convection upwind
         if(m_spConvStab.valid())
             if(m_spConvStab != m_spStab)
-                m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+                m_spConvStab->update(&geo, *pSol, StdVel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
 		
     }
     
@@ -1347,38 +1735,46 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 	{
 		Vel_ip[ip] = stab.stab_vel(ip);
+		
+		if(m_transporting_vel_stab)
+			TransportingVel_ip[ip] = Vel_ip[ip];
+		else
+			TransportingVel_ip[ip] = StdVel_ip[ip];
 	}
 
 		
-	if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCV.data_given())
-		std_rel_vel(  u,  geo, Vel_ip, StdCharacteristicVel, Flux, m_imRelativeVelocitySCV, m_imSlipVelocitySCV, ShockCase);
+	//if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
+		//std_rel_vel(  u,  geo, Vel_ip, StdCharacteristicVel, Flux, m_imRelativeVelocitySCV, m_imSlipVelocitySCVF, ShockCase);
 	
 	// Estimation of the veloctity at ip for upwind shape and continuity equations
-	if(!m_imRelativeVelocitySCV.data_given() && !m_imSlipVelocitySCV.data_given())
+	/*if(!m_imRelativeVelocitySCV.data_given() && !m_imSlipVelocitySCVF.data_given())
 		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 		{
 				StdCharacteristicVel[ip] = Vel_ip[ip];
-		}
-    
+		}*/
+
+	
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
         //	compute upwind shapes
         if(m_spConvUpwind.valid())
             if(m_spStab->upwind() != m_spConvUpwind)
             {
-                m_spConvUpwind->update(&geo, StdVel);
-                m_spConvUpwind->update_downwind(&geo, StdVel);
+                m_spConvUpwind->update(&geo, StdVel_ip);
+                m_spConvUpwind->update_downwind(&geo, StdVel_ip);
             }
     }
-
-    //    compute upwind shapes for trasport eq.
-    if(m_spConvUpwind_vol.valid())
-        m_spConvUpwind_vol->update(&geo, StdCharacteristicVel);
-	//    compute upwind shapes for trasport eq.
-	if(m_spConvUpwind_rel.valid() && m_imRelativeVelocitySCVF.data_given())
+	if(m_upwind_vol_method == 0)
 	{
-		m_spConvUpwind_rel->update(&geo, m_imRelativeVelocitySCVF.values());
-		m_spConvUpwind_rel->update_downwind(&geo, m_imRelativeVelocitySCVF.values());
+		//    compute upwind shapes for trasport eq.
+		if(m_spConvUpwind_vol.valid())
+			m_spConvUpwind_vol->update(&geo, TransportingVel_ip);
+		//    compute upwind shapes for trasport eq.
+		//if(m_spConvUpwind_rel.valid() && m_imRelativeVelocitySCVF.data_given())
+		//{
+			//m_spConvUpwind_rel->update(&geo, m_imRelativeVelocitySCVF.values());
+			//m_spConvUpwind_rel->update_downwind(&geo, m_imRelativeVelocitySCVF.values());
+		//}
 	}
     
 
@@ -1386,7 +1782,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
 	const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
     const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;
-	const INavierStokesUpwind<dim>& upwind_rel = *m_spConvUpwind_rel;
+	//const INavierStokesUpwind<dim>& upwind_rel = *m_spConvUpwind_rel;
 
 
 // 	loop Sub Control Volume Faces (SCVF)
@@ -1415,29 +1811,41 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		// Diffusive Term (Momentum Equation)
 		////////////////////////////////////////////////////
 
-	// 	1. Interpolate Functional Matrix of velocity at ip
-		MathMatrix<dim, dim> grad;
-		for(int d1 = 0; d1 < dim; ++d1)
-			for(int d2 = 0; d2 <dim; ++d2)
-			{
-			//	sum up contributions of each shape
-                grad(d1, d2) = 0.0;
-				for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-                    grad(d1, d2) += scvf.global_grad(sh)[d2] * u(d1, sh);
-			}
-
-	//	2. Compute flux
 		MathVector<dim> diffFlux;
+		
+		if(!GFM[ip] )
+		{
+			// 	1. Interpolate Functional Matrix of velocity at ip
+				MathMatrix<dim, dim> grad;
+				for(int d1 = 0; d1 < dim; ++d1)
+					for(int d2 = 0; d2 <dim; ++d2)
+					{
+					//	sum up contributions of each shape
+						grad(d1, d2) = 0.0;
+						for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+							grad(d1, d2) += scvf.global_grad(sh)[d2] * u(d1, sh);
+					}
 
-	//	Add (\nabla u) \cdot \vec{n}
-		MatVecMult(diffFlux, grad, scvf.normal());
+			//	2. Compute flux
 
-	//	Add (\nabla u)^T \cdot \vec{n}
-		if(!m_bLaplace)
-			TransposedMatVecMultAdd(diffFlux, grad, scvf.normal());
+			//	Add (\nabla u) \cdot \vec{n}
+				MatVecMult(diffFlux, grad, scvf.normal());
 
-	//	scale by viscosity
-		VecScale(diffFlux, diffFlux, (-1.0) * m_imDensitySCVF[ip] * m_imKinViscosity[ip]);
+			//	Add (\nabla u)^T \cdot \vec{n}
+				if(!m_bLaplace)
+					TransposedMatVecMultAdd(diffFlux, grad, scvf.normal());
+
+			//	scale by viscosity
+				VecScale(diffFlux, diffFlux, (-1.0) * m_imDensitySCVF[ip] * m_imKinViscosity[ip]);
+
+			
+		}
+		else
+		{
+			VecScale(diffFlux, press_jump.shear_stress(ip), -1.0*VecLength(scvf.normal()) );
+
+		}
+		
 
 	//	3. Add flux to local defect
 		for(int d1 = 0; d1 < dim; ++d1)
@@ -1445,18 +1853,6 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			d(d1, scvf.from()) += diffFlux[d1];
 			d(d1, scvf.to()  ) -= diffFlux[d1];
 		}
-		/*if(b_vel)
-		{	if(b_from && b_to)
-				UG_LOG("Vel share face  \n");
-			else if (b_from)
-				UG_LOG("Vel from node  \n");
-			else
-				UG_LOG("Vel To node  \n");
-			
-			if(sh_from = scvf.from())
-			UG_LOG("Viscous flux = " << << << );
-				
-		}*/
         
         if (false){
             for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
@@ -1487,14 +1883,14 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	
 		//	Peclet Blend
 			if(m_bPecletBlend)
-                peclet_blend(UpwindMomentum, geo, ip, StdVel[ip], m_imKinViscosity[ip],m_imDensitySCVF[ip]);
+                peclet_blend(UpwindMomentum, StdMomentum[ip], geo, ip, StdVel[ip], m_imKinViscosity[ip]);
             
             
 	
 		//	compute product of standard velocity and normal
-            const number prod = VecProd(StdVel[ip], scvf.normal()) ;
+            const number prod = VecProd(StdVel_ip[ip], scvf.normal()) ;
 			
-			VecScaleAdd(UpwindMomentum, ConvRatio[ip], UpwindMomentum, (1.0-ConvRatio[ip])*Rho_up[ip],Vel[ip]);
+			//VecScaleAdd(UpwindMomentum, ConvRatio[ip], UpwindMomentum, (1.0-ConvRatio[ip])*Rho_up[ip],Vel[ip]);
 
 	
 		//	Add contributions to local velocity components
@@ -1534,12 +1930,22 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 
 		//	1. Interpolate pressure at ip
 		number pressure = 0.0;
-		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-			pressure += scvf.shape(sh) * u(_P_, sh);
-		if(Inter->ParticleGradientForce())
+		if(true)//!GFM[ip] )
 		{
 			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-				pressure += scvf.shape(sh) * Ps[sh];
+				pressure += scvf.shape(sh) * u(_P_, sh);
+			if(Inter->ParticleGradientForce())
+			{
+				for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+					pressure += scvf.shape(sh) * Ps[sh];
+			}
+		}
+		else
+		{
+			
+			
+			pressure = 0.5*(u(_P_, scvf.from()) + u(_P_, scvf.to()));
+			
 		}
 			
 		
@@ -1648,82 +2054,104 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             //      sum up convective flux using convection shapes
 		
 		
-		number ratio_up = 1.0;
 		number ratio_diff = 1.0;
 		number ratio_star = 1.0;
 		number S = VecLength(StdCharacteristicVel[ip]);
 		number eps = fmax(Inter->Epsilon(),S);
 	
-		if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCV.data_given())
+		/*if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
 		{
 		
 			if(ShockCase[ip] == 0 || ShockCase[ip] == 1 )
 			{
-				ratio_up = 1.0;
 				ratio_diff = 0.0;
 				ratio_star = 0.0;
 			}
 			if(ShockCase[ip] == 2)
 			{
-				ratio_up = 0.0;
 				ratio_diff = 0.0;
 				ratio_star = 1.0;
 			}
 			if (ShockCase[ip] == 3)
 			{
-				ratio_up = fmin(S/eps,1.0);
-				ratio_diff = 1.0 - ratio_up;
+				ratio_diff = 1.0;// - ratio_up;
 				ratio_star = 0.0;
 				
 			}
 			
-		}
+		}*/
 		
 		
-        
-            
-        const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
-		number conv_flux = VecProd(Vel_ip[ip], scvf.normal());
-		number conv_flux_vol = ratio_up * C_up_vol * conv_flux;
+		number conv_flux_vol = 0.0;
+		number conv_flux = VecProd(TransportingVel_ip[ip], scvf.normal());
 		
-		
-		if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCV.data_given())
+		if(m_upwind_vol_method == 0)
 		{
-			const size_t from = scvf.from();
-			const size_t to = scvf.to();
-
-			if(ShockCase[ip] == 0 || ShockCase[ip] == 1 || ShockCase[ip] == 3)
-			{
-				const MathVector<dim> Flux_up = upwind_vol.upwind_vector(ip, Flux);
-				//const number C_down_rel = upwind_rel.downwind_value(ip, u, _C_);
-				//upwind_vector
-				conv_flux_vol +=  ratio_up * VecProd(Flux_up , scvf.normal());
-				
-			}
-			if(ShockCase[ip] == 2)
-			{
-				
-				conv_flux_vol += ratio_star * VecProd(StdCharacteristicVel[ip], scvf.normal());
-				
-			}
-			if(ShockCase[ip] == 3)
-			{
-								
-				
-				MathVector<dim> SumFlux;
-				VecScaleAdd(SumFlux, 0.5 , Flux[from], 0.5,Flux[to] );
-				number conv_flux_vol_diff = VecProd(SumFlux , scvf.normal());
-				conv_flux_vol_diff +=  0.5 * (u(_C_,from) + u(_C_,to)) * conv_flux;
-				conv_flux_vol_diff +=  - 0.5 * eps * ( u(_C_,to) - u(_C_,from) );
-				
-				conv_flux_vol += ratio_diff * conv_flux_vol_diff;
-				
-				
-			}
-
-			
-				
+			const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
+			conv_flux_vol +=  C_up_vol * conv_flux;
 		}
+		else
+		{
+			if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
+			{
+				const size_t from = scvf.from();
+				const size_t to = scvf.to();
+				number Flux_ip = 0.0;
+				MathVector<dim> Wrel_L = 0, Wrel_R = 0.0;
+				MathVector<dim> Wslip_L = 0, Wslip_R = 0.0;
+				
+				if(m_imRelativeVelocitySCV.data_given())
+				{
+					Wrel_L = m_imRelativeVelocitySCV[from];
+					Wrel_R = m_imRelativeVelocitySCV[to];
+				}
+				if(m_imSlipVelocitySCVF.data_given())
+				{
+					VecAdd(Wrel_L, m_imSlipVelocitySCVF[ip], Wrel_L );
+					VecAdd(Wrel_R, m_imSlipVelocitySCVF[ip], Wrel_R );
+				}
+					
+				
+				Inter->Flux_ip(Flux_ip, u(_C_,from), u(_C_,to), Wrel_L, Wrel_R,  TransportingVel_ip[ip], scvf.normal(), m_upwind_vol_method);
+				conv_flux_vol += Flux_ip;
+				/*if(ShockCase[ip] == 0 || ShockCase[ip] == 1 || ShockCase[ip] == 3)
+				{
+					const MathVector<dim> Flux_up = upwind_vol.upwind_vector(ip, Flux);
+					//const number C_down_rel = upwind_rel.downwind_value(ip, u, _C_);
+					//upwind_vector
+					conv_flux_vol +=  VecProd(Flux_up , scvf.normal());
+					
+				}
+				if(ShockCase[ip] == 2)
+				{
+					
+					conv_flux_vol += ratio_star * VecProd(StdCharacteristicVel[ip], scvf.normal());
+					
+				}
+				if(ShockCase[ip] == 3)
+				{
+									
+					
+					MathVector<dim> SumFlux;
+					VecScaleAdd(SumFlux, 0.5 , Flux[from], 0.5,Flux[to] );
+					number conv_flux_vol_diff = VecProd(SumFlux , scvf.normal());
+					conv_flux_vol_diff +=  0.5 * (u(_C_,from) + u(_C_,to)) * conv_flux;
+					conv_flux_vol_diff +=  - 0.5 * eps * ( u(_C_,to) - u(_C_,from) );
+					
+					conv_flux_vol += ratio_diff * conv_flux_vol_diff;
+					
+					
+				}*/
+				
+
+				
+					
+			}
+			
+		}
+		
+		
+
 
     //  add to local defect
         d(_C_, scvf.from()) += conv_flux_vol;
@@ -1731,7 +2159,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		
 		if (m_div_correction)
 		{
-			number conv_flux_correction = VecProd(Vel_ip[ip], scvf.normal());
+			number conv_flux_correction = VecProd(TransportingVel_ip[ip], scvf.normal());
 			d(_C_, scvf.from()) += -u(_C_, scvf.from()) * conv_flux;
 			d(_C_, scvf.to()  ) -= -u(_C_, scvf.to()  ) * conv_flux;
 			
@@ -1754,6 +2182,130 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			
 		}
             
+	}
+	if ( false &&  m_pressure_jump && cut_elem)
+	{
+		//     loop Sub Control Volumes (SCV)
+		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+		{
+			//     get current SCV
+			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+			//    1. Add contributions to local defect
+			size_t from = scvf.from();
+			size_t to   = scvf.to();
+			
+			MathVector<dim> dA = scvf.normal();
+			MathVector<dim> dA1 = scvf.normal();
+			if (JumpShape[from]*JumpShape[to]<0.0)
+			{
+				//VecScale(dA1,m_imSurfaceNormal[scvf.from()],VecProd(m_imSurfaceNormal[scvf.from()],dA1));
+				//VecScale(dA,m_imSurfaceNormal[scvf.from()],VecProd(m_imSurfaceNormal[scvf.from()],dA));
+
+			}
+
+			////////////////////////////////////////////////////
+			// Diffusive Term (Momentum Equation)
+			////////////////////////////////////////////////////
+
+		//     1. Interpolate Functional Matrix of velocity at ip
+			MathMatrix<dim, dim> gradVel_jump;
+			//MathMatrix<dim, dim> gradVel;
+			number MU = (Phase2[ip]) ? mu_l : mu_g;
+
+			for(int d1 = 0; d1 < dim; ++d1)
+				for(int d2 = 0; d2 <dim; ++d2)
+				{
+				//    sum up contributions of each shape
+					//gradVel(d1, d2) = 0.0;
+					gradVel_jump(d1, d2) = 0.0;
+					//gradVel(d1, d2) = 0.0;
+					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+					{
+						//gradVel(d1, d2) += scvf.global_grad(sh)[d2] * u(d1, sh);
+						//gradVel_jump(d1, d2) += scvf.global_grad(sh)[d2] * u(d1, sh);
+						if ((Phase2[ip] && JumpShape[sh]<0.0) || (!Phase2[ip] && JumpShape[sh]>0.0))
+						{
+							gradVel_jump(d1, d2) += - scvf.global_grad(sh)[d2] * JumpShape[sh] * press_jump.tang_vel(sh)[d1];
+						}
+					}
+				}
+
+		//    2. Compute flux
+			MathVector<dim> diffFlux_jump;
+			//MathVector<dim> diffFlux;
+
+		//    Add (\nabla u) \cdot \vec{n}
+			MatVecMult(diffFlux_jump, gradVel_jump, dA1);
+			//MatVecMult(diffFlux, gradVel, scvf.normal());
+
+
+		//    Add (\nabla u)^T \cdot \vec{n}
+			if(!m_bLaplace)
+			{
+				TransposedMatVecMultAdd(diffFlux_jump, gradVel_jump, dA1);
+				//TransposedMatVecMultAdd(diffFlux, gradVel, scvf.normal());
+
+			}
+
+		//    scale by viscosity
+			VecScale(diffFlux_jump, diffFlux_jump, (-1.0) * MU);
+			//VecScale(diffFlux, diffFlux, (-1.0) * ( - m_imKinViscosity[ip] * m_imDensitySCVF[ip]));
+
+
+		//    3. Add flux to local defect
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				d(d1, scvf.from()) += diffFlux_jump[d1];//+diffFlux[d1];
+				d(d1, scvf.to()  ) -= diffFlux_jump[d1];//+diffFlux[d1];
+			}
+			
+			////////////////////////////////////////////////////
+			// Pressure Term Term (Momentum Equation)
+			////////////////////////////////////////////////////
+			
+		//    1. Interpolate pressure at ip
+			//number pressure = 0.0;
+			/*number pressure_l = 0.0;
+			number pressure_g = 0.0;
+			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+			{
+				//pressure   += scvf.shape(sh) * u(_P_,sh);
+				//pressure_l += SCVFinterShape[ip][sh] * u(_P_,sh);
+				//pressure_g += SCVFinterShape[ip][sh] * u(_P_,sh);
+				//pressure_l += scvf.shape(sh) * u(_P_,sh);
+				//pressure_g += scvf.shape(sh) * u(_P_,sh);
+				if(JumpShape[sh]>0.0)
+				{
+					//pressure_g += -SCVFinterShape[ip][sh] * JumpShape[sh] * press_jump.pressure_jump(sh)
+					pressure_g += -scvf.shape(sh) * JumpShape[sh] * press_jump.pressure_jump(sh);
+				}
+				else
+				{
+					//pressure_l += -SCVFinterShape[ip][sh] * JumpShape[sh] * press_jump.pressure_jump(sh)
+					pressure_l += -scvf.shape(sh) * JumpShape[sh] * press_jump.pressure_jump(sh);
+				}
+			}
+
+		//    2. Add contributions to local defect
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				//d(d1, from) += pressure * ( - 1.0 * scvf.normal()[d1]);
+				//d(d1, to)   -= pressure * ( - 1.0 * scvf.normal()[d1]);
+				
+				if (JumpShape[from]<0.0)
+					d(d1, from) += pressure_g * dA[d1];
+				else
+					d(d1, from) += pressure_l * dA[d1];
+				
+				if (JumpShape[to]<0.0)
+					d(d1, to) -= pressure_g * dA[d1];
+				else
+					d(d1, to) -= pressure_l * dA[d1];
+
+			}*/
+
+		}
+		
 	}
     
 }
@@ -2258,8 +2810,8 @@ template<typename TFVGeom>
 inline
 number
 NavierStokesFV1M<TDomain>::
-peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip, 
-             const MathVector<dim>& StdVel, number kinVisco, number densitySCVF)
+peclet_blend(MathVector<dim>& UpwindMomentum, const MathVector<dim>& StdVelMomentum, const TFVGeom& geo, size_t ip,
+             const MathVector<dim>& StdVel, number kinVisco)
 {
 	const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
 //	compute peclet number
@@ -2267,11 +2819,11 @@ peclet_blend(MathVector<dim>& UpwindMomentum, const TFVGeom& geo, size_t ip,
 	 * VecDistance(geo.corners() [scvf.to()], geo.corners() [scvf.from()]) / kinVisco;
 
 //	compute weight
-	//const number Pe2 = Pe * Pe;
-	const number w = Pe / (1.0 + Pe);
+	const number Pe2 = Pe * Pe;
+	const number w = Pe2 / (5.0 + Pe2);
 
 //	compute upwind vel
-	VecScaleAdd(UpwindMomentum, w, UpwindMomentum, (1.0-w) * densitySCVF, StdVel);
+	VecScaleAdd(UpwindMomentum, w, UpwindMomentum, (1.0-w), StdVelMomentum);
 
 	return w;
 }
@@ -2280,43 +2832,72 @@ template<typename TFVGeom>
 inline
 void
 NavierStokesFV1M<TDomain>::
-std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, MathVector<dim>* Vel, const DataImport<number, dim>& densitySCV, number* Rho_up, number* Rho_do,number* ConvRatio )
+std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, MathVector<dim>* StdVel_ip, MathVector<dim>* StdMomentum,  const DataImport<number, dim>& densitySCVF, const DataImport<number, dim>& densitySCV, const DataImport<number, dim>& KinViscSCV , number* Rho_up, number* Rho_do,number* ConvRatio )
 {
-    /*for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+    for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
     {
         const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
         
-        VecSet(StdVel[ip], 0.0);
+        VecSet(StdVel_ip[ip], 0.0);
         for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
         {
             for(int d1 = 0; d1 < dim; ++d1)
             {
-                StdVel[ip][d1] += scvf.shape(sh) * u(d1, sh) ;
+				StdMomentum[ip][d1] += densitySCV[sh]*scvf.shape(sh) * u(d1, sh);
+				StdVel[ip][d1] += scvf.shape(sh) * u(d1, sh);
             }
             
         }
-    }*/
+		
+    }
+	MathVector<dim> RhoVel;
+	number power = 1.0;
     for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
     {
         const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
         size_t to = scvf.to();
         size_t from = scvf.from();
+		number dRho = fabs(densitySCV[to]- densitySCV[from]);
+		number theta = pow( dRho/(1.0+dRho), power);
         
-        VecSet(StdVel[ip], 0.0);
+        VecSet(RhoVel, 0.0);
 
         for(int d1 = 0; d1 < dim; ++d1)
         {
-            StdVel[ip][d1] += (densitySCV[to] * u(d1, to) + densitySCV[from] * u(d1, from)) / ( densitySCV[to] + densitySCV[from]) ;
+			RhoVel[d1] += (densitySCV[to] * u(d1, to) + densitySCV[from] * u(d1, from)) / ( densitySCV[to] + densitySCV[from]) ;
         }
-    }
-    if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
-    {
 		
+		VecScaleAdd(StdVel_ip[ip], (1.0-theta), StdVel[ip], theta, RhoVel);
+		
+		
+    }
+    if (false)//! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
+    {
+		/*MathVector<dim> Characteristic;
+		MathVector<dim> TransportVel;
+		MathVector<dim> Vel_from, Vel_to;
+		
+		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+		{
+			Characteristic = Vel[ip];
+			TransportVel = StdVel_ip[ip];
+			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+			size_t to = scvf.to();
+			size_t from = scvf.from();
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				Vel_from[d1] = u(d1,from);
+				Vel_to[d1]   = u(d1,to);
+			}
+			Inter->GodunovCharacteristic_ip( Characteristic,TransportVel, densitySCV[from], densitySCV[to], densitySCV[from]*KinViscSCV[from], densitySCV[to]*KinViscSCV[to], Vel_from, Vel_to, scvf.normal());
+			StdVel_ip[ip] = TransportVel;
+			Vel[ip] = Characteristic;
+		}*/
     //    compute upwind shapes
-        if(m_spConvUpwind.valid())
+        /*if(m_spConvUpwind.valid())
         {
-            m_spConvUpwind->update(&geo, StdVel);
-            m_spConvUpwind->update_downwind(&geo, StdVel);
+            m_spConvUpwind->update(&geo, StdVel_ip);
+            m_spConvUpwind->update_downwind(&geo, StdVel_ip);
             
             const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
 
@@ -2331,15 +2912,15 @@ std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, Math
                     Rho_do[ip] += upwind.downwind_shape_sh(ip, sh) * densitySCV[sh];
                 }
 				ConvRatio[ip] = 1.0;//pow(fmin(Rho_up[ip] , Rho_do[ip]) / fmax (Rho_up[ip] , Rho_do[ip]), 3.0);
-                VecSet(Vel[ip], 0.0);
                 for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
                     for(int d1 = 0; d1 < dim; ++d1)
                     {
                         Vel[ip][d1] += ( (Rho_up[ip] * upwind.downwind_conv_length(ip) * upwind.upwind_shape_sh(ip, sh) + Rho_do[ip] * upwind.upwind_conv_length(ip) * upwind.downwind_shape_sh(ip, sh) ) / ( Rho_up[ip] * upwind.downwind_conv_length(ip) + Rho_do[ip] * upwind.upwind_conv_length(ip))
 										  ) * u(d1, sh);
                     }
+				
             }
-        }
+        }*/
     }
     
 }
@@ -2350,255 +2931,262 @@ void
 NavierStokesFV1M<TDomain>::
 std_rel_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* Vel_ip,  MathVector<dim>* StdCharacteristicVel,  MathVector<dim>* Flux, const DataImport<MathVector<dim>, dim>& RelVelSCV, const DataImport<MathVector<dim>, dim>& SlipVelSCV, int* ShockCase)
 {
-	
-	const size_t SH = geo.num_sh();
-    const number rhos = Inter->Density_s();
-    const number rhoa = Inter->Density_a();
-	const number alpha_max = Inter->Alpha_max();
-	
-	bool chararcter[geo.num_scvf()];
-	bool rarefaction_elem = false;
-	bool shock_elem = false;
-	
-	MathVector<dim> LocalCharact[SH];
-	MathVector<dim> LinearCharact[SH];
-	MathVector<dim> RelVel_deriv[SH];
-	
-	MathVector<dim> Flux_total_L, Flux_total_R;
-	MathVector<dim> LocalCharact_total_L, LocalCharact_total_R;
-	
-	const number eps = Inter->Epsilon();
-	
-	for(size_t sh = 0; sh < SH; ++sh)
+	if(m_upwind_vol_method == 0)
 	{
+		UG_THROW("Linear upwind not implemented for Volume fraction transport");
 		
-		number u_sh =  u(_C_, sh);
-		number FLux_f = (1.0 - u_sh) * u_sh ;
-		number FLux_f_deriv = (1.0 - 2.0*u_sh);
-		
-		VecSet(Flux[sh],0.0);
-		VecSet(LocalCharact[sh],0.0);
-		
-		if(RelVelSCV.data_given())
-		{
-			RelVel_deriv[sh] = 0.0;
-			VecScaleAppend(Flux[sh], FLux_f, RelVelSCV[sh]);
-			//Inter->RelativeVelDeriv(RelVel_deriv[sh], fabs(RelVelSCV[sh][dim-1]), u_sh);
-			VecScaleAppend(LocalCharact[sh],  FLux_f_deriv, RelVelSCV[sh], FLux_f,  RelVel_deriv[sh] );
-		}
-		if(SlipVelSCV.data_given())
-		{
-			VecScaleAppend(Flux[sh], FLux_f, SlipVelSCV[sh]);
-			VecScaleAppend(LocalCharact[sh],  FLux_f_deriv, SlipVelSCV[sh]);
-		}
-		
-	
 	}
-    
-    for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
-    {
+	else
+	{
+		const size_t SH = geo.num_sh();
+		const number rhos = Inter->Density_s();
+		const number rhoa = Inter->Density_a();
+		const number alpha_max = Inter->Alpha_max();
 		
-        const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-		const number face_norm = VecLength(scvf.normal());
+		bool chararcter[geo.num_scvf()];
+		bool rarefaction_elem = false;
+		bool shock_elem = false;
 		
-		const size_t shR = scvf.to();
-		const size_t shL = scvf.from();
-		const number uR = u(_C_, shR);
-		const number uL = u(_C_, shL);
+		MathVector<dim> LocalCharact[SH];
+		MathVector<dim> LinearCharact[SH];
+		MathVector<dim> RelVel_deriv[SH];
 		
+		MathVector<dim> Flux_total_L, Flux_total_R;
+		MathVector<dim> LocalCharact_total_L, LocalCharact_total_R;
 		
-		VecScaleAdd(Flux_total_L, uL, Vel_ip[ip], 1.0,  Flux[shL] );
-		VecScaleAdd(Flux_total_R, uR, Vel_ip[ip], 1.0,  Flux[shR] );
+		const number eps = Inter->Epsilon();
 		
-
-		VecAdd(LocalCharact_total_L, Vel_ip[ip], LocalCharact[shL] );
-		VecAdd(LocalCharact_total_R, Vel_ip[ip], LocalCharact[shR] );
-		
-		const number SL = VecProd(LocalCharact_total_L, scvf.normal() ) / face_norm;
-		const number SR = VecProd(LocalCharact_total_R, scvf.normal() ) / face_norm;
-		
-		const number FL = VecProd(Flux_total_L, scvf.normal() ) / face_norm;
-		const number FR = VecProd(Flux_total_R, scvf.normal() ) / face_norm;
-		
-		const number Smax = fmax(fabs(SR), fabs(SL));
-		const number Smin = fmin(fabs(SR), fabs(SL));
-		
-		/*if(Smin < eps || fabs(uR-uL)< eps || fabs(FR-FL)< eps)
+		for(size_t sh = 0; sh < SH; ++sh)
 		{
-			//VecScale( StdCharacteristicVel[ip],scvf.normal(), Smax/ face_norm);
-			//ShockCase[ip] = 3;
-			//chararcter[ip] = false;
-			//continue;
-			number Vel_n = VecProd(Vel_ip[ip],scvf.normal())/ face_norm;
-			number Ws_n = 0.0;
 			
-			number WL = 0.0;
-			number WR = 0.0;
+			number u_sh =  u(_C_, sh);
+			number FLux_f = (1.0 - u_sh) * u_sh ;
+			number FLux_f_deriv = (1.0 - 2.0*u_sh);
+			
+			VecSet(Flux[sh],0.0);
+			VecSet(LocalCharact[sh],0.0);
 			
 			if(RelVelSCV.data_given())
 			{
-				Ws_n += 0.5 * (VecProd(RelVelSCV[shR],scvf.normal()) + VecProd(RelVelSCV[shL],scvf.normal()))/ face_norm;
-				WL +=  VecProd(RelVelSCV[shL],scvf.normal()) / face_norm;
-				WR +=  VecProd(RelVelSCV[shR],scvf.normal()) / face_norm;
+				RelVel_deriv[sh] = 0.0;
+				VecScaleAppend(Flux[sh], FLux_f, RelVelSCV[sh]);
+				//Inter->RelativeVelDeriv(RelVel_deriv[sh], fabs(RelVelSCV[sh][dim-1]), u_sh);
+				VecScaleAppend(LocalCharact[sh],  FLux_f_deriv, RelVelSCV[sh], FLux_f,  RelVel_deriv[sh] );
 			}
 			if(SlipVelSCV.data_given())
 			{
-				Ws_n += 0.5 * (VecProd(SlipVelSCV[shR],scvf.normal()) + VecProd(SlipVelSCV[shL],scvf.normal()))/ face_norm;
-				WL +=  VecProd(SlipVelSCV[shL],scvf.normal()) / face_norm;
-				WR +=  VecProd(SlipVelSCV[shR],scvf.normal()) / face_norm;
-				
+				VecScaleAppend(Flux[sh], FLux_f, SlipVelSCV[sh]);
+				VecScaleAppend(LocalCharact[sh],  FLux_f_deriv, SlipVelSCV[sh]);
 			}
 			
-			UG_LOG("Ip = "<<ip<<" FL = "<< FL<<" FR = "<<FR<<" SL = "<< SL<<" SR = "<<SR<<" uL = "<<uL<< " uR =  "<<uR<<" WL = "<<WL<< " WR =  "<<WR<< " Vel = "<< Vel_n<< " Ws = "<<Ws_n << " \n");
-			
-		}*/
-
-		/*if(fabs(uR-uL)< eps )
-		{
-			VecScaleAdd(StdCharacteristicVel[ip],  0.5, LocalCharact_total_L, 0.5,  LocalCharact_total_R );
-			ShockCase[ip] = 0;
-			chararcter[ip] = false;
-		}*/
-		
-		if ((SR * SL >= 0.0) || (SL >=0.0 && SR<0.0 ) )
-		{
-			
-			if(SR * SL >= 0.0)
-				ShockCase[ip] = 0;
-			else
-			{
-				shock_elem = true;
-				ShockCase[ip] = 1;
-			}
-			
-			if(fabs(uR-uL)< eps )
-			{
-				VecScaleAdd(StdCharacteristicVel[ip],  0.5, LocalCharact_total_L, 0.5,  LocalCharact_total_R );
-				ShockCase[ip] = 0;
-				chararcter[ip] = false;
-			}
-			else
-			{
-				VecSubtract(LinearCharact[ip], Flux_total_R, Flux_total_L);
-				VecScale(LinearCharact[ip],LinearCharact[ip], 1.0/(uR-uL));
-				StdCharacteristicVel[ip] = LinearCharact[ip];
-				chararcter[ip] = true;
-			}
-				
 			
 		}
-		else if((SL <=0.0 && SR>=0.0 ) )
+		
+		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 		{
-			number Vel_n = VecProd(Vel_ip[ip],scvf.normal())/ face_norm;
-			number Ws_n = 0.0;
 			
-			number WL = 0.0;
-			number WR = 0.0;
+			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+			const number face_norm = VecLength(scvf.normal());
 			
-			if(RelVelSCV.data_given())
+			const size_t shR = scvf.to();
+			const size_t shL = scvf.from();
+			const number uR = u(_C_, shR);
+			const number uL = u(_C_, shL);
+			
+			
+			VecScaleAdd(Flux_total_L, uL, Vel_ip[ip], 1.0,  Flux[shL] );
+			VecScaleAdd(Flux_total_R, uR, Vel_ip[ip], 1.0,  Flux[shR] );
+			
+			
+			VecAdd(LocalCharact_total_L, Vel_ip[ip], LocalCharact[shL] );
+			VecAdd(LocalCharact_total_R, Vel_ip[ip], LocalCharact[shR] );
+			
+			const number SL = VecProd(LocalCharact_total_L, scvf.normal() ) / face_norm;
+			const number SR = VecProd(LocalCharact_total_R, scvf.normal() ) / face_norm;
+			
+			const number FL = VecProd(Flux_total_L, scvf.normal() ) / face_norm;
+			const number FR = VecProd(Flux_total_R, scvf.normal() ) / face_norm;
+			
+			const number Smax = fmax(fabs(SR), fabs(SL));
+			const number Smin = fmin(fabs(SR), fabs(SL));
+			
+			/*if(Smin < eps || fabs(uR-uL)< eps || fabs(FR-FL)< eps)
+			 {
+			 //VecScale( StdCharacteristicVel[ip],scvf.normal(), Smax/ face_norm);
+			 //ShockCase[ip] = 3;
+			 //chararcter[ip] = false;
+			 //continue;
+			 number Vel_n = VecProd(Vel_ip[ip],scvf.normal())/ face_norm;
+			 number Ws_n = 0.0;
+			 
+			 number WL = 0.0;
+			 number WR = 0.0;
+			 
+			 if(RelVelSCV.data_given())
+			 {
+			 Ws_n += 0.5 * (VecProd(RelVelSCV[shR],scvf.normal()) + VecProd(RelVelSCV[shL],scvf.normal()))/ face_norm;
+			 WL +=  VecProd(RelVelSCV[shL],scvf.normal()) / face_norm;
+			 WR +=  VecProd(RelVelSCV[shR],scvf.normal()) / face_norm;
+			 }
+			 if(SlipVelSCV.data_given())
+			 {
+			 Ws_n += 0.5 * (VecProd(SlipVelSCV[shR],scvf.normal()) + VecProd(SlipVelSCV[shL],scvf.normal()))/ face_norm;
+			 WL +=  VecProd(SlipVelSCV[shL],scvf.normal()) / face_norm;
+			 WR +=  VecProd(SlipVelSCV[shR],scvf.normal()) / face_norm;
+			 
+			 }
+			 
+			 UG_LOG("Ip = "<<ip<<" FL = "<< FL<<" FR = "<<FR<<" SL = "<< SL<<" SR = "<<SR<<" uL = "<<uL<< " uR =  "<<uR<<" WL = "<<WL<< " WR =  "<<WR<< " Vel = "<< Vel_n<< " Ws = "<<Ws_n << " \n");
+			 
+			 }*/
+			
+			/*if(fabs(uR-uL)< eps )
+			 {
+			 VecScaleAdd(StdCharacteristicVel[ip],  0.5, LocalCharact_total_L, 0.5,  LocalCharact_total_R );
+			 ShockCase[ip] = 0;
+			 chararcter[ip] = false;
+			 }*/
+			
+			if ((SR * SL >= 0.0) || (SL >=0.0 && SR<0.0 ) )
 			{
-				Ws_n += 0.5 * (VecProd(RelVelSCV[shR],scvf.normal()) + VecProd(RelVelSCV[shL],scvf.normal()))/ face_norm;
-				WL +=  VecProd(RelVelSCV[shL],scvf.normal()) / face_norm;
-				WR +=  VecProd(RelVelSCV[shR],scvf.normal()) / face_norm;
-			}
-			if(SlipVelSCV.data_given())
-			{
-				Ws_n += 0.5 * (VecProd(SlipVelSCV[shR],scvf.normal()) + VecProd(SlipVelSCV[shL],scvf.normal()))/ face_norm;
-				WL +=  VecProd(SlipVelSCV[shL],scvf.normal()) / face_norm;
-				WR +=  VecProd(SlipVelSCV[shR],scvf.normal()) / face_norm;
+				
+				if(SR * SL >= 0.0)
+					ShockCase[ip] = 0;
+				else
+				{
+					shock_elem = true;
+					ShockCase[ip] = 1;
+				}
+				
+				if(fabs(uR-uL)< eps )
+				{
+					VecScaleAdd(StdCharacteristicVel[ip],  0.5, LocalCharact_total_L, 0.5,  LocalCharact_total_R );
+					ShockCase[ip] = 0;
+					chararcter[ip] = false;
+				}
+				else
+				{
+					VecSubtract(LinearCharact[ip], Flux_total_R, Flux_total_L);
+					VecScale(LinearCharact[ip],LinearCharact[ip], 1.0/(uR-uL));
+					StdCharacteristicVel[ip] = LinearCharact[ip];
+					chararcter[ip] = true;
+				}
+				
 				
 			}
-			
-			number F_star = 0.0;
-			bool entropy = Inter->F_star( F_star,  FL,  FR, SL, SR, uL,  uR, WL,  WR,  Vel_n,  Ws_n);
-			
-			if(entropy)
+			else if((SL <=0.0 && SR>=0.0 ) )
 			{
-				VecScale( StdCharacteristicVel[ip],scvf.normal(), F_star/ face_norm);
-				ShockCase[ip] = 2;
-				rarefaction_elem = true;
-			}
-			else
-			{
-				VecScale( StdCharacteristicVel[ip],scvf.normal(), Smax/ face_norm);
-				ShockCase[ip] = 3;
-				chararcter[ip] = false;
+				number Vel_n = VecProd(Vel_ip[ip],scvf.normal())/ face_norm;
+				number Ws_n = 0.0;
 				
-			}
-			//if(!entropy)
+				number WL = 0.0;
+				number WR = 0.0;
+				
+				if(RelVelSCV.data_given())
+				{
+					Ws_n += 0.5 * (VecProd(RelVelSCV[shR],scvf.normal()) + VecProd(RelVelSCV[shL],scvf.normal()))/ face_norm;
+					WL +=  VecProd(RelVelSCV[shL],scvf.normal()) / face_norm;
+					WR +=  VecProd(RelVelSCV[shR],scvf.normal()) / face_norm;
+				}
+				if(SlipVelSCV.data_given())
+				{
+					Ws_n += 0.5 * (VecProd(SlipVelSCV[shR],scvf.normal()) + VecProd(SlipVelSCV[shL],scvf.normal()))/ face_norm;
+					WL +=  VecProd(SlipVelSCV[shL],scvf.normal()) / face_norm;
+					WR +=  VecProd(SlipVelSCV[shR],scvf.normal()) / face_norm;
+					
+				}
+				
+				number F_star = 0.0;
+				bool entropy = Inter->F_star( F_star,  FL,  FR, SL, SR, uL,  uR, WL,  WR,  Vel_n,  Ws_n);
+				
+				if(entropy)
+				{
+					VecScale( StdCharacteristicVel[ip],scvf.normal(), F_star/ face_norm);
+					ShockCase[ip] = 2;
+					rarefaction_elem = true;
+				}
+				else
+				{
+					VecScale( StdCharacteristicVel[ip],scvf.normal(), Smax/ face_norm);
+					ShockCase[ip] = 3;
+					chararcter[ip] = false;
+					
+				}
+				//if(!entropy)
 				//UG_LOG("Rarefaction error \n");
 				
-		}
-
-		
-    }
-	/*if(rarefaction_elem)
-		UG_LOG("Warning-----------------------------------------------Rarefaction\n");*/
-	
-	/*bool f = true;
-	bool g = true;
-	for(size_t sh = 0; sh < SH; ++sh)
-	{
-		
-		if(!((geo.scv_global_ips()[sh][0] > 40.45) && (geo.scv_global_ips()[sh][0] < 40.626) && (geo.scv_global_ips()[sh][1] > -0.001) && (geo.scv_global_ips()[sh][1] < 0.11083) ))
-		{
-			f = f & false;
+			}
+			
 			
 		}
-		if(!((geo.scv_global_ips()[sh][0] > 40.45) && (geo.scv_global_ips()[sh][0] < 40.626) && (geo.scv_global_ips()[sh][1] > -0.11082) && (geo.scv_global_ips()[sh][1] < 0.2217) ))
-		{
-			g = g & false;
-			
-		}
-	}
-
-	//if(f || g || rarefaction_elem)
-	if( shock_elem)
-	{
-		printf(      "values ------------------------------------------------------------------------------\n");
-		if(f) printf("Triangle 1 --------------------------------------------------------------------------\n");
-		else  printf("Triangle 2 --------------------------------------------------------------------------\n");
+		/*if(rarefaction_elem)
+		 UG_LOG("Warning-----------------------------------------------Rarefaction\n");*/
 		
-		
-		printf("Coordinates[0] = %f     %f\n",geo.scv_global_ips()[0][0],geo.scv_global_ips()[0][1]);
-		printf("Coordinates[1] = %f     %f\n",geo.scv_global_ips()[1][0],geo.scv_global_ips()[1][1]);
-		printf("Coordinates[2] = %f     %f\n",geo.scv_global_ips()[2][0],geo.scv_global_ips()[2][1]);
-		
-		printf("vVolumeFraction[0] =    %f     \n",u(_C_, 0));
-		printf("vVolumeFraction[1] =    %f     \n",u(_C_, 1));
-		printf("vVolumeFraction[2] =    %f     \n",u(_C_, 2));
-		
-		printf("RelVelSCV[0] = %f     %f\n",RelVelSCV[0][0],RelVelSCV[0][1]);
-		printf("RelVelSCV[1] = %f     %f\n",RelVelSCV[1][0],RelVelSCV[1][1]);
-		printf("RelVelSCV[2] = %f     %f\n",RelVelSCV[2][0],RelVelSCV[2][1]);
-		
-		printf("vFlux[0] = %f     %f\n",Flux[0][0],Flux[0][1]);
-		printf("vFlux[1] = %f     %f\n",Flux[1][0],Flux[1][1]);
-		printf("vFlux[2] = %f     %f\n",Flux[2][0],Flux[2][1]);
-		
-		printf("RelVel_deriv[0] = %f     %f\n",RelVel_deriv[0][0],RelVel_deriv[0][1]);
-		printf("RelVel_deriv[1] = %f     %f\n",RelVel_deriv[1][0],RelVel_deriv[1][1]);
-		printf("RelVel_deriv[2] = %f     %f\n",RelVel_deriv[2][0],RelVel_deriv[2][1]);
-		
-		printf("LocalCharact[0] = %f     %f\n",LocalCharact[0][0],LocalCharact[0][1]);
-		printf("LocalCharact[1] = %f     %f\n",LocalCharact[1][0],LocalCharact[1][1]);
-		printf("LocalCharact[2] = %f     %f\n",LocalCharact[2][0],LocalCharact[2][1]);
-		
-		printf("LinearCharact[0] = %f     %f\n",LinearCharact[0][0],LinearCharact[0][1]);
-		printf("LinearCharact[1] = %f     %f\n",LinearCharact[1][0],LinearCharact[1][1]);
-		printf("LinearCharact[2] = %f     %f\n",LinearCharact[2][0],LinearCharact[2][1]);
-		
-		printf("StdCharacteristicVel[0] = %f     %f\n",StdCharacteristicVel[0][0],StdCharacteristicVel[0][1]);
-		printf("StdCharacteristicVel[1] = %f     %f\n",StdCharacteristicVel[1][0],StdCharacteristicVel[1][1]);
-		printf("StdCharacteristicVel[2] = %f     %f\n",StdCharacteristicVel[2][0],StdCharacteristicVel[2][1]);
-		
-		printf("Char[0] =    %d     from  %zu   to  %zu\n",chararcter[0],geo.scvf(0).from(),geo.scvf(0).to());
-		printf("Char[1] =    %d     from  %zu   to  %zu\n",chararcter[1],geo.scvf(1).from(),geo.scvf(1).to());
-		printf("Char[2] =    %d     from  %zu   to  %zu\n",chararcter[2],geo.scvf(2).from(),geo.scvf(2).to());
-		
+		/*bool f = true;
+		 bool g = true;
+		 for(size_t sh = 0; sh < SH; ++sh)
+		 {
 		 
-		
-	}*/
+		 if(!((geo.scv_global_ips()[sh][0] > 40.45) && (geo.scv_global_ips()[sh][0] < 40.626) && (geo.scv_global_ips()[sh][1] > -0.001) && (geo.scv_global_ips()[sh][1] < 0.11083) ))
+		 {
+		 f = f & false;
+		 
+		 }
+		 if(!((geo.scv_global_ips()[sh][0] > 40.45) && (geo.scv_global_ips()[sh][0] < 40.626) && (geo.scv_global_ips()[sh][1] > -0.11082) && (geo.scv_global_ips()[sh][1] < 0.2217) ))
+		 {
+		 g = g & false;
+		 
+		 }
+		 }
+		 
+		 //if(f || g || rarefaction_elem)
+		 if( shock_elem)
+		 {
+		 printf(      "values ------------------------------------------------------------------------------\n");
+		 if(f) printf("Triangle 1 --------------------------------------------------------------------------\n");
+		 else  printf("Triangle 2 --------------------------------------------------------------------------\n");
+		 
+		 
+		 printf("Coordinates[0] = %f     %f\n",geo.scv_global_ips()[0][0],geo.scv_global_ips()[0][1]);
+		 printf("Coordinates[1] = %f     %f\n",geo.scv_global_ips()[1][0],geo.scv_global_ips()[1][1]);
+		 printf("Coordinates[2] = %f     %f\n",geo.scv_global_ips()[2][0],geo.scv_global_ips()[2][1]);
+		 
+		 printf("vVolumeFraction[0] =    %f     \n",u(_C_, 0));
+		 printf("vVolumeFraction[1] =    %f     \n",u(_C_, 1));
+		 printf("vVolumeFraction[2] =    %f     \n",u(_C_, 2));
+		 
+		 printf("RelVelSCV[0] = %f     %f\n",RelVelSCV[0][0],RelVelSCV[0][1]);
+		 printf("RelVelSCV[1] = %f     %f\n",RelVelSCV[1][0],RelVelSCV[1][1]);
+		 printf("RelVelSCV[2] = %f     %f\n",RelVelSCV[2][0],RelVelSCV[2][1]);
+		 
+		 printf("vFlux[0] = %f     %f\n",Flux[0][0],Flux[0][1]);
+		 printf("vFlux[1] = %f     %f\n",Flux[1][0],Flux[1][1]);
+		 printf("vFlux[2] = %f     %f\n",Flux[2][0],Flux[2][1]);
+		 
+		 printf("RelVel_deriv[0] = %f     %f\n",RelVel_deriv[0][0],RelVel_deriv[0][1]);
+		 printf("RelVel_deriv[1] = %f     %f\n",RelVel_deriv[1][0],RelVel_deriv[1][1]);
+		 printf("RelVel_deriv[2] = %f     %f\n",RelVel_deriv[2][0],RelVel_deriv[2][1]);
+		 
+		 printf("LocalCharact[0] = %f     %f\n",LocalCharact[0][0],LocalCharact[0][1]);
+		 printf("LocalCharact[1] = %f     %f\n",LocalCharact[1][0],LocalCharact[1][1]);
+		 printf("LocalCharact[2] = %f     %f\n",LocalCharact[2][0],LocalCharact[2][1]);
+		 
+		 printf("LinearCharact[0] = %f     %f\n",LinearCharact[0][0],LinearCharact[0][1]);
+		 printf("LinearCharact[1] = %f     %f\n",LinearCharact[1][0],LinearCharact[1][1]);
+		 printf("LinearCharact[2] = %f     %f\n",LinearCharact[2][0],LinearCharact[2][1]);
+		 
+		 printf("StdCharacteristicVel[0] = %f     %f\n",StdCharacteristicVel[0][0],StdCharacteristicVel[0][1]);
+		 printf("StdCharacteristicVel[1] = %f     %f\n",StdCharacteristicVel[1][0],StdCharacteristicVel[1][1]);
+		 printf("StdCharacteristicVel[2] = %f     %f\n",StdCharacteristicVel[2][0],StdCharacteristicVel[2][1]);
+		 
+		 printf("Char[0] =    %d     from  %zu   to  %zu\n",chararcter[0],geo.scvf(0).from(),geo.scvf(0).to());
+		 printf("Char[1] =    %d     from  %zu   to  %zu\n",chararcter[1],geo.scvf(1).from(),geo.scvf(1).to());
+		 printf("Char[2] =    %d     from  %zu   to  %zu\n",chararcter[2],geo.scvf(2).from(),geo.scvf(2).to());
+		 
+		 
+		 
+		 }*/
+	}
 }
 template<typename TDomain>
 template<typename TFVGeom>
@@ -2715,16 +3303,16 @@ lin_def_densitySCV(const LocalVector& u,
         
     //    interpolate velocity at ip with standard lagrange interpolation
         
-        MathVector<dim> StdVel[numSCVF];
-        MathVector<dim> Vel[numSCVF];
-        std_vel(  u,  geo,  StdVel, Vel, m_imDensitySCV);
+        MathVector<dim> StdVel_ip[numSCVF];
+		if(!m_bStokes)
+			std_vel(  u,  geo,  StdVel_ip, Vel, m_imDensitySCV);
          
 
 
         //    compute upwind shapes
         if(m_spConvUpwind.valid())
             if(m_spStab->upwind() != m_spConvUpwind)
-                m_spConvUpwind->update(&geo, StdVel);
+                m_spConvUpwind->update(&geo, StdVel_ip);
 
         
         //const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
@@ -2893,9 +3481,10 @@ lin_def_viscosity(const LocalVector& u,
 	
 	
 	MathVector<dim> StdVel[numSCVF];
+	MathVector<dim> StdVel_ip[numSCVF];
+	MathVector<dim> StdMomentum[numSCVF];
 	MathVector<dim> StdCharacteristicVel[numSCVF];
 	MathVector<dim> Flux[numSCVF];
-	MathVector<dim> Vel[numSCVF];
 	MathVector<dim> Vel_ip[numSCVF];
 	number Gamma[numSh];
 	number Rho_up[numSCVF];
@@ -2907,8 +3496,9 @@ lin_def_viscosity(const LocalVector& u,
 	bool cut_elem = false;
 	bool boolInside = false;
 	LocalVector* u_aux = const_cast<LocalVector*>(&u);
-   
-	std_vel(  u,  geo, StdVel, Vel, m_imDensitySCV,Rho_up,Rho_do,ConvRatio);
+
+	std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCV, m_imDensitySCVF, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
+	
 	if(Inter->ParticleGradientForce())
 	{
 		vel_grad(  u,  geo,  Gamma);
@@ -2920,13 +3510,13 @@ lin_def_viscosity(const LocalVector& u,
 	//	compute stabilized velocities and shapes for continuity equation
 	// \todo: (optional) Here we can skip the computation of shapes, implement?
 
-	m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, NULL, NULL, false);
 	if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
 	{
 		//	compute stabilized velocities and shapes for convection upwind
 		if(m_spConvStab.valid())
 			if(m_spConvStab != m_spStab)
-				m_spConvStab->update(&geo, *pSol, StdVel, false, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+				m_spConvStab->update(&geo, *pSol, StdVel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, NULL, NULL, false);
 		
 	}
 	
@@ -2939,11 +3529,11 @@ lin_def_viscosity(const LocalVector& u,
 		Vel_ip[ip] = stab.stab_vel(ip);
 	}
 	
-	if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCV.data_given())
-		std_rel_vel(  u,  geo, Vel_ip, StdCharacteristicVel, Flux, m_imRelativeVelocitySCV, m_imSlipVelocitySCV, ShockCase);
+	//if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
+		//std_rel_vel(  u,  geo, Vel_ip, StdCharacteristicVel, Flux, m_imRelativeVelocitySCV, m_imSlipVelocitySCVF, ShockCase);
 	
 	// Estimation of the veloctity at ip for upwind shape and continuity equations
-	if(!m_imRelativeVelocitySCV.data_given() && !m_imSlipVelocitySCV.data_given())
+	if(!m_imRelativeVelocitySCV.data_given() && !m_imSlipVelocitySCVF.data_given())
 		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 		{
 			StdCharacteristicVel[ip] = Vel_ip[ip];
@@ -3311,9 +3901,10 @@ ex_div_velocity(MathVector<dim> vValue[],
     //    interpolate velocity at ip with standard lagrange interpolation
         
 		MathVector<dim> StdVel[numSCVF];
+		MathVector<dim> StdVel_ip[numSCVF];
+		MathVector<dim> StdMomentum[numSCVF];
 		MathVector<dim> StdCharacteristicVel[numSCVF];
 		MathVector<dim> Flux[numSCVF];
-		MathVector<dim> Vel[numSCVF];
 		MathVector<dim> Vel_ip[numSCVF];
 		number Gamma[numSh];
 		number Rho_up[numSCVF];
@@ -3325,8 +3916,8 @@ ex_div_velocity(MathVector<dim> vValue[],
 		bool cut_elem = false;
 		bool boolInside = false;
 		LocalVector* u_aux = const_cast<LocalVector*>(&u);
-        
-        std_vel(  u,  geo, StdVel, Vel, m_imDensitySCV,Rho_up,Rho_do,ConvRatio);
+		
+		std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum,m_imDensitySCVF, m_imDensitySCV, m_imKinViscositySCV,Rho_up,Rho_do,ConvRatio);
         if(Inter->ParticleGradientForce())
 		{
 			vel_grad(  u,  geo,  Gamma);
@@ -3337,7 +3928,7 @@ ex_div_velocity(MathVector<dim> vValue[],
     //    compute stabilized velocities and shapes for continuity equation
         // \todo: (optional) Here we can skip the computation of shapes, implement?
 
-		m_spStab->update(&geo, *pSol, StdVel, m_bStokes, m_imKinViscosity, m_imKinViscosity_old, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, pOldSol, dt);
+		m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, NULL, NULL, false);
         
         
         //    get a const (!!) reference to the stabilization
@@ -4362,7 +4953,7 @@ ex_nodal_mix_viscosity(number vValue[],
 	bool inside = false;
 	LocalVector* u_aux = const_cast<LocalVector*>(&u);
 	
-	Inter->cut_element(cut_elem,inside,  u_aux, _C_);
+	//Inter->cut_element(cut_elem,inside,  u_aux, _C_);
 	
 	
 	const bool HarmonicMs = true;//( cut_elem || inside )? true: false;
@@ -4417,6 +5008,20 @@ ex_nodal_mix_viscosity(number vValue[],
 		DMs[sh] = Dmu_s + Dmu_eins;
 	}
 	
+	number mu_l,mu_g;
+	int JumpShape[numSH];
+	int count_l = 0; int count_g = 0;
+	if(false && m_pressure_jump )
+	{
+		Inter->cut_element(cut_elem,inside,  u_aux, _C_);
+		if(cut_elem)
+		{
+			Inter->Jump_Shape(  u_aux, _C_, numSH, JumpShape);
+			Inter->InterMu( mu_l, mu_g,  Ms, JumpShape,  numSH);
+		}
+		
+	}
+	
 //    FV1M SCVF ip
 	if(vLocIP == geo.scvf_local_ips())
 	{
@@ -4425,54 +5030,79 @@ ex_nodal_mix_viscosity(number vValue[],
 		{
 		//     Get current SCVF
 			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+			size_t to = scvf.to();
+			size_t from = scvf.from();
 
 		//    compute pressure at ip
 			number Viscosity = 0.0;
-			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+			if (false && m_pressure_jump && cut_elem)
 			{
-				if (constantMs || HarmonicMs)
-				{
-					const typename TFVGeom::SCV& scv = geo.scv(sh);
-					if(constantMs)
-						Viscosity += Ms[sh] * scv.volume() / Volume;
-					else
-						Viscosity += scv.volume() / (Volume * Ms[sh]) ;
-				}
+				if(JumpShape[from]>0 && JumpShape[to]>0)
+					Viscosity = mu_l;
+				else if(JumpShape[from]<0 && JumpShape[to]<0)
+					Viscosity = mu_g;
 				else
-					Viscosity += Ms[sh] * scvf.shape(sh);
-			}
-			if (constantMs || HarmonicMs)
-			{
-				if(constantMs)
-					vValue[ip] = Viscosity;
-				else
-					vValue[ip] = 1.0/Viscosity;
+					Viscosity = mu_l;
 			}
 			else
-				vValue[ip] = Viscosity;
-
-		//    compute derivative w.r.t. to unknowns iff needed
-			if(bDeriv)
 			{
-				for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+
+				if(HarmonicMs)
 				{
-					if (constantMs || HarmonicMs)
+					/*const number scv_to = geo.scv(to).volume();
+					const number scv_from = geo.scv(from).volume();
+					Volume = scv_to + scv_from;
+					Viscosity = (scv_to /  Ms[to]) + (scv_from /  Ms[from]);
+					
+					Viscosity = Volume /Viscosity;*/
+					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
 					{
-						const typename TFVGeom::SCV& scv = geo.scv(sh);
-						if (constantMs)
+						const number scv_sh = geo.scv(sh).volume();
+						Viscosity += (scv_sh /  Ms[sh]);
+					}
+					
+					Viscosity = Volume /Viscosity;
+				}
+				else
+				{
+					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+					{
+						if(constantMs)
 						{
-							vvvDeriv[ip][_C_][sh] = DMs[sh] * scv.volume()/Volume;
+							const typename TFVGeom::SCV& scv = geo.scv(sh);
+							Viscosity += Ms[sh] * scv.volume() / Volume;
 						}
 						else
-						{
-							vvvDeriv[ip][_C_][sh] = DMs[sh] * pow(vValue[ip]/Ms[sh], 2.0) * scv.volume()/Volume;
-						}
+							Viscosity += Ms[sh] * scvf.shape(sh);
 					}
-					else
-						vvvDeriv[ip][_C_][sh] = DMs[sh] * scvf.shape(sh);
 				}
-
+					
 			}
+				
+			vValue[ip] = Viscosity;
+		//    compute derivative w.r.t. to unknowns iff needed
+			/*if(bDeriv)
+			{
+				if (  !(m_pressure_jump && cut_elem))
+					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+					{
+						if (constantMs || HarmonicMs)
+						{
+							const typename TFVGeom::SCV& scv = geo.scv(sh);
+							if (constantMs)
+							{
+								vvvDeriv[ip][_C_][sh] = DMs[sh] * scv.volume()/Volume;
+							}
+							else
+							{
+								vvvDeriv[ip][_C_][sh] = DMs[sh] * pow(vValue[ip]/Ms[sh], 2.0) * scv.volume()/Volume;
+							}
+						}
+						else
+							vvvDeriv[ip][_C_][sh] = DMs[sh] * scvf.shape(sh);
+					}
+
+			}*/
 		}
 	}
 //    FV1M SCV ip
@@ -4532,7 +5162,7 @@ ex_nodal_mix_viscosity(number vValue[],
 			number Viscosity = 0.0;
 			for(size_t sh = 0; sh < numSH; ++sh)
 			{
-				if (false && (constantMs || HarmonicMs))
+				if ((constantMs || HarmonicMs))
 				{
 					const typename TFVGeom::SCV& scv = geo.scv(sh);
 					if(constantMs)
@@ -4543,7 +5173,7 @@ ex_nodal_mix_viscosity(number vValue[],
 				else
 					Viscosity += Ms[sh] * vShape[sh];
 			}
-			if (false && (constantMs || HarmonicMs) )
+			if ((constantMs || HarmonicMs) )
 			{
 				if(constantMs)
 					vValue[ip] = Viscosity;
@@ -4551,10 +5181,10 @@ ex_nodal_mix_viscosity(number vValue[],
 					vValue[ip] = 1.0/Viscosity;
 			}
 			else
-				vValue[ip] = Viscosity;
+			vValue[ip] = Viscosity;
 		//    compute derivative w.r.t. to unknowns iff needed
 		//    \todo: maybe store shapes directly in vvvDeriv
-			if(bDeriv)
+			/*if(bDeriv)
 			{
 				for(size_t sh = 0; sh < numSH; ++sh)
 				{
@@ -4569,7 +5199,7 @@ ex_nodal_mix_viscosity(number vValue[],
 				}
 
 
-			}
+			}*/
 		}
 	}
 };
