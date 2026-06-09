@@ -379,6 +379,10 @@ class FV1SmagorinskyTurbViscData
 		}
 		
 		static const size_t max_number_of_ips = 20;
+	
+		int m_counter = 0;
+		const int m_update = 2;
+	
 
 		void update();
 

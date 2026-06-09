@@ -839,6 +839,13 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::addUiUjTerm(aV
 
 template<typename TGridFunction>
 void FV1SmagorinskyTurbViscData<TGridFunction>::update(){
+	
+	m_counter += 1;
+	if(m_counter % m_update != 0)
+		return;
+	else
+		m_counter = 0;
+	
 	UG_LOG("Updating SmagorinskyTurbViscData... \n");
 	//	get domain of grid function
 	domain_type& domain = *m_u->domain().get();
@@ -866,7 +873,7 @@ void FV1SmagorinskyTurbViscData<TGridFunction>::update(){
 			// for possible other choices of delta see Fr�hlich p 160
 			delta = pow(delta,(number)1.0/(number)dim);
 			number tensorNorm = this->FNorm(m_acDeformation[vertex]);
-			m_acTurbulentViscosity[vertex] = m_c * delta*delta * tensorNorm;
+			m_acTurbulentViscosity[vertex] = m_c * m_c * delta*delta * tensorNorm;
 		}
 	}
 	// transfer attachment data to lower levels
