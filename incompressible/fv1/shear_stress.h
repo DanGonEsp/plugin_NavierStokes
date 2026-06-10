@@ -1784,7 +1784,7 @@ public:
 				//Value = (Value + fabs(Value))/2.0;
 				Value /= sqrt(1.0 + pow(slope,2.0));
 				
-				if(isnan(Value))
+				if(std::isnan(Value))
 				{
 					UG_LOG("  normal = " <<normal[0]<<"  "<<normal[1]<<".\n");
 					

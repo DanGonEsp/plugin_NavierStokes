@@ -457,7 +457,7 @@ class Interface
 							 " model= 0, 1 , 2, 3");
 					break;
 			}
-			if(isnan(Flux))
+			if(std::isnan(Flux))
 			{
 				UG_THROW("Non valid number for FLUX = " <<Flux<<".\n");
 				
@@ -498,7 +498,7 @@ class Interface
 					break;
 			}
 			
-			if(isnan(JacWL + JacWR + JacVL + JacVR))
+			if(std::isnan(JacWL + JacWR + JacVL + JacVR))
 			{
 				
 				UG_THROW("Non valid number for Jacobian in NonLinearTransportEquation JacWL = " <<JacWL<<"  JacWR = "<< JacWR << "  JacVL = "<< JacVL<<"  JacVR = "<< JacVR <<".\n");
@@ -565,7 +565,7 @@ class Interface
 				boolGeomDeg = true;
 				
 			Wn = VecProd(vW, normal);
-			if(isnan(Wn))
+			if(std::isnan(Wn))
 				UG_LOG("  U = "<< u << "  normal = " <<normal[0]<<"  "<<normal[1]<< "  vW = "<< vW[0]<<"  "<< vW[1] <<".\n");
 				
 			

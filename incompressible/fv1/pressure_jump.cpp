@@ -365,7 +365,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 				number VelSum2 = sign2 / factor2;
 				number VelSum3 = sign2 / factor3;
 				
-				if(isnan(VelSum) || isnan(VelSum2) || isnan(VelSum3))
+				if(std::isnan(VelSum) || std::isnan(VelSum2) || std::isnan(VelSum3))
 				{
 					UG_THROW("Nan jump_shape to= "<<jump_shape[to]<<"  jump_shape from="<<jump_shape[from]<<"  Volfrom="<<VolFrac[from]<<"  Volto="<<VolFrac[to]<<" \n");
 
