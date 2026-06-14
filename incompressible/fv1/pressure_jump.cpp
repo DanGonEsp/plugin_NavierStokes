@@ -147,7 +147,7 @@ update(const FV1Geometry<TElem, dim>* geo,
     {
         UG_THROW("Not implemented for ip velocities depending on other ip.");
     }
-	UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.")
+	//UG_ASSERT((TFVGeom::order == 1), "Only first order implemented.")
     
     typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
     //  reference dimension

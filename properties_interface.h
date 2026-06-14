@@ -2054,7 +2054,10 @@ class LineWriter
  
 		void write_line(const std::string filename, int rank, const std::string Headers, double value1, double value2, double value3, int boolSolution)
 		{
-			int local_rank = pcl::ProcRank();
+			int local_rank = 0;
+			#ifdef UG_PARALLEL
+				local_rank = pcl::ProcRank();
+			#endif
 			if(local_rank != 0) return;
 
 			std::vector<double> values(num_columns);

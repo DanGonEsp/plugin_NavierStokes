@@ -1452,7 +1452,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 			
 			
 			number Value2 = density[ip] * VecTwoNorm(vStdVel_stab[ip]) / upwind_conv_length(ip);
-			vPecletScale[ip] =  1.0;//Value2 / (Value2 + MU_scvf[ip]*diff_length_sq_inv(ip));
+			vPecletScale[ip] = Value2 / (Value2 + MU_scvf[ip]*diff_length_sq_inv(ip));
 			
 			
 			
@@ -1623,7 +1623,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 						//sumVel += -DenMomentum[ip]*scvf.shape(k) * ;
 						
 						
-						sumVel += vNormStdVelPerDownLen[ip] *(downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
+						sumVel += vPecletScale[ip] *vNormStdVelPerDownLen[ip] *(downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
 						
 						
 						

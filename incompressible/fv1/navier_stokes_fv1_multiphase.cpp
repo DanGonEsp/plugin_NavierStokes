@@ -92,7 +92,7 @@ void NavierStokesFV1M<TDomain>::init()
     
     m_imDensitySCVF.set_comp_lin_defect(false);
     m_imDensitySCVF_old.set_comp_lin_defect(false);
-    m_imDensitySCV.set_comp_lin_defect(false);
+    //m_imDensitySCV.set_comp_lin_defect(false);
 	m_imDensitySCV_old.set_comp_lin_defect(false);
     
     m_imSourceSCVF.set_comp_lin_defect(false);
@@ -110,7 +110,7 @@ void NavierStokesFV1M<TDomain>::init()
     m_imRelativeVelocitySCV.set_comp_lin_defect(false);
 	m_imRelativeVelocitySCVF.set_comp_lin_defect(false);
 	m_imSlipVelocitySCVF.set_comp_lin_defect(false);
-    m_imDiffusion.set_comp_lin_defect(false);
+    //m_imDiffusion.set_comp_lin_defect(false);
     
     //	register imports
     this->register_import(m_imSourceSCV);

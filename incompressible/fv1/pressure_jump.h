@@ -386,7 +386,7 @@ class INavierStokesPressureJump
     ///    diff length
         number diff_length_sq_inv(size_t scvf) const
         {
-            UG_NSSTAB_ASSERT(scvf < this_type::num_ip(), "Invalid index.");
+            UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
             return m_vDiffLengthSqInv[scvf];
         }
 	
