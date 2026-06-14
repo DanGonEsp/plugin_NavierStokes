@@ -71,6 +71,7 @@ set(SOURCES	navier_stokes_base.cpp
 			incompressible/fvcr/cr_reorder.cpp
 
 			incompressible/fv1/stabilization.cpp
+			incompressible/fv1/stabilization_multiphase.cpp
 			incompressible/fv1/pressure_jump.cpp
 			
 			incompressible/fv1/register_fv1.cpp

@@ -1,0 +1,1555 @@
+/*
+ * Copyright (c) 2010-2015:  G-CSC, Goethe University Frankfurt
+ * Author: Andreas Vogel
+ * 
+ * This file is part of UG4.
+ * 
+ * UG4 is free software: you can redistribute it and/or modify it under the
+ * terms of the GNU Lesser General Public License version 3 (as published by the
+ * Free Software Foundation) with the following additional attribution
+ * requirements (according to LGPL/GPL v3 §7):
+ * 
+ * (1) The following notice must be displayed in the Appropriate Legal Notices
+ * of covered and combined works: "Based on UG4 (www.ug4.org/license)".
+ * 
+ * (2) The following notice must be displayed at a prominent place in the
+ * terminal output of covered works: "Based on UG4 (www.ug4.org/license)".
+ * 
+ * (3) The following bibliography is recommended for citation and must be
+ * preserved in all covered files:
+ * "Reiter, S., Vogel, A., Heppner, I., Rupp, M., and Wittum, G. A massively
+ *   parallel geometric multigrid solver on hierarchically distributed grids.
+ *   Computing and visualization in science 16, 4 (2013), 151-164"
+ * "Vogel, A., Reiter, S., Rupp, M., Nägel, A., and Wittum, G. UG4 -- a novel
+ *   flexible software system for simulating pde based models on high performance
+ *   computers. Computing and visualization in science 16, 4 (2013), 165-179"
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ */
+
+#ifndef __H__UG__PLUGINS__NAVIER_STOKES__INCOMPRESSIBLE__FV1__STABILIZATIONM__
+#define __H__UG__PLUGINS__NAVIER_STOKES__INCOMPRESSIBLE__FV1__STABILIZATIONM__
+
+//#define UG_NSSTAB_ASSERT(cond, exp)
+// include define below to assert arrays used in stabilization
+#define UG_NSSTAB_ASSERT(cond, exp) UG_ASSERT((cond), (exp))
+
+#include "../../upwind_interface.h"
+#include "pressure_jump.h"
+#include "lib_disc/spatial_disc/disc_util/fv1_geom.h"
+#include "lib_disc/spatial_disc/user_data/data_import.h"
+#include "../../properties_interface.h"
+
+namespace ug{
+namespace NavierStokes{
+
+/**
+ * Class for a general stabilization method for FV1-discretizations of the NS equations.
+ *
+ * A general stabilization is a method that expresses the additional DoFs of
+ * the velocity (for the continuity equation) placed in the integration points
+ * in terms of the corner values of the velocity and the pressure. Thus, the
+ * the stabilization is a special interpolation of the velocity (involving the
+ * pressure) from the corners of the primary grid elements into the integration
+ * points of the secondary grid.
+ *
+ * \tparam	dim		dimension of the world
+ */
+template <int dim>
+class INavierStokesFV1StabilizationM
+{
+	protected:
+	///	used traits
+		typedef fv1_dim_traits<dim, dim> traits;
+
+	public:
+	///	number of SubControlVolumes
+		static const size_t maxNumSCV = traits::maxNumSCV;
+
+	///	max number of SubControlVolumeFaces
+		static const size_t maxNumSCVF = traits::maxNumSCVF;
+
+	/// max number of shape functions
+		static const size_t maxNumSH = traits::maxNSH;
+
+	private:
+	/// abbreviation for own type
+		typedef INavierStokesFV1StabilizationM<dim> this_type;
+
+	public:
+	///	constructor
+		INavierStokesFV1StabilizationM()
+		:	m_numScvf(0), m_numSh(0),
+			m_spUpwind(NULL),
+			m_spUpwind_rel(NULL)
+		{
+			m_vUpdateFunc.clear();
+		}
+
+	///	sets the upwind method
+		void set_upwind(SmartPtr<INavierStokesUpwind<dim> > spUpwind)
+		{
+			m_spUpwind = spUpwind;
+			m_spConstUpwind = spUpwind;
+		}
+	///	sets the upwind method
+		void set_upwind_rel(SmartPtr<INavierStokesUpwind<dim> > spUpwind_rel)
+		{
+			m_spUpwind_rel = spUpwind_rel;
+			m_spConstUpwind_rel = spUpwind_rel;
+		}
+
+	///	returns the upwind
+		const ConstSmartPtr<INavierStokesUpwind<dim> >& upwind() const {return m_spConstUpwind;}
+	///	returns the upwind
+		const ConstSmartPtr<INavierStokesUpwind<dim> >& upwind_rel() const {return m_spConstUpwind_rel;}
+		
+	/// returns if the upwind pointer is valid
+		bool upwind_valid() const {return m_spConstUpwind.valid();}
+	/// returns if the upwind pointer is valid
+		bool upwind_valid_rel() const {return m_spConstUpwind_rel.valid();}
+	
+	///    sets the pressure jump method
+		void set_pressure_jump(SmartPtr<INavierStokesPressureJump<dim> >  spPressureJump)
+		{
+			m_spPressureJump = spPressureJump;
+			m_spConstPressureJump = spPressureJump;
+		}
+	///    returns the upwind
+		const ConstSmartPtr<INavierStokesPressureJump<dim> >& pressure_jump() const {return m_spConstPressureJump;}
+	
+	/// returns if the upwind pointer is valid
+		bool pressure_jump_valid() const {return m_spConstPressureJump.valid();}
+    
+
+	///	set the FV1 Geometry type to use for next updates
+		template <typename TFVGeom>
+		void set_geometry_type()
+		{
+		//	get unique geometry id
+			size_t id = GetUniqueFVGeomID<TFVGeom>();
+		//	check that function exists
+			if(id >= m_vUpdateFunc.size() || m_vUpdateFunc[id] == NULL)
+				UG_THROW("No update function registered for Geometry "<<id);
+		//	set current geometry
+			m_id = id;
+
+		//	set sizes
+			TFVGeom& geo = GeomProvider<TFVGeom>::get();
+			m_numScvf = geo.num_scvf();
+			m_numSh = geo.num_sh();
+		//	set sizes in upwind
+			if(m_spUpwind.valid()) m_spUpwind->template set_geometry_type<TFVGeom>();
+			if(m_spUpwind_rel.valid()) m_spUpwind_rel->template set_geometry_type<TFVGeom>();
+		}
+    
+		void set_phase_parameters(Interface<dim>* user)
+		{
+			if (!user) UG_THROW("Interface pointer is null!");
+			if (!user->valid())
+				UG_THROW("Interface parameters has not been initialized");
+			Inter = user;
+		}
+    protected:
+        Interface<dim>* Inter;
+	
+	/////////////////////////////////////////
+	// interface to the upwind
+	/////////////////////////////////////////
+	
+	protected:
+	
+	///	computes the upwind shapes
+		template <typename TFVGeom>
+		void compute_upwind(const TFVGeom& geo,
+		                    const MathVector<dim> vStdVel[])
+		{
+			UG_NSSTAB_ASSERT(m_spUpwind.valid(), "No upwind object");
+			m_spUpwind->update_upwind(geo, vStdVel);
+		};
+
+	///	computes the downwind shapes
+		template <typename TFVGeom>
+		void compute_downwind(const TFVGeom& geo,
+		                      const MathVector<dim> vStdVel[])
+		{
+			UG_NSSTAB_ASSERT(m_spUpwind.valid(), "No upwind object");
+			m_spUpwind->update_downwind(geo, vStdVel);
+		};
+	
+	///	computes the upwind shapes for relative vel
+		template <typename TFVGeom>
+		void compute_upwind_rel(const TFVGeom& geo,
+							const MathVector<dim> vStdVel[])
+		{
+			UG_NSSTAB_ASSERT(m_spUpwind_rel.valid(), "No upwind object");
+			m_spUpwind_rel->update_upwind(geo, vStdVel);
+		};
+
+	///	computes the downwind shapes
+		template <typename TFVGeom>
+		void compute_downwind_rel(const TFVGeom& geo,
+							  const MathVector<dim> vStdVel[])
+		{
+			UG_NSSTAB_ASSERT(m_spUpwind_rel.valid(), "No upwind object");
+			m_spUpwind_rel->update_downwind(geo, vStdVel);
+		};
+    
+		
+	/////////////////////////////////////////
+	// the data interface (for the NS discretization)
+	/////////////////////////////////////////
+
+	public:
+	
+	///	number of integration points
+		size_t num_ip () const {return m_numScvf;}
+		
+	///	number of shapes (corners)
+		size_t num_sh () const {return m_numSh;}
+	
+	///	returns if stab velocity comp depends on other vel components
+		bool vel_comp_connected() const {return m_bVelCompConnected;}
+	
+	///	returns if convected velocity is used as upwind
+		bool vel_convected() const {return m_bVelConvected;}
+	
+	/// stabilized velocity
+		const MathVector<dim>& stab_vel(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			return m_vStabVel[scvf];
+		}
+	
+	/// computed stab shape for velocity. This is: The stab_vel derivative
+	/// w.r.t velocity unknowns in the corner for each component
+		number stab_shape_vel(size_t scvf, size_t compOut, size_t compIn, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvvStabShapeVel[scvf][compOut][compIn][sh];
+		}
+
+	///	computed stab shape for pressure.
+		number stab_shape_p(size_t scvf, size_t compOut, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvStabShapePressure[scvf][compOut][sh];
+		}
+	
+	///	computed stab shape for pressure.
+		number stab_shape_c(size_t scvf, size_t compOut, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvStabShapeVolume[scvf][compOut][sh];
+		}
+	
+	/// convected velocity
+		const MathVector<dim>& conv_vel(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			return m_vConvVel[scvf];
+		}
+	
+	/// computed conv shape for velocity. This is: The conv_vel derivative
+	/// w.r.t velocity unknowns in the corner for each component
+		number conv_shape_vel(size_t scvf, size_t compOut, size_t compIn, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvvConvShapeVel[scvf][compOut][compIn][sh];
+		}
+
+	///	computed stab shape for pressure.
+		number conv_shape_p(size_t scvf, size_t compOut, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvConvShapePressure[scvf][compOut][sh];
+		}
+	
+	///	computed stab shape for pressure.
+		number conv_shape_c(size_t scvf, size_t compOut, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvConvShapeVolume[scvf][compOut][sh];
+		}
+	
+    
+
+
+	///	compute values for new geometry and corner velocities
+		void update(const FVGeometryBase* geo,
+		            const LocalVector& vCornerValue,
+		            const MathVector<dim> vStdVel[],
+		            const bool bStokes,
+		            const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+		            const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& density_old,
+                    const DataImport<number, dim>& densitySCV,
+					const DataImport<number, dim>& densitySCV_old,
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                    const DataImport<MathVector<dim>, dim>& Source,
+                    const DataImport<MathVector<dim>, dim>& SourceSCV,
+					const DataImport<MathVector<dim>, dim>& PressGrad,
+		            const LocalVector* pvCornerValueOldTime, number dt,
+					const int jump_shape[],
+					const bool phase_2[],
+					const bool multiphase)
+			{(this->*(m_vUpdateFunc[m_id]))(geo, vCornerValue, vStdVel,
+											bStokes, kinVisco, kinViscoSCV, density, density_old, densitySCV, densitySCV_old, ps, vStdRelVel, RelVelSCVF, Source, SourceSCV, PressGrad,
+											pvCornerValueOldTime, dt, jump_shape, phase_2, multiphase);}
+
+	/////////////////////////////////////////
+	// the data interface (for the implementation)
+	/////////////////////////////////////////
+
+	protected:
+	
+	/// stabilized velocity
+		MathVector<dim>& stab_vel(size_t scvf)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			return m_vStabVel[scvf];
+		}
+	/// stabilized velocity
+		MathVector<dim>& conv_vel(size_t scvf)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			return m_vConvVel[scvf];
+		}
+
+	///	sets the vel comp connected flag
+		void set_vel_comp_connected(bool bVelCompConnected) {m_bVelCompConnected = bVelCompConnected;}
+	
+	///	sets the vel convected as upwind flag
+		void set_vel_convected(bool bVelConvected) {m_bVelConvected = bVelConvected;}
+	
+	
+	/// computed stab shape for velocity. This is: The stab_vel derivative
+	/// w.r.t velocity unknowns in the corner for each component
+		number& stab_shape_vel(size_t scvf, size_t compOut, size_t compIn, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvvStabShapeVel[scvf][compOut][compIn][sh];
+		}
+
+	///	computed stab shape for pressure.
+		number& stab_shape_p(size_t scvf, size_t compOut, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvStabShapePressure[scvf][compOut][sh];
+		}
+	///	computed stab shape for volume fraction.
+		number& stab_shape_c(size_t scvf, size_t compOut, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvStabShapeVolume[scvf][compOut][sh];
+		}
+	
+	/// computed conv shape for velocity. This is: The conv_vel derivative
+	/// w.r.t velocity unknowns in the corner for each component
+		number& conv_shape_vel(size_t scvf, size_t compOut, size_t compIn, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(compIn < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvvConvShapeVel[scvf][compOut][compIn][sh];
+		}
+
+	///	computed conv shape for pressure.
+		number& conv_shape_p(size_t scvf, size_t compOut, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvConvShapePressure[scvf][compOut][sh];
+		}
+	///	computed stab shape for volume fraction.
+		number& conv_shape_c(size_t scvf, size_t compOut, size_t sh)
+		{
+			UG_NSSTAB_ASSERT(scvf < m_numScvf, "Invalid index.");
+			UG_NSSTAB_ASSERT(compOut < dim, "Invalid index.");
+			UG_NSSTAB_ASSERT(sh < m_numSh, "Invalid index.");
+			return m_vvvConvShapeVolume[scvf][compOut][sh];
+		}
+	
+
+
+	/////////////////////////////////////////
+	// the data
+	/////////////////////////////////////////
+	
+	private:
+
+	///	number of current scvf
+		size_t m_numScvf;
+
+	///	number of current shape functions (usually in corners)
+		size_t m_numSh;
+
+	///	values of stabilized velocity at ip
+		MathVector<dim> m_vStabVel[maxNumSCVF];
+	
+	///	values of convected velocity at ip
+		MathVector<dim> m_vConvVel[maxNumSCVF];
+
+	///	flag if velocity components are interconnected
+		bool m_bVelCompConnected;
+	
+	///	flag if convected velocity is used
+		bool m_bVelConvected;
+	
+	///	stab shapes w.r.t vel
+		number m_vvvvStabShapeVel[maxNumSCVF][dim][dim][maxNumSH];
+
+	///	stab shapes w.r.t pressure
+		number m_vvvStabShapePressure[maxNumSCVF][dim][maxNumSH];
+	
+	///	stab shapes w.r.t VolumeFraction
+		number m_vvvStabShapeVolume[maxNumSCVF][dim][maxNumSH];
+	
+	///	conv shapes w.r.t vel
+		number m_vvvvConvShapeVel[maxNumSCVF][dim][dim][maxNumSH];
+
+	///	stab shapes w.r.t pressure
+		number m_vvvConvShapePressure[maxNumSCVF][dim][maxNumSH];
+	
+	///	stab shapes w.r.t VolumeFraction
+		number m_vvvConvShapeVolume[maxNumSCVF][dim][maxNumSH];
+	
+
+    
+
+	///	id of current geometry type
+		int m_id;
+
+	///	Upwind object (if set)
+		SmartPtr<INavierStokesUpwind<dim> > m_spUpwind;
+	///	Upwind object (if set), the same as m_spUpwind, but as a const
+		ConstSmartPtr<INavierStokesUpwind<dim> > m_spConstUpwind;
+	
+	///	Upwind object (if set)
+		SmartPtr<INavierStokesUpwind<dim> > m_spUpwind_rel;
+	///	Upwind object (if set), the same as m_spUpwind, but as a const
+		ConstSmartPtr<INavierStokesUpwind<dim> > m_spConstUpwind_rel;
+	
+	///    Pressure jump object (if set)
+		SmartPtr<INavierStokesPressureJump<dim> > m_spPressureJump;
+	///    Pressure jump object (if set), the same as m_spPressureJump, but as a const
+		ConstSmartPtr<INavierStokesPressureJump<dim> > m_spConstPressureJump;
+    
+	
+	//////////////////////////
+	// registering mechanism
+	//////////////////////////
+
+	protected:
+	///	type of update function
+		typedef void (this_type::*UpdateFunc)(	const FVGeometryBase* geo,
+												const LocalVector& vCornerValue,
+												const MathVector<dim> vStdVel[],
+												const bool bStokes,
+												const DataImport<number, dim>& kinVisco,
+                                                const DataImport<number, dim>& kinViscoSCV,
+												const DataImport<number, dim>& density,
+                                                const DataImport<number, dim>& density_old,
+                                                const DataImport<number, dim>& densitySCV,
+												const DataImport<number, dim>& densitySCV_old,
+                                                const number ps[],
+											    const MathVector<dim> vStdRelVel[],
+											    const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                                                const DataImport<MathVector<dim>, dim>& Source,
+												const DataImport<MathVector<dim>, dim>& SourceSCV,
+												const DataImport<MathVector<dim>, dim>& PressGrad,
+												const LocalVector* pvCornerValueOldTime, number dt,
+												const int jump_shape[],
+												const bool phase_2[],
+												const bool multiphase);
+
+	public:
+	///	register a update function for a Geometry
+		template <typename TFVGeom, typename TAssFunc>
+		void register_update_func(TAssFunc func);
+
+	protected:
+	///	Vector holding all update functions
+		std::vector<UpdateFunc> m_vUpdateFunc;
+};
+
+/*-------- Schneider-Raw-type stabilizations --------*/
+
+/**
+ * The base class for the Schneider-Raw-type stabilizations for FV1-discretizations of the NS equations.
+ *
+ * \tparam	dim		dimension of the world
+ */
+template <int dim>
+class INavierStokesSRFV1StabilizationM
+	:	public INavierStokesFV1StabilizationM<dim>
+{
+	private:
+	/// Abbreviation for own type
+		typedef INavierStokesSRFV1StabilizationM<dim> this_type;
+
+	protected:
+		enum DiffusionLength
+		{
+		    RAW = 0,
+		    FIVEPOINT,
+		    COR
+		};
+
+	public:
+	///	constructor
+		INavierStokesSRFV1StabilizationM()
+		{
+		//	default setup
+			set_diffusion_length("RAW");
+		}
+
+	///	sets the type of diff length used for evaluation
+		void set_diffusion_length(std::string diffLength);
+
+	protected:
+	
+	///	diff length
+		number diff_length_sq_inv(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(scvf < this_type::num_ip(), "Invalid index.");
+			return m_vDiffLengthSqInv[scvf];
+		}
+
+	/////////////////////////////////////////
+	// forward methods of Upwind Velocity
+	/////////////////////////////////////////
+
+	///	Convection Length
+		number upwind_conv_length(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+			return this_type::upwind()->upwind_conv_length(scvf);
+		}
+
+	///	Convection Length
+		number downwind_conv_length(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+			return this_type::upwind()->downwind_conv_length(scvf);
+		}
+
+	///	upwind shape for corner vel
+		number upwind_shape_sh(size_t scvf, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+			return this_type::upwind()->upwind_shape_sh(scvf, sh);
+		}
+
+	///	upwind shape for corner vel
+		number downwind_shape_sh(size_t scvf, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+			return this_type::upwind()->downwind_shape_sh(scvf, sh);
+		}
+
+	///	returns if upwind shape w.r.t. ip vel is non-zero
+		bool non_zero_shape_ip() const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+			return this_type::upwind()->non_zero_shape_ip();
+		}
+
+	///	upwind shapes for ip vel
+		number upwind_shape_ip(size_t scvf, size_t scvf2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+			return this_type::upwind()->upwind_shape_ip(scvf, scvf2);
+		}
+
+	///	upwind shapes for ip vel
+		number downwind_shape_ip(size_t scvf, size_t scvf2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid(), "No upwind object");
+			return this_type::upwind()->downwind_shape_ip(scvf, scvf2);
+		}
+	
+	/////////////////////////////////////////
+	// forward methods of Upwind relative Velocity
+	/////////////////////////////////////////
+
+	///	Convection Length
+		number upwind_conv_length_rel(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->upwind_conv_length(scvf);
+		}
+
+	///	Convection Length
+		number downwind_conv_length_rel(size_t scvf) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->downwind_conv_length(scvf);
+		}
+
+	///	upwind shape for corner vel
+		number upwind_shape_sh_rel(size_t scvf, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->upwind_shape_sh(scvf, sh);
+		}
+
+	///	upwind shape for corner vel
+		number downwind_shape_sh_rel(size_t scvf, size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->downwind_shape_sh(scvf, sh);
+		}
+
+	///	returns if upwind shape w.r.t. ip vel is non-zero
+		bool non_zero_shape_ip_rel() const
+		{
+			UG_LOG("Debug 5.5 ");
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->non_zero_shape_ip();
+		}
+
+	///	upwind shapes for ip vel
+		number upwind_shape_ip_rel(size_t scvf, size_t scvf2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->upwind_shape_ip(scvf, scvf2);
+		}
+
+	///	upwind shapes for ip vel
+		number downwind_shape_ip_rel(size_t scvf, size_t scvf2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::upwind_valid_rel(), "No upwind object");
+			return this_type::upwind_rel()->downwind_shape_ip(scvf, scvf2);
+		}
+	
+	/////////////////////////////////////////
+	// forward methods of Pressure Jump
+	/////////////////////////////////////////
+
+	///    corner pressure jump
+		number pressure_jump_value(size_t sh) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->pressure_jump(sh);
+		}
+	///    pressure jump shape for corner p
+		number pressure_jump_shape_p(size_t sh, size_t sh2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->pressure_shape_p(sh,sh2);
+		}
+	///    pressure jump shape for corner vel
+		number pressure_jump_shape_vel(size_t sh, size_t d1, size_t sh2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->pressure_shape_vel(sh,d1,sh2);
+		}
+	///    corner tang vel
+		number tang_vel(size_t sh, size_t d1) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->tang_vel(sh)[d1];
+		}
+	///    tang vel shape for corner vel
+		number tang_vel_shape_vel(size_t sh, size_t d1, size_t d2, size_t sh2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->tang_vel_shape_vel(sh,d1,d2,sh2);
+		}
+	///    corner tang vel
+		number slip_vel(size_t ip, size_t d1) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->slip_vel(ip)[d1];
+		}
+	///    tang vel shape for corner vel
+		number slip_vel_shape_vel(size_t ip, size_t d1, size_t d2, size_t sh2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->slip_vel_shape_vel(ip,d1,d2,sh2);
+		}
+	///    ip slip vel
+		number diff_vel(size_t ip, size_t d1) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->stab_vel(ip)[d1];
+		}
+	///    Function shpae (slip vel for stabiliation)
+		number diff_vel_shape_vel(size_t ip, size_t d1, size_t d2, size_t sh2) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->stab_vel_shape_vel(ip,d1,d2,sh2);
+		}
+	///    diagonal for stabilization (SlipVel)
+		number diff_factor(size_t ip) const
+		{
+			UG_NSSTAB_ASSERT(this_type::pressure_jump_valid(), "No pressure jump object");
+			return this_type::pressure_jump()->stab_factor(ip);
+		}
+    
+
+	//////////////////////////
+	// internal handling
+	//////////////////////////
+
+	protected:
+	///	computes the diffusion length
+		template <typename TFVGeom>
+		void compute_diff_length(const TFVGeom& geo);
+
+	//////////////////////////
+	// data
+	//////////////////////////
+
+	protected:
+	///	type of diffusion length computation
+		DiffusionLength m_diffLengthType;
+
+	///	vector holding diffusion Length squared and inverted
+		number m_vDiffLengthSqInv[this_type::maxNumSCVF];
+
+};
+
+/// creates upwind based on a string identifier
+template <int dim>
+SmartPtr<INavierStokesSRFV1StabilizationM<dim> > CreateNavierStokesStabilizationM(const std::string& name);
+
+/////////////////////////////////////////////////////////////////////////////
+// FIELDS
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Implementation of the FIELDS stabilization
+ */
+template <int TDim>
+class NavierStokesFIELDSStabilizationM
+	: public INavierStokesSRFV1StabilizationM<TDim>
+{
+	public:
+	///	Base class
+		typedef INavierStokesSRFV1StabilizationM<TDim> base_type;
+
+	///	This class
+		typedef NavierStokesFIELDSStabilizationM<TDim> this_type;
+
+	///	Dimension
+		static const int dim = TDim;
+
+	protected:
+	//	explicitly forward some function
+		using base_type::register_update_func;
+		using base_type::diff_length_sq_inv;
+		using base_type::stab_shape_vel;
+		using base_type::stab_shape_p;
+		using base_type::stab_vel;
+		using base_type::set_vel_comp_connected;
+		using base_type::set_vel_convected;
+
+	//	functions from upwind
+		using base_type::upwind_conv_length;
+		using base_type::downwind_conv_length;
+		using base_type::upwind_shape_sh;
+		using base_type::downwind_shape_sh;
+		using base_type::non_zero_shape_ip;
+		using base_type::upwind_shape_ip;
+		using base_type::downwind_shape_ip;
+
+	public:
+	///	constructor
+		NavierStokesFIELDSStabilizationM()
+		{
+		//	vel comp not coupled
+			set_vel_comp_connected(false);
+			
+			//	convected vel as upwind
+			set_vel_convected(false);
+
+		//	register evaluation function
+			register_func();
+		}
+
+	///	update of values for FV1Geometry
+		template <typename TElem>
+		void update(const FV1Geometry<TElem, dim>* geo,
+		            const LocalVector& vCornerValue,
+		            const MathVector<dim> vStdVel[],
+		            const bool bStokes,
+		            const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+					const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& density_old,
+                    const DataImport<number, dim>& densitySCV,
+					const DataImport<number, dim>& densitySCV_old,
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                    const DataImport<MathVector<dim>, dim>& Source,
+					const DataImport<MathVector<dim>, dim>& SourceSCV,
+					const DataImport<MathVector<dim>, dim>& PressGrad,
+		            const LocalVector* pvCornerValueOldTime, number dt,
+					const int jump_shape[],
+					const bool phase_2[],
+					const bool multiphase);
+
+	private:
+		void register_func();
+
+		template <typename TElem>
+		void register_func()
+		{
+			typedef FV1Geometry<TElem, dim> TGeom;
+			typedef void (this_type::*TFunc)(const TGeom* geo,
+											 const LocalVector& vCornerValue,
+											 const MathVector<dim> vStdVel[],
+											 const bool bStokes,
+											 const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
+                                             const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& density_old,
+                                             const DataImport<number, dim>& densitySCV,
+											 const DataImport<number, dim>& densitySCV_old,
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                                             const DataImport<MathVector<dim>, dim>& Source,
+											 const DataImport<MathVector<dim>, dim>& SourceSCV,
+											 const DataImport<MathVector<dim>, dim>& PressGrad,
+                                             const LocalVector* pvCornerValueOldTime, number dt,
+											 const int jump_shape[],
+											 const bool phase_2[],
+											 const bool multiphase);
+
+			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
+		}
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// FLOW
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Implementation of the FLOW stabilization
+ */
+template <int TDim>
+class NavierStokesFLOWStabilizationM
+	: public INavierStokesSRFV1StabilizationM<TDim>
+{
+	public:
+	///	Base class
+		typedef INavierStokesSRFV1StabilizationM<TDim> base_type;
+
+	///	This class
+		typedef NavierStokesFLOWStabilizationM<TDim> this_type;
+
+	///	Dimension
+		static const int dim = TDim;
+
+	protected:
+	//	explicitly forward some function
+		using base_type::register_update_func;
+		using base_type::set_vel_comp_connected;
+		using base_type::set_vel_convected;
+		using base_type::diff_length_sq_inv;
+		using base_type::stab_shape_vel;
+		using base_type::stab_shape_p;
+		using base_type::stab_vel;
+
+	//	functions from upwind
+		using base_type::upwind_conv_length;
+		using base_type::downwind_conv_length;
+		using base_type::upwind_shape_sh;
+		using base_type::downwind_shape_sh;
+		using base_type::non_zero_shape_ip;
+		using base_type::upwind_shape_ip;
+		using base_type::downwind_shape_ip;
+
+	public:
+	///	constructor
+		NavierStokesFLOWStabilizationM()
+		{
+		//	vel comp coupled
+			set_vel_comp_connected(true);
+			
+			//	convected vel as upwind
+			set_vel_convected(false);
+
+		//	register evaluation function
+			register_func();
+		}
+
+	///	update of values for FV1Geometry
+		template <typename TElem>
+		void update(const FV1Geometry<TElem, dim>* geo,
+					const LocalVector& vCornerValue,
+					const MathVector<dim> vStdVel[],
+					const bool bStokes,
+					const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+					const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& density_old,
+                    const DataImport<number, dim>& densitySCV,
+					const DataImport<number, dim>& densitySCV_old,
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                    const DataImport<MathVector<dim>, dim>& Source,
+					const DataImport<MathVector<dim>, dim>& SourceSCV,
+					const DataImport<MathVector<dim>, dim>& PressGrad,
+                    const LocalVector* pvCornerValueOldTime, number dt,
+					const int jump_shape[],
+					const bool phase_2[],
+					const bool multiphase);
+
+	private:
+		void register_func();
+
+		template <typename TElem>
+		void register_func()
+		{
+			typedef FV1Geometry<TElem, dim> TGeom;
+			typedef void (this_type::*TFunc)(const TGeom* geo,
+											 const LocalVector& vCornerValue,
+											 const MathVector<dim> vStdVel[],
+											 const bool bStokes,
+											 const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
+                                             const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& density_old,
+                                             const DataImport<number, dim>& densitySCV,
+											 const DataImport<number, dim>& densitySCV_old,
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                                             const DataImport<MathVector<dim>, dim>& Source,
+											 const DataImport<MathVector<dim>, dim>& SourceSCV,
+											 const DataImport<MathVector<dim>, dim>& PressGrad,
+											 const LocalVector* pvCornerValueOldTime, number dt,
+											 const int jump_shape[],
+											 const bool phase_2[],
+											 const bool multiphase);
+
+			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
+		}
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// FIELDS
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Implementation of the FIELDS stabilization
+ */
+template <int TDim>
+class NavierStokesFIELDS_2_StabilizationM
+    : public INavierStokesSRFV1StabilizationM<TDim>
+{
+    public:
+    ///    Base class
+        typedef INavierStokesSRFV1StabilizationM<TDim> base_type;
+
+    ///    This class
+        typedef NavierStokesFIELDS_2_StabilizationM<TDim> this_type;
+
+    ///    Dimension
+        static const int dim = TDim;
+
+    protected:
+    //    explicitly forward some function
+        using base_type::register_update_func;
+        using base_type::diff_length_sq_inv;
+        using base_type::stab_shape_vel;
+        using base_type::stab_shape_p;
+		using base_type::stab_shape_c;
+        using base_type::stab_vel;
+        using base_type::set_vel_comp_connected;
+		using base_type::set_vel_convected;
+    
+    //    functions from upwind
+        using base_type::upwind_conv_length;
+        using base_type::downwind_conv_length;
+        using base_type::upwind_shape_sh;
+        using base_type::downwind_shape_sh;
+        using base_type::non_zero_shape_ip;
+        using base_type::upwind_shape_ip;
+        using base_type::downwind_shape_ip;
+	
+	//    functions from rel upwind
+		using base_type::upwind_conv_length_rel;
+		using base_type::downwind_conv_length_rel;
+		using base_type::upwind_shape_sh_rel;
+		using base_type::downwind_shape_sh_rel;
+		using base_type::non_zero_shape_ip_rel;
+		using base_type::upwind_shape_ip_rel;
+		using base_type::downwind_shape_ip_rel;
+	
+	//    functions from pressure jump
+		using base_type::pressure_jump_value;
+		using base_type::pressure_jump_shape_p;
+		using base_type::pressure_jump_shape_vel;
+	
+		using base_type::tang_vel;
+		using base_type::tang_vel_shape_vel;
+	
+		using base_type::slip_vel;
+		using base_type::slip_vel_shape_vel;
+	
+		using base_type::diff_vel;
+		using base_type::diff_vel_shape_vel;
+		using base_type::diff_factor;
+    
+    
+        using base_type::Inter;
+
+    public:
+    ///    constructor
+        NavierStokesFIELDS_2_StabilizationM()
+        {
+        //    vel comp not coupled
+            set_vel_comp_connected(true);
+			
+			//	convected vel as upwind
+			set_vel_convected(false);
+
+        //    register evaluation function
+            register_func();
+        }
+
+    ///    update of values for FV1Geometry
+        template <typename TElem>
+        void update(const FV1Geometry<TElem, dim>* geo,
+                    const LocalVector& vCornerValue,
+                    const MathVector<dim> vStdVel[],
+                    const bool bStokes,
+                    const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+                    const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& density_old,
+                    const DataImport<number, dim>& densitySCV,
+					const DataImport<number, dim>& densitySCV_old,
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                    const DataImport<MathVector<dim>, dim>& Source,
+					const DataImport<MathVector<dim>, dim>& SourceSCV,
+					const DataImport<MathVector<dim>, dim>& PressGrad,
+                    const LocalVector* pvCornerValueOldTime, number dt,
+					const int jump_shape[],
+					const bool phase_2[],
+					const bool multiphase);
+    
+
+    private:
+        void register_func();
+
+        template <typename TElem>
+        void register_func()
+        {
+            typedef FV1Geometry<TElem, dim> TGeom;
+            typedef void (this_type::*TFunc)(const TGeom* geo,
+                                             const LocalVector& vCornerValue,
+                                             const MathVector<dim> vStdVel[],
+                                             const bool bStokes,
+                                             const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
+                                             const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& density_old,
+                                             const DataImport<number, dim>& densitySCV,
+											 const DataImport<number, dim>& densitySCV_old,
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                                             const DataImport<MathVector<dim>, dim>& Source,
+											 const DataImport<MathVector<dim>, dim>& SourceSCV,
+											 const DataImport<MathVector<dim>, dim>& PressGrad,
+                                             const LocalVector* pvCornerValueOldTime, number dt,
+											 const int jump_shape[],
+											 const bool phase_2[],
+											 const bool multiphase);
+
+            this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
+        }
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// FLOW  2
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Implementation of the FIELDS stabilization
+ */
+template <int TDim>
+class NavierStokesFLOW_2_StabilizationM
+    : public INavierStokesSRFV1StabilizationM<TDim>
+{
+    public:
+    ///    Base class
+        typedef INavierStokesSRFV1StabilizationM<TDim> base_type;
+
+    ///    This class
+        typedef NavierStokesFLOW_2_StabilizationM<TDim> this_type;
+
+    ///    Dimension
+        static const int dim = TDim;
+
+    protected:
+    //    explicitly forward some function
+        using base_type::register_update_func;
+        using base_type::diff_length_sq_inv;
+        using base_type::stab_shape_vel;
+        using base_type::stab_shape_p;
+		using base_type::stab_shape_c;
+        using base_type::stab_vel;
+        using base_type::set_vel_comp_connected;
+		using base_type::set_vel_convected;
+    
+    //    functions from upwind
+        using base_type::upwind_conv_length;
+        using base_type::downwind_conv_length;
+        using base_type::upwind_shape_sh;
+        using base_type::downwind_shape_sh;
+        using base_type::non_zero_shape_ip;
+        using base_type::upwind_shape_ip;
+        using base_type::downwind_shape_ip;
+
+	
+	//    functions from rel upwind
+		using base_type::upwind_conv_length_rel;
+		using base_type::downwind_conv_length_rel;
+		using base_type::upwind_shape_sh_rel;
+		using base_type::downwind_shape_sh_rel;
+		using base_type::non_zero_shape_ip_rel;
+		using base_type::upwind_shape_ip_rel;
+		using base_type::downwind_shape_ip_rel;
+	
+	
+		using base_type::Inter;
+	
+    public:
+    ///    constructor
+        NavierStokesFLOW_2_StabilizationM()
+        {
+        //    vel comp not coupled
+            set_vel_comp_connected(true);
+			
+			//	convected vel as upwind
+			set_vel_convected(false);
+
+        //    register evaluation function
+            register_func();
+        }
+
+    ///    update of values for FV1Geometry
+        template <typename TElem>
+        void update(const FV1Geometry<TElem, dim>* geo,
+                    const LocalVector& vCornerValue,
+                    const MathVector<dim> vStdVel[],
+                    const bool bStokes,
+                    const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+                    const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& density_old,
+                    const DataImport<number, dim>& densitySCV,
+					const DataImport<number, dim>& densitySCV_old,
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                    const DataImport<MathVector<dim>, dim>& Source,
+					const DataImport<MathVector<dim>, dim>& SourceSCV,
+					const DataImport<MathVector<dim>, dim>& PressGrad,
+                    const LocalVector* pvCornerValueOldTime, number dt,
+					const int jump_shape[],
+					const bool phase_2[],
+					const bool multiphase);
+
+    private:
+        void register_func();
+
+        template <typename TElem>
+        void register_func()
+        {
+            typedef FV1Geometry<TElem, dim> TGeom;
+            typedef void (this_type::*TFunc)(const TGeom* geo,
+                                             const LocalVector& vCornerValue,
+                                             const MathVector<dim> vStdVel[],
+                                             const bool bStokes,
+                                             const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
+                                             const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& density_old,
+                                             const DataImport<number, dim>& densitySCV,
+											 const DataImport<number, dim>& densitySCV_old,
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                                             const DataImport<MathVector<dim>, dim>& Source,
+											 const DataImport<MathVector<dim>, dim>& SourceSCV,
+											 const DataImport<MathVector<dim>, dim>& PressGrad,
+                                             const LocalVector* pvCornerValueOldTime, number dt,
+											 const int jump_shape[],
+											 const bool phase_2[],
+											 const bool multiphase);
+
+            this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
+        }
+};
+
+
+
+/////////////////////////////////////////////////////////////////////////////
+// FLOW
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Implementation of the KARIMIAN stabilization
+ */
+template <int TDim>
+class NavierStokesKARIMIANStabilizationM
+    : public INavierStokesSRFV1StabilizationM<TDim>
+{
+    public:
+    ///    Base class
+        typedef INavierStokesSRFV1StabilizationM<TDim> base_type;
+
+    ///    This class
+        typedef NavierStokesKARIMIANStabilizationM<TDim> this_type;
+
+    ///    Dimension
+        static const int dim = TDim;
+
+    protected:
+    //    explicitly forward some function
+        using base_type::register_update_func;
+        using base_type::set_vel_comp_connected;
+		using base_type::set_vel_convected;
+        using base_type::diff_length_sq_inv;
+        using base_type::stab_shape_vel;
+        using base_type::stab_shape_p;
+		using base_type::stab_shape_c;
+        using base_type::stab_vel;
+	
+		using base_type::conv_shape_vel;
+		using base_type::conv_shape_p;
+		using base_type::conv_shape_c;
+		using base_type::conv_vel;
+	
+
+    //    functions from upwind
+        using base_type::upwind_conv_length;
+        using base_type::downwind_conv_length;
+        using base_type::upwind_shape_sh;
+        using base_type::downwind_shape_sh;
+        using base_type::non_zero_shape_ip;
+        using base_type::upwind_shape_ip;
+        using base_type::downwind_shape_ip;
+	
+		using base_type::Inter;
+
+    public:
+    ///    constructor
+        NavierStokesKARIMIANStabilizationM()
+        {
+        //    vel comp coupled
+            set_vel_comp_connected(true);
+			
+			//	convected vel as upwind
+			set_vel_convected(true);
+
+        //    register evaluation function
+            register_func();
+        }
+
+    ///    update of values for FV1Geometry
+        template <typename TElem>
+        void update(const FV1Geometry<TElem, dim>* geo,
+                    const LocalVector& vCornerValue,
+                    const MathVector<dim> vStdVel[],
+                    const bool bStokes,
+                    const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+                    const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& density_old,
+                    const DataImport<number, dim>& densitySCV,
+					const DataImport<number, dim>& densitySCV_old,
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                    const DataImport<MathVector<dim>, dim>& Source,
+					const DataImport<MathVector<dim>, dim>& SourceSCV,
+					const DataImport<MathVector<dim>, dim>& PressGrad,
+                    const LocalVector* pvCornerValueOldTime, number dt,
+					const int jump_shape[],
+					const bool phase_2[],
+					const bool multiphase);
+
+    private:
+        void register_func();
+
+        template <typename TElem>
+        void register_func()
+        {
+            typedef FV1Geometry<TElem, dim> TGeom;
+            typedef void (this_type::*TFunc)(const TGeom* geo,
+                                             const LocalVector& vCornerValue,
+                                             const MathVector<dim> vStdVel[],
+                                             const bool bStokes,
+                                             const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
+                                             const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& density_old,
+                                             const DataImport<number, dim>& densitySCV,
+											 const DataImport<number, dim>& densitySCV_old,
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                                             const DataImport<MathVector<dim>, dim>& Source,
+											 const DataImport<MathVector<dim>, dim>& SourceSCV,
+											 const DataImport<MathVector<dim>, dim>& PressGrad,
+                                             const LocalVector* pvCornerValueOldTime, number dt,
+											 const int jump_shape[],
+											 const bool phase_2[],
+											 const bool multiphase);
+
+            this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
+        }
+};
+/////////////////////////////////////////////////////////////////////////////
+// NO
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Implementation of the KARIMIAN stabilization
+ */
+template <int TDim>
+class NavierStokesNOStabilizationM
+    : public INavierStokesSRFV1StabilizationM<TDim>
+{
+    public:
+    ///    Base class
+        typedef INavierStokesSRFV1StabilizationM<TDim> base_type;
+
+    ///    This class
+        typedef NavierStokesNOStabilizationM<TDim> this_type;
+
+    ///    Dimension
+        static const int dim = TDim;
+
+    protected:
+    //    explicitly forward some function
+        using base_type::register_update_func;
+        using base_type::set_vel_comp_connected;
+		using base_type::set_vel_convected;
+        using base_type::diff_length_sq_inv;
+        using base_type::stab_shape_vel;
+        using base_type::stab_shape_p;
+        using base_type::stab_vel;
+
+    //    functions from upwind
+        using base_type::upwind_conv_length;
+        using base_type::downwind_conv_length;
+        using base_type::upwind_shape_sh;
+        using base_type::downwind_shape_sh;
+        using base_type::non_zero_shape_ip;
+        using base_type::upwind_shape_ip;
+        using base_type::downwind_shape_ip;
+
+    public:
+    ///    constructor
+        NavierStokesNOStabilizationM()
+        {
+        //    vel comp coupled
+            set_vel_comp_connected(false);
+			
+			//	convected vel as upwind
+			set_vel_convected(false);
+
+        //    register evaluation function
+            register_func();
+        }
+
+    ///    update of values for FV1Geometry
+        template <typename TElem>
+        void update(const FV1Geometry<TElem, dim>* geo,
+                    const LocalVector& vCornerValue,
+                    const MathVector<dim> vStdVel[],
+                    const bool bStokes,
+                    const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+                    const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& density_old,
+                    const DataImport<number, dim>& densitySCV,
+					const DataImport<number, dim>& densitySCV_old,
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                    const DataImport<MathVector<dim>, dim>& Source,
+					const DataImport<MathVector<dim>, dim>& SourceSCV,
+					const DataImport<MathVector<dim>, dim>& PressGrad,
+                    const LocalVector* pvCornerValueOldTime, number dt,
+					const int jump_shape[],
+					const bool phase_2[],
+					const bool multiphase);
+
+    private:
+        void register_func();
+
+        template <typename TElem>
+        void register_func()
+        {
+            typedef FV1Geometry<TElem, dim> TGeom;
+            typedef void (this_type::*TFunc)(const TGeom* geo,
+                                             const LocalVector& vCornerValue,
+                                             const MathVector<dim> vStdVel[],
+                                             const bool bStokes,
+                                             const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
+                                             const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& density_old,
+                                             const DataImport<number, dim>& densitySCV,
+											 const DataImport<number, dim>& densitySCV_old,
+											 const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                                             const DataImport<MathVector<dim>, dim>& Source,
+											 const DataImport<MathVector<dim>, dim>& SourceSCV,
+											 const DataImport<MathVector<dim>, dim>& PressGrad,
+                                             const LocalVector* pvCornerValueOldTime, number dt,
+											 const int jump_shape[],
+											 const bool phase_2[],
+											 const bool multiphase);
+
+            this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
+        }
+};
+
+/////////////////////////////////////////////////////////////////////////////
+// NO STABILIZATIONM (Note: The discretization is then unstable!)
+/////////////////////////////////////////////////////////////////////////////
+
+template <int TDim>
+class NavierStokesFV1WithoutStabilizationM
+	: public INavierStokesFV1StabilizationM<TDim>
+{
+	public:
+	///	Base class
+		typedef INavierStokesFV1StabilizationM<TDim> base_type;
+
+	///	This class
+		typedef NavierStokesFV1WithoutStabilizationM<TDim> this_type;
+
+	///	Dimension
+		static const int dim = TDim;
+
+	protected:
+	//	explicitly forward some function
+		using base_type::register_update_func;
+		using base_type::set_vel_comp_connected;
+		using base_type::set_vel_convected;
+		using base_type::stab_shape_vel;
+		using base_type::stab_shape_p;
+		using base_type::stab_vel;
+		
+	public:
+	///	Constructor
+		NavierStokesFV1WithoutStabilizationM ()
+		{
+		//	vel comp not interconnected
+			set_vel_comp_connected(false);
+			
+			//	convected vel as upwind
+			set_vel_convected(false);
+
+		//	register evaluation function
+			register_func();
+		}
+	
+	///	update of values for FV1Geometry
+		template <typename TElem>
+		void update(const FV1Geometry<TElem, dim>* geo,
+					const LocalVector& vCornerValue,
+					const MathVector<dim> vStdVel[],
+					const bool bStokes,
+					const DataImport<number, dim>& kinVisco,
+                    const DataImport<number, dim>& kinViscoSCV,
+					const DataImport<number, dim>& density,
+                    const DataImport<number, dim>& density_old,
+                    const DataImport<number, dim>& densitySCV,
+					const DataImport<number, dim>& densitySCV_old,
+					const number ps[],
+					const MathVector<dim> vStdRelVel[],
+					const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                    const DataImport<MathVector<dim>, dim>& Source,
+					const DataImport<MathVector<dim>, dim>& SourceSCV,
+					const DataImport<MathVector<dim>, dim>& PressGrad,
+					const LocalVector* pvCornerValueOldTime, number dt,
+					const int jump_shape[],
+					const bool phase_2[],
+					const bool multiphase);
+
+	private:
+		void register_func();
+
+		template <typename TElem>
+		void register_func()
+		{
+			typedef FV1Geometry<TElem, dim> TGeom;
+			typedef void (this_type::*TFunc)(
+                                             const TGeom* geo,
+											 const LocalVector& vCornerValue,
+											 const MathVector<dim> vStdVel[],
+											 const bool bStokes,
+											 const DataImport<number, dim>& kinVisco,
+                                             const DataImport<number, dim>& kinViscoSCV,
+                                             const DataImport<number, dim>& density,
+                                             const DataImport<number, dim>& density_old,
+                                             const DataImport<number, dim>& densitySCV,
+											 const DataImport<number, dim>& densitySCV_old,
+                                             const number ps[],
+											 const MathVector<dim> vStdRelVel[],
+											 const DataImport<MathVector<dim>, dim>& RelVelSCVF,
+                                             const DataImport<MathVector<dim>, dim>& Source,
+											 const DataImport<MathVector<dim>, dim>& SourceSCV,
+											 const DataImport<MathVector<dim>, dim>& PressGrad,
+                                             const LocalVector* pvCornerValueOldTime, number dt,
+											 const int jump_shape[],
+											 const bool phase_2[],
+											 const bool multiphase);
+
+			this->template register_update_func<TGeom, TFunc>(&this_type::template update<TElem>);
+		}
+};
+
+} // namespace NavierStokes
+} // end namespace ug
+
+#endif /* __H__UG__PLUGINS__NAVIER_STOKES__FV__STABILIZATIONM__ */

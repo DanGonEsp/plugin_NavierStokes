@@ -92,7 +92,7 @@ void NavierStokesFV1M<TDomain>::init()
     
     m_imDensitySCVF.set_comp_lin_defect(false);
     m_imDensitySCVF_old.set_comp_lin_defect(false);
-    //m_imDensitySCV.set_comp_lin_defect(false);
+    m_imDensitySCV.set_comp_lin_defect(false);
 	m_imDensitySCV_old.set_comp_lin_defect(false);
     
     m_imSourceSCVF.set_comp_lin_defect(false);
@@ -256,7 +256,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
     
     //	check, that stabilization has been set
     if(m_spStab.invalid())
-        UG_THROW("Stabilization has not been set.");
+        UG_THROW("StabilizationM has not been set.");
     
     //	init stabilization for element type
     m_spStab->template set_geometry_type<TFVGeom >();
@@ -314,7 +314,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 	if(this->is_time_dependent())
 		if(!m_imDensitySCV_old.data_given() || !m_imDensitySCVF_old.data_given())
 			UG_THROW("NavierStokes::prep_elem_loop:"
-					 " Density old has not been set, but is required in Stabilization.");
+					 " Density old has not been set, but is required in StabilizationM.");
 	
 	if(m_pressure_jump)
 	{
@@ -481,7 +481,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         const LocalVectorTimeSeries* vLocSol = this->local_time_solutions();
         if(vLocSol->size() != 2)
             UG_THROW("NavierStokes::add_jac_A_elem: "
-                     " Stabilization needs exactly two time points.");
+                     " StabilizationM needs exactly two time points.");
         
         //	remember local solutions
         pSol = &vLocSol->solution(0);
@@ -568,7 +568,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 m_spConvStab->update(&geo, *pSol, StdVel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
     }
     //    get a const (!!) reference to the stabilization
-    const INavierStokesFV1Stabilization<dim>& stab = *m_spStab;
+    const INavierStokesFV1StabilizationM<dim>& stab = *m_spStab;
 	
     // Estimation of the veloctity at ip for upwind shape and continuity equations
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -618,7 +618,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	//}
     
 
-	const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
+	const INavierStokesFV1StabilizationM<dim>& convStab = *m_spConvStab;
 	const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
     const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;
 	//const INavierStokesUpwind<dim>& upwind_rel = *m_spConvUpwind_rel;
@@ -1775,7 +1775,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         const LocalVectorTimeSeries* vLocSol = this->local_time_solutions();
         if(vLocSol->size() != 2)
             UG_THROW("NavierStokes::add_def_A_elem: "
-                     " Stabilization needs exactly two time points.");
+                     " StabilizationM needs exactly two time points.");
         
         //	remember local solutions
         pSol = &vLocSol->solution(0);
@@ -1833,6 +1833,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			Inter->template PropertiesJump<TElem>(u_aux, _C_, geo, JumpShape, m_imDensitySCV, m_imKinViscositySCV, m_imSourceSCV, numSh, cut_elem, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_1, Source_g, GFM);
 			
 			m_spPressureJump->update( &geo, *pSol, StdVel_ip, m_bStokes, m_imSurfaceNormalSCV, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, JumpShape, pOldSol, dt, borrar, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, Inter->interface_value());
+			UG_THROW("Pressure Jump NOt implemented for MOMENTUM formulation in NV");
 			//Inter->template InterfaceSCVFShapes<TElem>(SCVFinterShape.data(), geo, u, JumpShape, numSh, _C_);
 			//UG_LOG("mu_l  =  "<< mu_l <<"  mu_g  =  "<< mu_g <<" rho_l  =  "<< rho_l <<" rho_g  =  "<< rho_g << "\n");
 			
@@ -1845,7 +1846,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	{
 		vel_grad(  u,  geo,  Gamma);
 		Inter->vPs( Ps, DPs, Gamma, u, _C_, numSh, false);
-		printf("Gamma is not implemented for Ps gradient, update import parameter");
+		UG_THROW("Gamma is not implemented for Ps gradient, update import parameter");
 	}
 	
     
@@ -1863,7 +1864,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     }
     
     //    get a const (!!) reference to the stabilization
-    const INavierStokesFV1Stabilization<dim>& stab = *m_spStab;
+    const INavierStokesFV1StabilizationM<dim>& stab = *m_spStab;
     
 	// Estimation of the veloctity at ip for upwind shape and continuity equations
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -1913,7 +1914,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     
 
 
-	const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
+	const INavierStokesFV1StabilizationM<dim>& convStab = *m_spConvStab;
 	const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
     const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;
 	//const INavierStokesUpwind<dim>& upwind_rel = *m_spConvUpwind_rel;
@@ -2986,8 +2987,8 @@ std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, Math
         {
             for(int d1 = 0; d1 < dim; ++d1)
             {
-				StdMomentum[ip][d1] += densitySCV[sh]*scvf.shape(sh) * u(d1, sh);
-				StdVel[ip][d1] += scvf.shape(sh) * u(d1, sh);
+				StdMomentum[ip][d1] += scvf.shape(sh) * u(d1, sh);
+				StdVel[ip][d1] += scvf.shape(sh) * u(d1, sh)/densitySCV[sh];
             }
             
         }
@@ -3007,7 +3008,7 @@ std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, Math
 
         for(int d1 = 0; d1 < dim; ++d1)
         {
-			RhoVel[d1] += (densitySCV[to] * u(d1, to) + densitySCV[from] * u(d1, from)) / ( densitySCV[to] + densitySCV[from]) ;
+			RhoVel[d1] += ( u(d1, to) +  u(d1, from)) / ( densitySCV[to] + densitySCV[from]) ;
         }
 		
 		VecScaleAdd(StdVel_ip[ip], (1.0-theta), StdVel[ip], theta, RhoVel);
@@ -3458,7 +3459,7 @@ lin_def_densitySCV(const LocalVector& u,
                 m_spConvUpwind->update(&geo, StdVel_ip);
 
         
-        //const INavierStokesFV1Stabilization<dim>& convStab = *m_spConvStab;
+        //const INavierStokesFV1StabilizationM<dim>& convStab = *m_spConvStab;
         const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
         for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
         {
@@ -3612,7 +3613,7 @@ lin_def_viscosity(const LocalVector& u,
 		const LocalVectorTimeSeries* vLocSol = this->local_time_solutions();
 		if(vLocSol->size() != 2)
 			UG_THROW("NavierStokes::add_def_A_elem: "
-					 " Stabilization needs exactly two time points.");
+					 " StabilizationM needs exactly two time points.");
 		
 		//	remember local solutions
 		pSol = &vLocSol->solution(0);
@@ -3664,7 +3665,7 @@ lin_def_viscosity(const LocalVector& u,
 	}
 	
 	//    get a const (!!) reference to the stabilization
-	const INavierStokesFV1Stabilization<dim>& stab = *m_spStab;
+	const INavierStokesFV1StabilizationM<dim>& stab = *m_spStab;
 	
 	// Estimation of the veloctity at ip for upwind shape and continuity equations
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -4033,7 +4034,7 @@ ex_div_velocity(MathVector<dim> vValue[],
             const LocalVectorTimeSeries* vLocSol = this->local_time_solutions();
             if(vLocSol->size() != 2)
                 UG_THROW("NavierStokes::add_def_A_elem: "
-                                " Stabilization needs exactly two time points.");
+                                " StabilizationM needs exactly two time points.");
 
         //    remember local solutions
             pSol = &vLocSol->solution(0);
@@ -4075,7 +4076,7 @@ ex_div_velocity(MathVector<dim> vValue[],
         
         
         //    get a const (!!) reference to the stabilization
-        const INavierStokesFV1Stabilization<dim>& stab = *m_spStab;
+        const INavierStokesFV1StabilizationM<dim>& stab = *m_spStab;
         
 
 

@@ -41,6 +41,7 @@
 #include "bnd/inflow_stress_fv1.h"
 #include "bnd/wall_sliding_fv1.h"
 #include "stabilization.h"
+#include "stabilization_multiphase.h"
 #include "nodal_pressure_grad.h"
 #include "shear_stress.h"
 #include "pressure_jump.h"
@@ -361,10 +362,10 @@ static void Domain(Registry& reg, string grp)
         reg.add_class_<T, TBase >(name, grp)
             .template add_constructor<void (*)(const char*,const char*)>("Functions#Subset(s)")
             .template add_constructor<void (*)(const std::vector<std::string>&, const std::vector<std::string>&)>("Functions#Subset(s)")
-            .add_method("set_stabilization",  static_cast<void (T::*)(SmartPtr<INavierStokesFV1Stabilization<dim> >)>(&T::set_stabilization))
+            .add_method("set_stabilization",  static_cast<void (T::*)(SmartPtr<INavierStokesFV1StabilizationM<dim> >)>(&T::set_stabilization))
             .add_method("set_stabilization",  static_cast<void (T::*)(const std::string&)>(&T::set_stabilization))
             .add_method("set_stabilization",  static_cast<void (T::*)(const std::string&, const std::string&)>(&T::set_stabilization))
-            .add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesFV1Stabilization<dim> >)>(&T::set_upwind))
+            .add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesFV1StabilizationM<dim> >)>(&T::set_upwind))
             .add_method("set_upwind",  static_cast<void (T::*)(SmartPtr<INavierStokesUpwind<dim> >)>(&T::set_upwind))
             .add_method("set_upwind",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind))
             .add_method("set_upwind_vol",  static_cast<void (T::*)(const std::string&)>(&T::set_upwind_vol))
@@ -542,6 +543,58 @@ static void Dimension(Registry& reg, string grp)
 			.add_constructor()
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "NavierStokesViscousPressureJump", tag);
+	}
+	
+//	INavierStokesFV1StabilizationM
+	{
+		typedef INavierStokesFV1StabilizationM<dim> T;
+		string name = string("INavierStokesFV1StabilizationM").append(suffix);
+		reg.add_class_<T>(name, grp)
+			.add_method("set_upwind", &T::set_upwind);
+		reg.add_class_to_group(name, "INavierStokesFV1StabilizationM", tag);
+	}
+
+//	INavierStokesSRFV1StabilizationM
+	{
+		typedef INavierStokesSRFV1StabilizationM<dim> T;
+		typedef INavierStokesFV1StabilizationM<dim> TBase;
+		string name = string("INavierStokesSRFV1StabilizationM").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_diffusion_length", &T::set_diffusion_length);
+		reg.add_class_to_group(name, "INavierStokesSRFV1StabilizationM", tag);
+	}
+
+//	NavierStokesFIELDSStabilizationM
+	{
+		typedef NavierStokesFIELDSStabilizationM<dim> T;
+		typedef INavierStokesSRFV1StabilizationM<dim> TBase;
+		string name = string("NavierStokesFIELDSStabilizationM").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "NavierStokesFIELDSStabilizationM", tag);
+	}
+
+//	NavierStokesFLOWStabilizationM
+	{
+		typedef NavierStokesFLOWStabilizationM<dim> T;
+		typedef INavierStokesSRFV1StabilizationM<dim> TBase;
+		string name = string("NavierStokesFLOWStabilizationM").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "NavierStokesFLOWStabilizationM", tag);
+	}
+
+//	NavierStokesFV1WithoutStabilizationM
+	{
+		typedef NavierStokesFV1WithoutStabilizationM<dim> T;
+		typedef INavierStokesFV1StabilizationM<dim> TBase;
+		string name = string("NavierStokesFV1WithoutStabilizationM").append(suffix);
+		reg.add_class_<T, TBase>(name, grp)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+		reg.add_class_to_group(name, "NavierStokesFV1WithoutStabilizationM", tag);
 	}
 }
 

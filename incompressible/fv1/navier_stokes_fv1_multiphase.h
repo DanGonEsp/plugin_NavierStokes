@@ -44,7 +44,7 @@
 
 #include "../incompressible_navier_stokes_base.h"
 #include "../../upwind_interface.h"
-#include "stabilization.h"
+#include "stabilization_multiphase.h"
 #include "../../properties_interface.h"
 #include "pressure_jump.h"
 
@@ -194,28 +194,28 @@ class NavierStokesFV1M
 
 
 	///	sets the stabilization used to compute the stabilized velocities
-		void set_stabilization(SmartPtr<INavierStokesFV1Stabilization<dim> > spStab)
+		void set_stabilization(SmartPtr<INavierStokesFV1StabilizationM<dim> > spStab)
 			{m_spStab = spStab;}
 
 	///	sets stabilization based on string identifier
 		void set_stabilization(const std::string& name)
-			{m_spStab = CreateNavierStokesStabilization<dim>(name);
+			{m_spStab = CreateNavierStokesStabilizationM<dim>(name);
 			 if(m_spConvUpwind.valid()) m_spStab->set_upwind(m_spConvUpwind);
 			 if(m_spConvUpwind_rel.valid()) m_spStab->set_upwind_rel(m_spConvUpwind_rel);}
 
 	///	sets stabilization and diff length method based on string identifier (only for Schneider-Raw stabilizations)
 		void set_stabilization(const std::string& name, const std::string& diffLength)
-			{SmartPtr<INavierStokesSRFV1Stabilization<dim> > spStab = CreateNavierStokesStabilization<dim>(name);
+			{SmartPtr<INavierStokesSRFV1StabilizationM<dim> > spStab = CreateNavierStokesStabilizationM<dim>(name);
 			 spStab->set_diffusion_length(diffLength);
 			 m_spStab = spStab;
 			 if(m_spConvUpwind.valid()) m_spStab->set_upwind(m_spConvUpwind);
 			 if(m_spConvUpwind_rel.valid()) m_spStab->set_upwind_rel(m_spConvUpwind_rel);}
 			 
     /// returns stabilization	
-		SmartPtr<INavierStokesFV1Stabilization<dim> > stabilization(){ return m_spStab;}
+		SmartPtr<INavierStokesFV1StabilizationM<dim> > stabilization(){ return m_spStab;}
 
 	///	sets a stabilization for upwinding (Physical Advection Correction)
-        void set_upwind(SmartPtr<INavierStokesFV1Stabilization<dim> > spStab)
+        void set_upwind(SmartPtr<INavierStokesFV1StabilizationM<dim> > spStab)
         	{m_spConvStab = spStab; m_spConvUpwind = SPNULL;}
 
 	///	sets an upwinding for the convective term of momentum equation
@@ -239,7 +239,7 @@ class NavierStokesFV1M
 				if (m_spConvUpwind.valid()) m_spStab->set_upwind(m_spConvUpwind);
 				else UG_THROW("Upwind must be specified previously.\n");
 				if (m_spStab.valid()) set_upwind(m_spStab);
-				else UG_THROW("Stabilization must be specified previously.\n");
+				else UG_THROW("StabilizationM must be specified previously.\n");
 			}
 		}
 	
@@ -253,7 +253,7 @@ class NavierStokesFV1M
 			m_spPressureJump->set_upwind(m_spConvUpwind);
 			
 			if (m_spStab.invalid())
-				UG_THROW("Stabilization must be specified before Pressure jump.\n");
+				UG_THROW("StabilizationM must be specified before Pressure jump.\n");
 			m_spStab->set_pressure_jump(m_spPressureJump);
 			
 			m_pressure_jump = true;
@@ -262,7 +262,7 @@ class NavierStokesFV1M
         void set_phase_parameters(Interface<dim>* user)
         {
             if(m_spStab.invalid())
-                UG_THROW("Stabilization has not been set or must me set before.");
+                UG_THROW("StabilizationM has not been set or must me set before.");
 			if (!user) UG_THROW("Interface pointer is null!");
             if (!user->valid())
                 UG_THROW("Interface parameters has not been initialized");
@@ -788,12 +788,12 @@ class NavierStokesFV1M
 		DataImport<MathVector<dim>, dim> m_imPressureGradientSCVF;
         Interface<dim>* Inter = NULL;
 
-	///	Stabilization for velocity in continuity equation
-		SmartPtr<INavierStokesFV1Stabilization<dim> > m_spStab;
+	///	StabilizationM for velocity in continuity equation
+		SmartPtr<INavierStokesFV1StabilizationM<dim> > m_spStab;
     
-	///	Stabilization for velocity in convective term of momentum equation
+	///	StabilizationM for velocity in convective term of momentum equation
 	///	Here, the stabilization is used as an upwinding
-		SmartPtr<INavierStokesFV1Stabilization<dim> > m_spConvStab;
+		SmartPtr<INavierStokesFV1StabilizationM<dim> > m_spConvStab;
 
 	///	Upwinding for velocity in convective term of momentum equation
 		SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind;
