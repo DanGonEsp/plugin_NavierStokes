@@ -2987,8 +2987,8 @@ std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, Math
         {
             for(int d1 = 0; d1 < dim; ++d1)
             {
-				StdMomentum[ip][d1] += scvf.shape(sh) * u(d1, sh);
-				StdVel[ip][d1] += scvf.shape(sh) * u(d1, sh)/densitySCV[sh];
+				StdMomentum[ip][d1] += densitySCV[sh] * scvf.shape(sh) * u(d1, sh);
+				StdVel[ip][d1] += scvf.shape(sh) * u(d1, sh);
             }
             
         }
@@ -3001,14 +3001,14 @@ std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, Math
         const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
         size_t to = scvf.to();
         size_t from = scvf.from();
-		number dRho = fabs(densitySCV[to]- densitySCV[from]);
+		number dRho = fabs(densitySCV[to] - densitySCV[from]);
 		number theta = pow( dRho/(1.0+dRho), power);
         
         VecSet(RhoVel, 0.0);
 
         for(int d1 = 0; d1 < dim; ++d1)
         {
-			RhoVel[d1] += ( u(d1, to) +  u(d1, from)) / ( densitySCV[to] + densitySCV[from]) ;
+			RhoVel[d1] += (densitySCV[to] * u(d1, to) + densitySCV[from] * u(d1, from)) / ( densitySCV[to] + densitySCV[from]) ;
         }
 		
 		VecScaleAdd(StdVel_ip[ip], (1.0-theta), StdVel[ip], theta, RhoVel);

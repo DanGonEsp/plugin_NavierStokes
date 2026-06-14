@@ -362,7 +362,7 @@ upwind_vel(const size_t scvf,
 //	return value
 	return vel;
 }
-///    upwind velocity
+///    upwind momentum
 template <int dim>
 MathVector<dim>
 INavierStokesUpwind<dim>::
