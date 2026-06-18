@@ -115,19 +115,22 @@ class GranularDensityLinker
 			const number rho_a = Inter->Density_a();
 			const number interface_value = Inter->interface_value();
 			const number packing_factor = Inter->packing_factor();
-            number c;
+			number c[nip];
             number value;
             for(size_t ip = 0; ip < nip; ++ip)
             {
-                c= packing_factor * fmin(1.0, fmax(vVolumeFraction[ip],0.0)) ;
+				
+				//c[ip] = packing_factor * vVolumeFraction[ip];
+				c[ip]=packing_factor*(vVolumeFraction[ip] + sqrt(vVolumeFraction[ip]*vVolumeFraction[ip] + m_eps))/2.0;
+				
                 switch (m_model) {
                     case 0:
-                        value =Constant_density( c,   rho_a,   rho_s, packing_factor * interface_value);
+                        value =Constant_density( c[ip] ,   rho_a,   rho_s, packing_factor * interface_value);
 
                         break;
 
                     case 1:
-                        value =Linear_density( c,   rho_a,   rho_s);
+                        value =Linear_density( c[ip] ,   rho_a,   rho_s);
 
 
                         break;
@@ -162,21 +165,22 @@ class GranularDensityLinker
 			const number rho_a = Inter->Density_a();
 			const number interface_value = Inter->interface_value();
 			const number packing_factor = Inter->packing_factor();
-            number c;
+			number c[nip];
             number value;
             for(size_t ip = 0; ip < nip; ++ip)
             {
-                c= packing_factor * fmin(1.0, fmax(vVolumeFraction[ip],0.0));
+				//c[ip] = packing_factor * vVolumeFraction[ip];
+				c[ip]=packing_factor*(vVolumeFraction[ip] + sqrt(vVolumeFraction[ip]*vVolumeFraction[ip] + m_eps))/2.0;
                 
 
                 switch (m_model) {
                     case 0:
-                        value =Constant_density( c,   rho_a,   rho_s, packing_factor * interface_value);
+                        value =Constant_density( c[ip],   rho_a,   rho_s, packing_factor * interface_value);
 
                         break;
 
                     case 1:
-                        value =Linear_density( c,   rho_a,   rho_s );
+                        value =Linear_density( c[ip],   rho_a,   rho_s );
                         
                         break;
                     default:
@@ -198,10 +202,13 @@ class GranularDensityLinker
             this->set_zero(vvvDeriv, nip);
             
         //  Derivatives of Volume Fraction
-            /*if(m_spDVolumeFraction.valid() && !m_spDVolumeFraction->zero_derivative() && m_model == 1)
+            if(m_spDVolumeFraction.valid() && !m_spDVolumeFraction->zero_derivative() && m_model == 1)
             {
                 for(size_t ip = 0; ip < nip; ++ip)
                 {
+					//const number vol2 = vVolumeFraction[ip]*vVolumeFraction[ip];
+					const number deriv_value = packing_factor *(rho_s-rho_a);// (c[ip]/sqrt(vol2 + m_eps));
+					
                     for(size_t fct = 0; fct < m_spDVolumeFraction->num_fct(); ++fct)
                     {
                     //    get derivative of volume fraction w.r.t. to all functions
@@ -215,13 +222,13 @@ class GranularDensityLinker
                         {
                             for(size_t ip2 = 0; ip2 < nip; ++ip2)
                             {
-                                vvvDeriv[ip2][commonFct][sh]= packing_factor * vDVolumeFraction[sh]*(rho_s-rho_a);
+                                vvvDeriv[ip2][commonFct][sh]=  deriv_value*vDVolumeFraction[sh];
                             }
 
                         }
                     }
                 }
-            }*/
+            }
 
         }
     protected:
@@ -288,6 +295,7 @@ class GranularDensityLinker
 			}
         protected:
             int m_model;
+			float m_eps = 1e-09;
     
 };
 

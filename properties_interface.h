@@ -226,7 +226,7 @@ class Interface
 		{
 			
 			number mu_mix, Dss;
-			Einstein_viscosity(mu_mix , Dss, 0.0 ,false);
+			mu_mix = 1.776e-05;//Einstein_viscosity(mu_mix , Dss, 0.0 ,false);
 			size_t mod = drag_model;
 			size_t i=0;
 			number e=10.0;

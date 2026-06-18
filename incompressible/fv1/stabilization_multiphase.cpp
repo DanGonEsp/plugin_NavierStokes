@@ -1414,7 +1414,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 	}
 	
 
-	bool boolSource = (SourceSCV.data_given()) ? true : false;
+	//bool boolSource = (SourceSCV.data_given()) ? true : false;
 	
 	//    cache values
 	number vViscoPerDiffLenSq[numIp];
@@ -1433,7 +1433,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 		const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
 		
 		vViscoPerDiffLenSq[ip] = density[ip] * kinVisco[ip] * diff_length_sq_inv(ip);
-		if(boolSource) SOURCE[ip] = Source[ip];
+		//if(boolSource) SOURCE[ip] = Source[ip];
 		
 		VecSet(vStdVel_stab[ip],0.0);
 		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
@@ -1475,6 +1475,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 	MathVector<dim> vConsGravitySCVF[numIp];
 	if(Inter->boolConsistentGravity())
 	{
+		UG_THROW("Not implemented .");
 		Inter-> template ConsistentGravitySCVF<TElem>(vConsGravitySCVF, *geo, geo->corners(), numIp, densitySCV.values());
 	}
 	
@@ -1492,9 +1493,9 @@ update(const FV1Geometry<TElem, dim>* geo,
 		const typename FV1Geometry<TElem, dim>::SCVF& scvf = geo->scvf(ip);
 		const size_t from=scvf.from();
 		const size_t to=scvf.to();
-		MathVector<dim> Direction = 0.0;
-		VecSubtract(Direction,geo->scv_global_ips()[to],geo->scv_global_ips()[from]);
-		VecScale(Direction,Direction,1.0/VecLengthSq(Direction));
+		//MathVector<dim> Direction = 0.0;
+		//VecSubtract(Direction,geo->scv_global_ips()[to],geo->scv_global_ips()[from]);
+		//VecScale(Direction,Direction,1.0/VecLengthSq(Direction));
 		
 		
 		if (true)
@@ -1514,6 +1515,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 			}
 			else
 			{
+				UG_THROW("Not implemented .");
 				diag = diff_factor(ip) * diff_length_sq_inv(ip) /density[ip];
 			}
 			
@@ -1541,17 +1543,19 @@ update(const FV1Geometry<TElem, dim>* geo,
 				//    Source
 				number rhs = 0.0;
 				number rhs_mu = 0.0;
-				if(Inter->boolConsistentGravity())
+				/*if(Inter->boolConsistentGravity())
 				{
+					UG_THROW("Not implemented .");
 					rhs =  vConsGravitySCVF[ip][d];
 				}
 				else
 				{
 					if(boolSource)
 					{
+						UG_THROW("Not implemented .");
 						rhs =  SOURCE[ip][d];
 					}
-				}
+				}*/
 				
 				/*if(PressGrad.data_given())
 				{
@@ -1592,6 +1596,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 					}
 					else
 					{
+						UG_THROW("Not implemented .");
 						number SumVelRHS = 0.0;
 						number SumVel2;
 						for(int d1 = 0; d1 < dim; ++d1)
@@ -1674,7 +1679,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 							rhs += sumP * ps[k];
 						
 					}
-					else
+					/*else
 					{
 						if((k == to) || (k == from))
 						{
@@ -1690,7 +1695,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 						}
 
 						
-					}
+					}*/
 					
 					
 					//    set stab shape
@@ -1843,7 +1848,6 @@ update(const FV1Geometry<TElem, dim>* geo,
 	   const bool multiphase)
 {
 	
-	UG_THROW("Not implemented for MOMENTUM formulation, must be corrected.");
 	if( non_zero_shape_ip())
 	{
 		UG_THROW("Not implemented for ip velocities depending on other ip.");

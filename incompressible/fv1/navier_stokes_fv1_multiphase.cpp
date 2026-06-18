@@ -93,6 +93,7 @@ void NavierStokesFV1M<TDomain>::init()
     m_imDensitySCVF.set_comp_lin_defect(false);
     m_imDensitySCVF_old.set_comp_lin_defect(false);
     m_imDensitySCV.set_comp_lin_defect(false);
+	m_imDensitySCV_A.set_comp_lin_defect(false);
 	m_imDensitySCV_old.set_comp_lin_defect(false);
     
     m_imSourceSCVF.set_comp_lin_defect(false);
@@ -110,7 +111,7 @@ void NavierStokesFV1M<TDomain>::init()
     m_imRelativeVelocitySCV.set_comp_lin_defect(false);
 	m_imRelativeVelocitySCVF.set_comp_lin_defect(false);
 	m_imSlipVelocitySCVF.set_comp_lin_defect(false);
-    //m_imDiffusion.set_comp_lin_defect(false);
+    m_imDiffusion.set_comp_lin_defect(false);
     
     //	register imports
     this->register_import(m_imSourceSCV);
@@ -121,6 +122,7 @@ void NavierStokesFV1M<TDomain>::init()
     this->register_import(m_imDensitySCVF);
     this->register_import(m_imDensitySCVF_old);
     this->register_import(m_imDensitySCV);
+	this->register_import(m_imDensitySCV_A);
 	this->register_import(m_imDensitySCV_old);
     this->register_import(m_imSurfaceNormalSCVF);
 	this->register_import(m_imSurfaceNormalSCV);
@@ -178,9 +180,10 @@ template<typename TDomain>
 void NavierStokesFV1M<TDomain>::
 set_density(SmartPtr<CplUserData<number, dim> > data)
 {
+	m_imDensitySCV.set_data(data);
+	m_imDensitySCV_A.set_data(data);
     m_imDensitySCVF.set_data(data);
     m_imDensitySCVF_old.set_data(data);
-    m_imDensitySCV.set_data(data);
 	m_imDensitySCV_old.set_data(data);
 }
 
@@ -302,6 +305,10 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
     if(!m_imDensitySCV.data_given())
         UG_THROW("NavierStokes::prep_elem_loop:"
                  " Density has not been set, but is required.");
+	//	check, that Density has been set
+	if(!m_imDensitySCV_A.data_given())
+		UG_THROW("NavierStokes::prep_elem_loop:"
+				 " Density has not been set, but is required.");
 	
 	if(m_imRelativeVelocitySCV.data_given() || m_imRelativeVelocitySCVF.data_given())
 	{
@@ -355,6 +362,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 		m_imKinViscosity_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
         m_imDensitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDensitySCV.template set_local_ips<refDim>(vSCVip,numSCVip);
+		m_imDensitySCV_A.template set_local_ips<refDim>(vSCVip,numSCVip);
         m_imSourceSCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         m_imSourceSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
 		m_imSurfaceNormalSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
@@ -407,6 +415,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
 		m_imKinViscosity_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
         m_imDensitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
         m_imDensitySCV.template set_local_ips<refDim>(vSCVip,numSCVip,true);
+		m_imDensitySCV_A.template set_local_ips<refDim>(vSCVip,numSCVip,true);
         m_imSourceSCV.template set_local_ips<refDim>(vSCVip,numSCVip);
         m_imSourceSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
 		m_imSurfaceNormalSCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip,true);
@@ -434,6 +443,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
 	m_imKinViscositySCV.set_global_ips(vSCVip, numSCVip);
     m_imDensitySCVF.set_global_ips(vSCVFip, numSCVFip);
     m_imDensitySCV.set_global_ips(vSCVip, numSCVip);
+	m_imDensitySCV_A.set_global_ips(vSCVip, numSCVip);
     m_imSourceSCV.set_global_ips(vSCVip, numSCVip);
     m_imSourceSCVF.set_global_ips(vSCVFip, numSCVFip);
 	m_imSurfaceNormalSCVF.set_global_ips(vSCVFip, numSCVFip);
@@ -535,13 +545,15 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	
 	if ( m_pressure_jump)
 	{
+		UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 		Inter->cut_element(cut_elem,boolInside, u_aux,  _C_);
 		
 		if(cut_elem)
 		{
-			Inter->template PropertiesJump<TElem>(u_aux, _C_, geo, JumpShape, m_imDensitySCV, m_imKinViscositySCV, m_imSourceSCV, numSh, cut_elem, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_1, Source_g, GFM);
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
+			Inter->template PropertiesJump<TElem>(u_aux, _C_, geo, JumpShape, m_imDensitySCV_A, m_imKinViscositySCV, m_imSourceSCV, numSh, cut_elem, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_1, Source_g, GFM);
 			
-			m_spPressureJump->update( &geo, *pSol, StdVel_ip, m_bStokes, m_imSurfaceNormalSCV, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, JumpShape, pOldSol, dt, borrar, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, Inter->interface_value());
+			m_spPressureJump->update( &geo, *pSol, StdVel_ip, m_bStokes, m_imSurfaceNormalSCV, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV_A, JumpShape, pOldSol, dt, borrar, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, Inter->interface_value());
 			//Inter->template InterfaceSCVFShapes<TElem>(SCVFinterShape.data(), geo, u, JumpShape, numSh, _C_);
 			//UG_LOG("mu_l  =  "<< mu_l <<"  mu_g  =  "<< mu_g <<" rho_l  =  "<< rho_l <<" rho_g  =  "<< rho_g << "\n");
 			
@@ -549,23 +561,27 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	}
     
 	
-	std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCVF, m_imDensitySCV, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
+	std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCVF, m_imDensitySCV_A, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
 	
     if(Inter->ParticleGradientForce())
 	{
+		UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 		vel_grad(  u,  geo,  Gamma);
 		Inter->vPs( Ps, DPs, Gamma, u, _C_, numSh, true);
 	}
     
 
-	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
+	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV_A, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
     
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
         //	compute stabilized velocities and shapes for convection upwind
         if(m_spConvStab.valid())
-            if(m_spConvStab != m_spStab)
-                m_spConvStab->update(&geo, *pSol, StdVel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
+		{
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
+			if(m_spConvStab != m_spStab)
+				m_spConvStab->update(&geo, *pSol, StdVel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV_A, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
+		}
     }
     //    get a const (!!) reference to the stabilization
     const INavierStokesFV1StabilizationM<dim>& stab = *m_spStab;
@@ -595,11 +611,16 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     {
 	//	compute upwind shapes
 		if(m_spConvUpwind.valid())
-			if(m_spStab->upwind() != m_spConvUpwind)
-            {
-                m_spConvUpwind->update(&geo, StdVel_ip);
-                m_spConvUpwind->update_downwind(&geo, StdVel_ip);
-            }
+		{
+			
+			m_spConvUpwind->update(&geo, StdVel_ip);
+			m_spConvUpwind->update_downwind(&geo, StdVel_ip);
+		}
+		else
+		{
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
+			
+		}
 	}
 	
 
@@ -727,6 +748,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 			}
 			else
 			{
+				UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 				const number area = VecLength(scvf.normal());
 				
 				
@@ -741,6 +763,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				}
 			}
             if (false){
+				UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
                 for (int d1=0;d1<dim;d1++)
                     for (int d2=0;d2<dim;d2++){
                         number stab_flux = (2.0/3.0) * m_imDensitySCVF[ip] * m_imKinViscosity[ip] * scvf.global_grad(sh)[d2] * scvf.normal()[d1];
@@ -764,6 +787,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				}
 				if(Inter->ParticleGradientForce())
 				{
+					UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 					for(int d1 = 0; d1 < dim; ++d1)
 					{
 						const number flux_sh_c = DPs[sh] * scvf.shape(sh) * scvf.normal()[d1];
@@ -774,6 +798,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 			}
 			else
 			{
+				UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 				if(sh == scvf.from() || sh == scvf.to() )
 				{
 					//	Add flux derivative for local matrix
@@ -815,7 +840,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				{
 					//	compute upwind velocity
 					//	switch PAC
-					if(m_spConvUpwind.valid())  UpwindMomentum = upwind.upwind_momentum(ip, u, m_imDensitySCV.values());
+					if(m_spConvUpwind.valid())  UpwindMomentum = upwind.upwind_momentum(ip, u, m_imDensitySCV_A.values());
 					else if (m_spConvStab.valid()) VecScale(UpwindMomentum, convStab.stab_vel(ip),m_imDensitySCVF[ip]);
 					else UG_THROW("Cannot find upwind for convective term.");
 					
@@ -832,6 +857,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 					//	Stabilization used as upwind
 					if(m_spConvStab.valid())
 					 {
+						 UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 							 //	velocity derivatives
 						 if(stab.vel_comp_connected())
 							 for(int d1 = 0; d1 < dim; ++d1)
@@ -862,8 +888,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 					 //	Upwind used as upwind
 					 if(m_spConvUpwind.valid())
 					 {
-						 number convFlux_vel = m_imDensitySCV[sh] * upwind.upwind_shape_sh(ip, sh);
-						 //number convFlux_vel =  ConvRatio[ip]*m_imDensitySCV[sh] * upwind.upwind_shape_sh(ip, sh);
+						 number convFlux_vel = m_imDensitySCV_A[sh] * upwind.upwind_shape_sh(ip, sh);
+						 //number convFlux_vel =  ConvRatio[ip]*m_imDensitySCV_A[sh] * upwind.upwind_shape_sh(ip, sh);
 						 //convFlux_vel += Rho_up[ip]*(1.0 - ConvRatio[ip]) * (Rho_up[ip] * upwind.downwind_conv_length(ip) * upwind.upwind_shape_sh(ip, sh) + Rho_do[ip] * upwind.upwind_conv_length(ip) * upwind.downwind_shape_sh(ip, sh) ) / ( Rho_up[ip] * upwind.downwind_conv_length(ip) + Rho_do[ip] * upwind.upwind_conv_length(ip));
 						 
 						 
@@ -897,7 +923,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 					//	derivative due to peclet blending
 					if(m_bPecletBlend)
 					{
-						const number convFluxPe = prod * (1.0-w) * m_imDensitySCV[sh] * scvf.shape(sh);
+						const number convFluxPe = prod * (1.0-w) * m_imDensitySCV_A[sh] * scvf.shape(sh);
 						for(int d1 = 0; d1 < dim; ++d1)
 						{
 							J(d1, scvf.from(), d1, sh) += convFluxPe;
@@ -947,7 +973,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				//	Add remaining term for exact jacobian
 				if(false)//m_boolFullNewton)
 				{
-
+					UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 					//	Add derivative of stabilized flux w.r.t velocity comp to local matrix
 					if(stab.vel_comp_connected())
 					{
@@ -1019,8 +1045,9 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				} // end exact jacobian part
 								
 				//	Add remaining term for exact jacobian
-				if(m_boolFullNewton)
+				if(false)//m_boolFullNewton)
 				{
+					UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented  ");
 					if(true)
 					{
 						// Jacobian for std Vel as convecting velocity
@@ -1133,6 +1160,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             
             if(Inter->ParticleGradientForce())
             {
+				UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
                 number contFlux_c2 = 0.0;
                 for(int d1 = 0; d1 < dim; ++d1)
                     contFlux_c2 += DPs[sh] * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1]; // m_imDensitySCVF[ip];
@@ -1151,7 +1179,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                 
                 //    compute flux at ip
                 //const number contFluxRelVel = upwind_rel.upwind_shape_sh(ip, sh) * (1.0 - 2.0 * C_up_rel) * (rhoa-rhos) * prod_rel / m_imDensitySCVF[ip];
-                const number contFluxRelVel = scvf.shape(sh) * (- 1.0 * C_up_vol) * (rhoa-rhos) * prod_rel / m_imDensitySCV[sh];
+                const number contFluxRelVel = scvf.shape(sh) * (- 1.0 * C_up_vol) * (rhoa-rhos) * prod_rel / m_imDensitySCV_A[sh];
                  
                  //    Add flux term to local matrix
                  J(_P_, scvf.from(), _C_, sh) += contFluxRelVel;
@@ -1486,6 +1514,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 		
 		if (m_div_correction)
 		{
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 			const number conv_flux = VecProd(TransportingVel_ip[ip], scvf.normal());
 			
 			J(_C_, scvf.from(), _C_, scvf.from()) +=  -conv_flux;
@@ -1553,6 +1582,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	
 	if ( false && m_pressure_jump && cut_elem)
 	{
+		UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 		//     loop Sub Control Volumes (SCV)
 		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 		{
@@ -1799,6 +1829,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	number ConvRatio[numSCVF];
 	number Ps[numSh];
 	number DPs[numSh];
+	number MassChange[numSh];
+	
 	int ShockCase[numSCVF];
 	bool cut_elem = false;
 	bool boolInside = false;
@@ -1821,18 +1853,34 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	//for (size_t i = 0; i < numSCVF; ++i)
 		//SCVFinterShape[i] = buffer.data() + i * numSh;
 	
+	// 	loop Sub Control Volumes (SCV)
+	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+	{
+	// 	get current SCV
+		const typename TFVGeom::SCV& scv = geo.scv(ip);
+
+	// 	get associated node
+		const int sh = scv.node_id();
+		
+		MassChange[sh] = 0.0;
+
+		
+	}
+	
 	
 	const INavierStokesPressureJump<dim>& press_jump = *m_spPressureJump;
 	
 	if ( m_pressure_jump)
 	{
+		UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 		Inter->cut_element(cut_elem,boolInside, u_aux,  _C_);
 		
 		if(cut_elem)
 		{
-			Inter->template PropertiesJump<TElem>(u_aux, _C_, geo, JumpShape, m_imDensitySCV, m_imKinViscositySCV, m_imSourceSCV, numSh, cut_elem, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_1, Source_g, GFM);
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
+			Inter->template PropertiesJump<TElem>(u_aux, _C_, geo, JumpShape, m_imDensitySCV_A, m_imKinViscositySCV, m_imSourceSCV, numSh, cut_elem, Phase2,  mu_l,  mu_g,  rho_l,  rho_g, Source_1, Source_g, GFM);
 			
-			m_spPressureJump->update( &geo, *pSol, StdVel_ip, m_bStokes, m_imSurfaceNormalSCV, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV, JumpShape, pOldSol, dt, borrar, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, Inter->interface_value());
+			m_spPressureJump->update( &geo, *pSol, StdVel_ip, m_bStokes, m_imSurfaceNormalSCV, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCV_A, JumpShape, pOldSol, dt, borrar, mu_l, rho_l, Source_1, mu_g, rho_g, Source_g, Inter->interface_value());
 			UG_THROW("Pressure Jump NOt implemented for MOMENTUM formulation in NV");
 			//Inter->template InterfaceSCVFShapes<TElem>(SCVFinterShape.data(), geo, u, JumpShape, numSh, _C_);
 			//UG_LOG("mu_l  =  "<< mu_l <<"  mu_g  =  "<< mu_g <<" rho_l  =  "<< rho_l <<" rho_g  =  "<< rho_g << "\n");
@@ -1840,10 +1888,11 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		}
 	}
 
-	std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCVF, m_imDensitySCV, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
+	std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCVF, m_imDensitySCV_A, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
 	
     if(Inter->ParticleGradientForce())
 	{
+		UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 		vel_grad(  u,  geo,  Gamma);
 		Inter->vPs( Ps, DPs, Gamma, u, _C_, numSh, false);
 		UG_THROW("Gamma is not implemented for Ps gradient, update import parameter");
@@ -1853,13 +1902,16 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     //	compute stabilized velocities and shapes for continuity equation
     // \todo: (optional) Here we can skip the computation of shapes, implement?
 
-	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
+	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV_A, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
         //	compute stabilized velocities and shapes for convection upwind
         if(m_spConvStab.valid())
-            if(m_spConvStab != m_spStab)
-                m_spConvStab->update(&geo, *pSol, StdVel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
+		{
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
+			if(m_spConvStab != m_spStab)
+				m_spConvStab->update(&geo, *pSol, StdVel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV_A, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
+		}
 		
     }
     
@@ -1893,11 +1945,15 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     {
         //	compute upwind shapes
         if(m_spConvUpwind.valid())
-            if(m_spStab->upwind() != m_spConvUpwind)
-            {
-                m_spConvUpwind->update(&geo, StdVel_ip);
-                m_spConvUpwind->update_downwind(&geo, StdVel_ip);
-            }
+		{
+			m_spConvUpwind->update(&geo, StdVel_ip);
+			m_spConvUpwind->update_downwind(&geo, StdVel_ip);
+		}
+		else
+		{
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
+		}
+
     }
 	if(m_upwind_vol_method == 0)
 	{
@@ -1977,6 +2033,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		}
 		else
 		{
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 			VecScale(diffFlux, press_jump.shear_stress(ip), -1.0*VecLength(scvf.normal()) );
 
 		}
@@ -1990,6 +2047,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		}
         
         if (false){
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
             for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
                 for (int d1=0;d1<dim;d1++)
                     for (int d2=0;d2<dim;d2++){
@@ -2014,8 +2072,9 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			if(true)
 			{
 				//	switch PAC
-				if(m_spConvUpwind.valid())  UpwindMomentum = upwind.upwind_momentum(ip, u, m_imDensitySCV.values());
-				else if (m_spConvStab.valid())  VecScale(UpwindMomentum, convStab.stab_vel(ip),m_imDensitySCVF[ip]);
+				if(m_spConvUpwind.valid())
+					UpwindMomentum = upwind.upwind_momentum(ip, u, m_imDensitySCV_A.values());
+				//else if (m_spConvStab.valid())  VecScale(UpwindMomentum, convStab.stab_vel(ip),m_imDensitySCVF[ip]);
 				else UG_THROW("Cannot find upwind for convective term.");
 				
 			//	Peclet Blend
@@ -2024,6 +2083,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			}
 			else
 			{
+				UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 				VecScale(UpwindMomentum, stab.conv_vel(ip),m_imDensitySCVF[ip]);
 			}
 	
@@ -2086,7 +2146,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		}
 		else
 		{
-			
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 			
 			pressure = 0.5*(u(_P_, scvf.from()) + u(_P_, scvf.to()));
 			
@@ -2190,6 +2250,9 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         //     Add to local defect
             d(_C_, scvf.from()) += diff_flux;
             d(_C_, scvf.to()  ) -= diff_flux;
+			
+			MassChange[scvf.from()] += diff_flux;
+			MassChange[scvf.to()  ] -= diff_flux;
         }
         
         /////////////////////////////////////////////////////
@@ -2301,11 +2364,18 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         d(_C_, scvf.from()) += conv_flux_vol;
         d(_C_, scvf.to()  ) -= conv_flux_vol;
 		
+		MassChange[scvf.from()] += conv_flux_vol;
+		MassChange[scvf.to()  ] -= conv_flux_vol;
+		
 		if (m_div_correction)
 		{
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 			number conv_flux_correction = VecProd(TransportingVel_ip[ip], scvf.normal());
 			d(_C_, scvf.from()) += -u(_C_, scvf.from()) * conv_flux;
 			d(_C_, scvf.to()  ) -= -u(_C_, scvf.to()  ) * conv_flux;
+			
+			MassChange[scvf.from()] += -u(_C_, scvf.from()) * conv_flux;
+			MassChange[scvf.to()  ] -= -u(_C_, scvf.to()  ) * conv_flux;
 			
 			/*if( m_imRelativeVelocitySCVF.data_given())
 			{
@@ -2327,8 +2397,38 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		}
             
 	}
+	
+	if(m_limex_correction && this->is_time_dependent())
+	{
+		const number rho_s = Inter->Density_s();
+		const number rho_a = Inter->Density_a();
+		const number packing_factor = Inter->packing_factor();
+		
+		// 	loop Sub Control Volumes (SCV)
+		for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+		{
+		// 	get current SCV
+			const typename TFVGeom::SCV& scv = geo.scv(ip);
+
+		// 	get associated node
+			const int sh = scv.node_id();
+			
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				d(d1, sh) += -packing_factor * (rho_s-rho_a) * MassChange[sh] * u(d1,sh);
+				
+			}
+			
+
+			
+		}
+		
+		
+	}
+		
 	if ( false &&  m_pressure_jump && cut_elem)
 	{
+		UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 		//     loop Sub Control Volumes (SCV)
 		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 		{
@@ -2476,32 +2576,34 @@ add_jac_M_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
         const typename TFVGeom::SCV& scv = geo.scv(ip);
         Vol_m += scv.volume();
     }*/
-
-// 	loop Sub Control Volumes (SCV)
-	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+	if(m_mass_term)
 	{
-	// 	get SCV
-		const typename TFVGeom::SCV& scv = geo.scv(ip);
-
-	// 	get associated node
-		const int sh = scv.node_id();
-
-	// 	loop velocity components
-		for(int d1 = 0; d1 < dim; ++d1)
+		// 	loop Sub Control Volumes (SCV)
+		for(size_t ip = 0; ip < geo.num_scv(); ++ip)
 		{
-		// 	Add to local matrix
-			J(d1, sh, d1, sh) += scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
-			//J(d1, sh, d1, sh) += scv.volume() * (fac_m * m_imDensitySCV[ip]);//printf("Change the lin_def");
-            //J(d1, sh, d1, sh) += scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho);
-            /*for(size_t ip2 = 0; ip2 < geo.num_scv(); ++ip2)
-            {
-                const typename TFVGeom::SCV& scv2 = geo.scv(ip2);
-                const int sh2 = scv2.node_id();
-                J(d1, sh, d1, sh2) += (1.0-fac_m) * scv.volume() * (m_imDensitySCV[ip] * scv2.volume()/Vol_m);
-                
-            }*/
+			// 	get SCV
+			const typename TFVGeom::SCV& scv = geo.scv(ip);
+			
+			// 	get associated node
+			const int sh = scv.node_id();
+			
+			// 	loop velocity components
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				// 	Add to local matrix
+				J(d1, sh, d1, sh) += scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
+				//J(d1, sh, d1, sh) += scv.volume() * (fac_m * m_imDensitySCV[ip]);//printf("Change the lin_def");
+				//J(d1, sh, d1, sh) += scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho);
+				/*for(size_t ip2 = 0; ip2 < geo.num_scv(); ++ip2)
+				 {
+				 const typename TFVGeom::SCV& scv2 = geo.scv(ip2);
+				 const int sh2 = scv2.node_id();
+				 J(d1, sh, d1, sh2) += (1.0-fac_m) * scv.volume() * (m_imDensitySCV[ip] * scv2.volume()/Vol_m);
+				 
+				 }*/
+			}
 		}
-    }
+	}
     /*for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
     {
         //     get current SCV
@@ -2633,26 +2735,28 @@ add_def_M_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
         
     }
     VRho *= 1.0/Vol_m;*/
-
-// 	loop Sub Control Volumes (SCV)
-	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+	if(m_mass_term)
 	{
-	// 	get current SCV
-		const typename TFVGeom::SCV& scv = geo.scv(ip);
-
-	// 	get associated node
-		const int sh = scv.node_id();
-
-	// 	loop velocity components
-		for(int d1 = 0; d1 < dim; ++d1)
+		// 	loop Sub Control Volumes (SCV)
+		for(size_t ip = 0; ip < geo.num_scv(); ++ip)
 		{
-		// 	Add to local matrix
-			d(d1, sh) += u(d1, sh) * scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
-			//d(d1, sh) += scv.volume() * (fac_m * u(d1, sh) * m_imDensitySCV[ip] + (1-fac_m) * VRho[d1]); //printf("Change the lin_def");
-            //d(d1, sh) += u(d1, sh) * scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho); //printf("Change the lin_def");
+			// 	get current SCV
+			const typename TFVGeom::SCV& scv = geo.scv(ip);
+			
+			// 	get associated node
+			const int sh = scv.node_id();
+			
+			// 	loop velocity components
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				// 	Add to local matrix
+				d(d1, sh) += u(d1, sh) * scv.volume() * m_imDensitySCV[ip];//(0.5 * m_imDensitySCV[ip] + 0.5 * Rho);
+				//d(d1, sh) += scv.volume() * (fac_m * u(d1, sh) * m_imDensitySCV[ip] + (1-fac_m) * VRho[d1]); //printf("Change the lin_def");
+				//d(d1, sh) += u(d1, sh) * scv.volume() * (0.0 * m_imDensitySCV[ip] + 1.0 * Rho); //printf("Change the lin_def");
+			}
+			
 		}
-        
-    }
+	}
     /*for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
     {
         //     get current SCV
@@ -2957,6 +3061,7 @@ NavierStokesFV1M<TDomain>::
 peclet_blend(MathVector<dim>& UpwindMomentum, const MathVector<dim>& StdVelMomentum, const TFVGeom& geo, size_t ip,
              const MathVector<dim>& StdVel, number kinVisco)
 {
+	UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 	const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
 //	compute peclet number
 	number Pe = VecProd(StdVel, scvf.normal())/VecLength(scvf.normal())
@@ -3075,6 +3180,7 @@ void
 NavierStokesFV1M<TDomain>::
 std_rel_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* Vel_ip,  MathVector<dim>* StdCharacteristicVel,  MathVector<dim>* Flux, const DataImport<MathVector<dim>, dim>& RelVelSCV, const DataImport<MathVector<dim>, dim>& SlipVelSCV, int* ShockCase)
 {
+	UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 	if(m_upwind_vol_method == 0)
 	{
 		UG_THROW("Linear upwind not implemented for Volume fraction transport");
@@ -3400,14 +3506,9 @@ lin_def_densitySCV(const LocalVector& u,
         for(size_t c = 0; c < vvvLinDef[ip].size(); ++c)
             for(size_t sh = 0; sh < vvvLinDef[ip][c].size(); ++sh)
                 vvvLinDef[ip][c][sh] = 0.0;
-    number Vol = 0.0;
-    if(this->is_time_dependent())
-        for(size_t ip = 0; ip < geo.num_scv(); ++ip)
-        {
-            const typename TFVGeom::SCV& scv = geo.scv(ip);
-            Vol += scv.volume();
-            
-        }
+	
+	static const size_t numSCVF = TFVGeom::numSCVF;
+
     for(size_t ip = 0; ip < geo.num_scv(); ++ip)
     {
         
@@ -3423,84 +3524,110 @@ lin_def_densitySCV(const LocalVector& u,
             for(size_t c = 0; c < dim; ++c)
             {
                 vvvLinDef[ip][c][co] += u(c, co) * scv.volume();
-                /*for(size_t ip = 0; ip < geo.num_scv(); ++ip)
-                {
-                    const int co2 = scv.node_id();
-                    vvvLinDef[ip][c][co2] += u(c, co) *  0.5 * scv.volume()/Vol;
-                }*/
             }
         }
         
-        /*if(m_imSourceSCV.data_given())
-        {
-            for(size_t c = 0; c < dim; ++c)
-            {
-                vvvLinDef[ip][c][co] += m_imSourceSCV[ip][c] * scv.volume();
-            }
-        }*/
     }
     
-    
-    //     loop Sub Control Volume Faces (SCVF)
-    /*if (! m_bStokes) // no convective terms in the Stokes equation
-    {
-        
-    //    interpolate velocity at ip with standard lagrange interpolation
-        
-        MathVector<dim> StdVel_ip[numSCVF];
-		if(!m_bStokes)
-			std_vel(  u,  geo,  StdVel_ip, Vel, m_imDensitySCV);
-         
+}
+
+//    computes the linearized defect w.r.t to the density SCV
+template<typename TDomain>
+template <typename TElem, typename TFVGeom>
+void NavierStokesFV1M<TDomain>::
+lin_def_densitySCV_A(const LocalVector& u,
+					 std::vector<std::vector<number> > vvvLinDef[],
+					 const size_t nip)
+{
+	//    request geometry
+	const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+	//    check for source term to pass to the stabilization
+	
+	//    reset the values for the linearized defect
+	for(size_t ip = 0; ip < nip; ++ip)
+		for(size_t c = 0; c < vvvLinDef[ip].size(); ++c)
+			for(size_t sh = 0; sh < vvvLinDef[ip][c].size(); ++sh)
+				vvvLinDef[ip][c][sh] = 0.0;
+	
+	static const size_t numSCVF = TFVGeom::numSCVF;
 
 
-        //    compute upwind shapes
-        if(m_spConvUpwind.valid())
-            if(m_spStab->upwind() != m_spConvUpwind)
-                m_spConvUpwind->update(&geo, StdVel_ip);
+	//     loop Sub Control Volume Faces (SCVF)
+	if (! m_bStokes) // no convective terms in the Stokes equation
+	{
+		
+	//    interpolate velocity at ip with standard lagrange interpolation
+		
+		MathVector<dim> StdVel[numSCVF];
+		MathVector<dim> StdVel_ip[numSCVF];
+		MathVector<dim> StdMomentum[numSCVF];
+		MathVector<dim> Vel[numSCVF];
+		number Rho_up[numSCVF];
+		number Rho_do[numSCVF];
+		number ConvRatio[numSCVF];
 
-        
-        //const INavierStokesFV1StabilizationM<dim>& convStab = *m_spConvStab;
-        const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
-        for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
-        {
-            //     get current SCVF
-            const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-            for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-            {
-                
-                ////////////////////////////////////////////////////
-                ////////////////////////////////////////////////////
-                // Momentum Equation (conservation of momentum)
-                ////////////////////////////////////////////////////
-                ////////////////////////////////////////////////////
-                
-                ////////////////////////////////////////////////////
-                // Convective Term (Momentum Equation)
-                ////////////////////////////////////////////////////
-                
-                number convFlux_vel;
-                //    Add contributions to local velocity components
-                for(int d1 = 0; d1 < dim; ++d1)
-                {
-                    //    find the upwind velocity at ip
-                    convFlux_vel = u(d1,sh) * upwind.upwind_shape_sh(ip, sh);
-                    //    switch PAC
-                    
-                    
-                    
-                    //    compute product of standard velocity and normal
-                    const number prod = VecProd(Vel[ip], scvf.normal()) ;
-                
+		std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCVF, m_imDensitySCV_A, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
+		
+		 
 
-                    
-                    vvvLinDef[ip][d1][scvf.from()] += convFlux_vel * prod;
-                    vvvLinDef[ip][d1][scvf.to()  ] -= convFlux_vel * prod;
-                }
-            }
-            
-        }
-    }*/
-    
+
+		//    compute upwind shapes
+		//	compute upwind shapes
+		if(m_spConvUpwind.valid())
+		{
+			
+			m_spConvUpwind->update(&geo, StdVel_ip);
+			m_spConvUpwind->update_downwind(&geo, StdVel_ip);
+		}
+		else
+		{
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
+			
+		}
+
+		
+		//const INavierStokesFV1StabilizationM<dim>& convStab = *m_spConvStab;
+		const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
+		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+		{
+			//     get current SCVF
+			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+			{
+				
+				////////////////////////////////////////////////////
+				////////////////////////////////////////////////////
+				// Momentum Equation (conservation of momentum)
+				////////////////////////////////////////////////////
+				////////////////////////////////////////////////////
+				
+				////////////////////////////////////////////////////
+				// Convective Term (Momentum Equation)
+				////////////////////////////////////////////////////
+				
+				number convFlux_vel;
+				//    Add contributions to local velocity components
+				for(int d1 = 0; d1 < dim; ++d1)
+				{
+					//    find the upwind velocity at ip
+					convFlux_vel = u(d1,sh) * upwind.upwind_shape_sh(ip, sh);
+					//    switch PAC
+					
+					
+					
+					//    compute product of standard velocity and normal
+					const number prod = VecProd(StdVel_ip[ip], scvf.normal()) ;
+				
+
+					
+					vvvLinDef[ip][d1][scvf.from()] += convFlux_vel * prod;
+					vvvLinDef[ip][d1][scvf.to()  ] -= convFlux_vel * prod;
+				}
+			}
+			
+		}
+	}
+	
 }
 //    computes the linearized defect w.r.t to the density SCVF
 template<typename TDomain>
@@ -3659,8 +3786,11 @@ lin_def_viscosity(const LocalVector& u,
 	{
 		//	compute stabilized velocities and shapes for convection upwind
 		if(m_spConvStab.valid())
+		{
+			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 			if(m_spConvStab != m_spStab)
 				m_spConvStab->update(&geo, *pSol, StdVel_ip, false, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, NULL, NULL, false);
+		}
 		
 	}
 	
@@ -5806,6 +5936,7 @@ register_func()
     //    set computation of linearized defect w.r.t
     
     m_imDensitySCV.     set_fct(id, this, &T::template lin_def_densitySCV<TElem, TFVGeom>);
+	m_imDensitySCV_A.   set_fct(id, this, &T::template lin_def_densitySCV_A<TElem, TFVGeom>);
     m_imDensitySCVF.    set_fct(id, this, &T::template lin_def_densitySCVF<TElem, TFVGeom>);
     m_imKinViscosity.   set_fct(id, this, &T::template lin_def_viscosity<TElem, TFVGeom>);
     m_imSourceSCV.      set_fct(id, this, &T::template lin_def_sourceSCV<TElem, TFVGeom>);

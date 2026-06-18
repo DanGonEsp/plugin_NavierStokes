@@ -1414,10 +1414,10 @@ public:
 						m_vol[vVrt[i]]+=scvVol;
 					}*/
 					VecScale(Normal,GradC,-1.0/GRAD_c_mag);
-					m_vol[vVrt[i]]+=scvVol*alpha;
+					m_vol[vVrt[i]]+=scvVol;
 					
 					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol * alpha;
+						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol;
 					
 					
 				}
@@ -1438,16 +1438,10 @@ public:
 			{
 				Vertex* vrt = *iter;
 				if (pbm && pbm->is_slave(vrt)) continue;
-				if(m_vol[vrt] > 1e-10)
-				{
-					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vrt][d1] /= m_vol[vrt];
-				}
-				else
-				{
-					VecSet(m_normal[vrt],0.0);
-					m_normal[vrt][dim-1] = 1.0;
-				}
+
+				for(int d1 = 0; d1 <dim; ++d1)
+					m_normal[vrt][d1] /= m_vol[vrt];
+
 				/*MathVector<dim> tang; VecSet(tang,0.0);
 				if(dim == 2)
 				{
@@ -1881,10 +1875,10 @@ public:
 					}*/
 					
 					VecScale(Normal,GradC,-1.0/GRAD_c_mag);
-					m_vol[vVrt[i]]+=scvVol*alpha;
+					m_vol[vVrt[i]]+=scvVol;
 					
 					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol*alpha;
+						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol;
 					
 					
 				}
@@ -1892,7 +1886,7 @@ public:
 		}
 		
 		#ifdef UG_PARALLEL
-			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol, PCL_RO_SUM);
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol,    PCL_RO_SUM);
 			AttachmentAllReduce<Vertex> (*domain.grid(), m_aNormal, PCL_RO_SUM);
 		#endif
 		
@@ -1905,16 +1899,10 @@ public:
 			{
 				Vertex* vrt = *iter;
 				if (pbm && pbm->is_slave(vrt)) continue;
-				if(m_vol[vrt] > 1e-10)
-				{
-					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vrt][d1] /= m_vol[vrt];
-				}
-				else
-				{
-					VecSet(m_normal[vrt],0.0);
-					m_normal[vrt][dim-1] = 1.0;
-				}
+
+				for(int d1 = 0; d1 <dim; ++d1)
+					m_normal[vrt][d1] /= m_vol[vrt];
+
 				/*MathVector<dim> tang; VecSet(tang,0.0);
 				if(dim == 2)
 				{
@@ -2564,6 +2552,9 @@ private:
 	//  grid
 	grid_type* m_grid;
 	
+	// subset group
+	SubsetGroup m_relVelZeroSg;
+	
 
 	private:
 
@@ -2599,6 +2590,12 @@ private:
 		m_imMixViscosity = data;
 		m_bvisc = true;
 	}*/
+	// set non-periodic boundaries so that viscosity can be set to zero there
+	void setRelVelZeroBoundaries(const char* subsets){
+		try{
+			m_relVelZeroSg = m_u->subset_grp_by_name(subsets);
+		}UG_CATCH_THROW("ERROR while parsing Subsets.");
+	}
 	
 	void set_phase_parameters(Interface<dim>* user)
 	{
@@ -2712,8 +2709,8 @@ public:
 		for (size_t sh=0;sh<numVertices;sh++)
 		{
 			number W = m_rel_vel[vVrt[sh]];
-			size_t iter = 0;
-			Inter->RelVel(W,  iter,    (*u)(_C_,sh),   rho_a, rho_a, dp, rho_s,  fabs(gy));
+			//size_t iter = 0;
+			//Inter->RelVel(W,  iter,    (*u)(_C_,sh),   rho_a, rho_a, dp, rho_s,  fabs(gy));
 			RelVelNodes[sh] = W;
 		}
 	

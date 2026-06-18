@@ -480,14 +480,14 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
                         
         // A. Compute Velocity at ip
             MathVector<dim> stdVel(0.0);
-            MathVector<dim> Vel(0.0);
+            //MathVector<dim> Vel(0.0);
             for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
             {
                 for(size_t sh = 0; sh < bf->num_sh(); ++sh)
                 {
                     stdVel[d1] += u(d1, sh) * bf->shape(sh);
                 }
-                Vel[d1] = u(d1,bf->node_id());
+                //Vel[d1] = u(d1,bf->node_id());
             }
             
 
@@ -495,18 +495,18 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 		//	A. The momentum equation:
 			diffusive_flux_Jac<BF> (ip, *bf, J, u);
 			if (!m_spMaster->stokes ())
-				convective_flux_Jac<BF> (ip, *bf, J, u, Vel, stdVel);
+				convective_flux_Jac<BF> (ip, *bf, J, u, stdVel, stdVel);
             //pressure_flux_Jac<BF> (ip, *bf, J, u);
 			
             
-            MathVector<dim> Vel_t(0.0);
-            const number D = ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
-            const number ViscScale = m_imDensity[ip]*m_imKinViscosity[ip]/pow(D,2);
+            //MathVector<dim> Vel_t(0.0);
+            //const number D = ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+            //const number ViscScale = m_imDensity[ip]*m_imKinViscosity[ip]/pow(D,2);
         
             
-            number inv_scale = ViscScale;
+            //number inv_scale = ViscScale;
             
-            VecScale(Vel_t,stdVel,ViscScale);
+            //VecScale(Vel_t,stdVel,ViscScale);
             
             //number ConvScale = m_imDensity[ip]*VecLength(stdVel)/D;
             /*if (!m_spMaster->stokes ())
@@ -544,14 +544,14 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             }*/
             
             
-            VecScale(Vel_t,Vel_t,1.0 / inv_scale);
+            //VecScale(Vel_t,Vel_t,1.0 / inv_scale);
 		//	B. The continuity equation
             for (size_t d2 = 0; d2 < (size_t)dim; ++d2)
             {
                 for(size_t sh = 0; sh < bf->num_sh(); ++sh) // loop shape functions
                 {
-                    //J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]; //* m_imDensity [ip];
-                    J(_P_, bf->node_id (), d2, sh) += (ViscScale/inv_scale)*bf->shape(sh) * bf->normal()[d2];
+                    J(_P_, bf->node_id (), d2, sh) += bf->shape(sh) * bf->normal()[d2]; //* m_imDensity [ip];
+                    //J(_P_, bf->node_id (), d2, sh) += (ViscScale/inv_scale)*bf->shape(sh) * bf->normal()[d2];
                 }
                 /*if (!m_spMaster->stokes ())
                     J(_P_, bf->node_id (), d2, bf->node_id()) += (ConvScale/inv_scale) * bf->normal()[d2];*/
@@ -560,7 +560,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             
             
         //  C. The transport equation
-            convective_flux_volumefraction_Jac<BF> (ip, *bf, J, u, Vel_t);
+            convective_flux_volumefraction_Jac<BF> (ip, *bf, J, u, stdVel);
             
             
             
@@ -606,8 +606,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             
 		// A. Compute Velocity at ip
 			MathVector<dim> stdVel(0.0);
-            MathVector<dim> Vel(0.0);
-            MathVector<dim> PressureGrad(0.0);
+            //MathVector<dim> Vel(0.0);
+            //MathVector<dim> PressureGrad(0.0);
             
             for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
             {
@@ -615,27 +615,27 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
                 for(size_t sh = 0; sh < bf->num_sh(); ++sh)
                 {
                     stdVel[d1] += u(d1, sh) * bf->shape(sh);
-                    PressureGrad[d1] += u(_P_, sh) * bf->global_grad(sh)[d1];
+                    //PressureGrad[d1] += u(_P_, sh) * bf->global_grad(sh)[d1];
                 }
                 
-                Vel[d1] = u(d1,bf->node_id());
+                //Vel[d1] = u(d1,bf->node_id());
             }
                     
 
 		// B. Momentum equation:
 			diffusive_flux_defect<BF> (ip, *bf, d, u);
 			if (!m_spMaster->stokes ())
-				convective_flux_defect<BF> (ip, *bf, d, u, Vel,stdVel);
+				convective_flux_defect<BF> (ip, *bf, d, u, stdVel,stdVel);
             //pressure_flux_defect<BF> (ip, *bf, d, u, pressure , PressureGrad);
 		
-            MathVector<dim> Vel_t(0.0);
-            const number D = ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
-            const number ViscScale = m_imDensity[ip]*m_imKinViscosity[ip]/pow(D,2);
+            //MathVector<dim> Vel_t(0.0);
+            //const number D = ElementDiameter<GridObject, TDomain>(*elem, *this->domain());
+            //const number ViscScale = m_imDensity[ip]*m_imKinViscosity[ip]/pow(D,2);
         
             
-            number inv_scale = ViscScale;
+            //number inv_scale = ViscScale;
             
-            VecScale(Vel_t,stdVel,ViscScale);
+            //VecScale(Vel_t,stdVel,ViscScale);
             /*if (!m_spMaster->stokes ())
             {
                 const number ConvScale = m_imDensity[ip]*VecLength(stdVel)/D;
@@ -673,16 +673,16 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             
 
             
-            VecScale(Vel_t,Vel_t,1.0 / inv_scale);
+            //VecScale(Vel_t,Vel_t,1.0 / inv_scale);
             
 		// C. Continuity equation:
-            //d(_P_, bf->node_id()) += VecDot (stdVel, bf->normal());// * m_imDensity[ip];
-            d(_P_, bf->node_id()) += VecDot (Vel_t, bf->normal());// * m_imDensity[ip];
+            d(_P_, bf->node_id()) += VecDot (stdVel, bf->normal());// * m_imDensity[ip];
+            //d(_P_, bf->node_id()) += VecDot (Vel_t, bf->normal());// * m_imDensity[ip];
             //d(_P_, bf->node_id()) += scale*VecDot (PressureGrad, bf->normal());
             
             
         // D. Transport equation:
-            convective_flux_volumefraction_defect<BF> (ip, *bf, d, u, Vel_t);
+            convective_flux_volumefraction_defect<BF> (ip, *bf, d, u, stdVel);
 		}
 	}
 }

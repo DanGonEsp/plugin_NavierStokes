@@ -277,6 +277,14 @@ class NavierStokesFV1M
 		{
 			m_transport_jac = user;
 		}
+		void set_limex_correction(const bool user)
+		{
+			m_limex_correction = user;
+		}
+		void set_mass_term(const bool user)
+		{
+			m_mass_term = user;
+		}
 	
     
     ///    returns the export of the VolumeFractions
@@ -766,6 +774,7 @@ class NavierStokesFV1M
 	///	Data import for density
 		DataImport<number, dim> m_imDensitySCVF;
         DataImport<number, dim> m_imDensitySCVF_old;
+		DataImport<number, dim> m_imDensitySCV_A;
 		DataImport<number, dim> m_imDensitySCV;
 		DataImport<number, dim> m_imDensitySCV_old;
     
@@ -821,6 +830,8 @@ class NavierStokesFV1M
 		bool m_pressure_jump = false;
 		bool m_transporting_vel_stab = false;
 		bool m_transport_jac = false;
+		bool m_limex_correction = false;
+		bool m_mass_term = false;
 		int m_upwind_vol_method = 0;
 
 		virtual void init();
@@ -830,6 +841,11 @@ class NavierStokesFV1M
         void lin_def_densitySCV(const LocalVector& u,
                               std::vector<std::vector<number> > vvvLinDef[],
                               const size_t nip);
+	///    computes the linearized defect w.r.t to the density SCV_A
+		template <typename TElem, typename TFVGeom>
+		void lin_def_densitySCV_A(const LocalVector& u,
+							  std::vector<std::vector<number> > vvvLinDef[],
+							  const size_t nip);
     ///    computes the linearized defect w.r.t to the density SCVF
         template <typename TElem, typename TFVGeom>
         void lin_def_densitySCVF(const LocalVector& u,
