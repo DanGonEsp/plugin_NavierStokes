@@ -1721,22 +1721,22 @@ public:
 			
 			if(ComputeSlipVel)
 			{
-				MathVector<dim> GradC = 0.0;
+				//MathVector<dim> GradC = 0.0;
 				rTrialSpace.shapes(shapes,vLocIP[ip]);
 				
 				
 				//    evaluate at shapes at ip
-				rTrialSpace.grads(vLocGrad, vLocIP[ip]);
+				//rTrialSpace.grads(vLocGrad, vLocIP[ip]);
 				//    compute grad at ip
-				VecSet(locGrad, 0.0);
-				for(size_t sh = 0; sh < numVertices; ++sh)
-					VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
+				//VecSet(locGrad, 0.0);
+				//for(size_t sh = 0; sh < numVertices; ++sh)
+					//VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
 				
 				//    compute global grad
 				mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
-				MatVecMult(GradC, JTInv, locGrad);
+				//MatVecMult(GradC, JTInv, locGrad);
 				
-				number gradc_mag =  VecTwoNorm(GradC);
+				//number gradc_mag =  VecTwoNorm(GradC);
 				
 				for (size_t sh=0;sh<numVertices;sh++)
 				{
