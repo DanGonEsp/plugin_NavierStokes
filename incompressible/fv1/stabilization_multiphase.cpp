@@ -1455,7 +1455,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 			
 			
 			number Value2 = density[ip] * VecTwoNorm(vStdVel_stab[ip]) / upwind_conv_length(ip);
-			vPecletScale[ip] = Value2 / (Value2 + MU_scvf[ip]*diff_length_sq_inv(ip));
+			vPecletScale[ip] = 0.0;//Value2 / (Value2 + MU_scvf[ip]*diff_length_sq_inv(ip));
 			
 			
 			
