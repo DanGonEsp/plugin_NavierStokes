@@ -1631,18 +1631,18 @@ update(const FV1Geometry<TElem, dim>* geo,
 						//sumVel += -DenMomentum[ip]*scvf.shape(k) * ;
 						
 						
-						sumVel += vPecletScale[ip] *vNormStdVelPerDownLen[ip] *(downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
+						//sumVel += vPecletScale[ip] *vNormStdVelPerDownLen[ip] *(downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
 						
 						
 						
 					}
-					for(int d2 = 0; d2 < dim; ++d2)
+					/*for(int d2 = 0; d2 < dim; ++d2)
 					{
 						if(d2 == d) continue;
 						
 						sumVel -= density[ip] * vStdVel[ip][d2] * (scvf.global_grad(k))[d2];
 						
-					}
+					}*/
 					
 					
 					//    Add to rhs
@@ -1652,7 +1652,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 					//    set stab shape
 					stab_shape_vel(ip, d, d, k) += sumVel / diag;
 					
-					for(int d2 = 0; d2 < dim; ++d2)
+					/*for(int d2 = 0; d2 < dim; ++d2)
 					{
 						if(d2 == d) continue;
 						
@@ -1661,7 +1661,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 						rhs += sumVel2 * vCornerValue(d2, k);
 						
 						stab_shape_vel(ip, d, d2, k) = sumVel2 / diag;
-					}
+					}*/
 
 					
 					if(true)//!multiphase)
