@@ -868,22 +868,29 @@ class Interface
 		void Rusanov_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR,  const number Vn )
 		{
 
-			const number S=fmax(fabs(wSL),fabs(wSR));
+			const number S=fmax(fabs(Vn + wSL),fabs(Vn + wSR));
+			//const number S=fmax(fabs(wSL),fabs(wSR));
 			
-			Flux = (Vn > 0)? UL*Vn:UR*Vn;
+			Flux = 0.5*(UL+UR)*Vn;
+			//Flux = (Vn > 0)? UL*Vn:UR*Vn;
+			
 			Flux +=  0.5 * (wFL + wFR) - 0.5*S*(UR-UL);
 			
 		}
 		void Rusanov_jac(number& JacVL,number& JacVR,number& JacWL,number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
 		{
 
-			const number S=fmax(fabs(wSL),fabs(wSR));
+			const number S=fmax(fabs(Vn + wSL),fabs(Vn + wSR));
+			//const number S=fmax(fabs(wSL),fabs(wSR));
 			
 			JacWL = 0.5*(wSL) + 0.5*S;
-			JacVR = 0.5*(wSR) - 0.5*S;
+			JacWR = 0.5*(wSR) - 0.5*S;
 			
-			JacVL = (Vn > 0)?  Vn : 0.0;
-			JacVR = (Vn > 0)? 0.0 : Vn;
+			JacVL = 0.5 * Vn;
+			JacVR = 0.5 * Vn;
+			
+			//JacVL = (Vn > 0)?  Vn : 0.0;
+			//JacVR = (Vn > 0)? 0.0 : Vn;
 			
 			
 		}
