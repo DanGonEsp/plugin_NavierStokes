@@ -5230,8 +5230,8 @@ ex_nodal_mix_viscosity(number vValue[],
 	//Inter->cut_element(cut_elem,inside,  u_aux, _C_);
 	
 	
-	const bool HarmonicMs = true;//( cut_elem || inside )? true: false;
-	const bool constantMs = false;
+	const bool HarmonicMs = false;//( cut_elem || inside )? true: false;
+	const bool constantMs = true;
 
 	number Volume = 0.0;
 	number Gamma[numSH];
