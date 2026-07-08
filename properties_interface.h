@@ -66,6 +66,7 @@ class Interface
 		Interface():
 			m_P0(0.0),
 			rho_s(2400.0),
+			rho_max(2400.0),
 			rho_a(1.2),
 			mu_a(1.48e-5),
 			nu_s(1.48e-5),
@@ -88,7 +89,7 @@ class Interface
 			m_gravitation(-9.81),
 			m_RelVelError(2e-01),
 			epsilon(1e-012),
-			m_delta(0.001),
+			m_delta(0.05),
 			m_bParticleGradientForce(false),
 			m_bConsistentGravity(false),
 			m_init(false)
@@ -868,7 +869,7 @@ class Interface
 		void Rusanov_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR,  const number Vn )
 		{
 
-			const number S=fmax(fabs(Vn + wSL),fabs(Vn + wSR));
+			const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
 			//const number S=fmax(fabs(wSL),fabs(wSR));
 			
 			Flux = 0.5*(UL+UR)*Vn;
@@ -880,7 +881,7 @@ class Interface
 		void Rusanov_jac(number& JacVL,number& JacVR,number& JacWL,number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
 		{
 
-			const number S=fmax(fabs(Vn + wSL),fabs(Vn + wSR));
+			const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
 			//const number S=fmax(fabs(wSL),fabs(wSR));
 			
 			JacWL = 0.5*(wSL) + 0.5*S;
@@ -922,7 +923,7 @@ class Interface
 			
 			
 			S = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
-
+			//Entropy fixing Harten-Hyman
 			number S_abs = Harten_Hyman( S, SL, SR);
 			
 			JacWL = 0.5*(wSL) + 0.5*S_abs;
@@ -941,25 +942,32 @@ class Interface
 		{
 			// 1. Global Background Diffusion (The "Epsilon")
 			// This ensures the matrix is never singular.
-			const number S_max = fmax(fabs(SL), fabs(SR));
-			const number epsilon = m_delta * S_max + 1e-12; // Small floor to avoid div by zero
+			//const number S_max = SmoothMax(fabs(SL), fabs(SR),1e-06);
+			//const number epsilon = m_delta * S_max + 1e-12; // Small floor to avoid div by zero
 	
-			// 2. Initial smoothed absolute value
-			number S_abs = (fabs(S) < epsilon) ? (S*S + epsilon*epsilon)/(2.0*epsilon) : fabs(S);
 
 			// 3. Rarefaction (Entropy) Fix
-			if(SL < 0.0 && SR > 0.0)
+			/*if(SL < 0.0 && SR > 0.0)
 			{
 				// Use the physical speeds to determine the fan width
-				number delta = fmax(fmax(0.0, S - SL), SR - S);
+				number delta = SmoothMax(SmoothMax(0.0, S - SL,1e-06), SR - S, 1e-06);
 				
 				// Ensure delta is at least as large as our global epsilon
-				delta = fmax(delta, epsilon);
+				delta = SmoothMax(delta, epsilon, 1e-06);
 
 				if (fabs(S) < delta) {
 					S_abs = (S*S + delta*delta) / (2.0 * delta);
 				}
-			}
+			}*/
+			
+			// Use the physical speeds to determine the fan width
+			number epsilon = SmoothMax(SmoothMax(0.0, S - SL,1e-06), SR - S, 1e-06);
+			
+			// Ensure delta is at least as large as our global epsilon
+			//delta = SmoothMax(delta, epsilon, 1e-06);
+			
+			// 2. Initial smoothed absolute value
+			number S_abs = (fabs(S) <= epsilon) ? (S*S + epsilon*epsilon)/(2.0*epsilon) : fabs(S);
 			
 			return S_abs;
 		}
@@ -1216,6 +1224,11 @@ class Interface
 			cut_scv=cut;
 		}*/
 		
+		number SmoothMax( const number a, const number b, const number SmoothEps)
+		{
+			const number diff = a-b;
+			return (a + b + sqrt(diff*diff + SmoothEps))/2.0;
+		}
 
 
 		void MatAddTraspose( MathMatrix<dim,dim>& mOut, const MathMatrix<dim,dim> m1)
@@ -1941,16 +1954,18 @@ class Interface
 		void set_bool_consistent_gravity(bool R) {
 			m_bConsistentGravity = R;
 		}
-		void set_bool_initialized(bool R) {
-			m_init = R;
-		}
 		void set_drag_model(size_t R) {
 			drag_model = R;
+		}
+		void set_bool_initialized(bool R) {
+			m_init = R;
+			rho_max = (rho_s-rho_a) * m_packing_factor + rho_a;
+			
 		}
 
 		number Density_s(){ return rho_s;}
 		number Density_a(){ return rho_a;}
-		number Density_max(){ return (rho_s-rho_a) * m_packing_factor + rho_a;}
+		number Density_max(){ return rho_max;}
 		number Viscosity_a(){ return mu_a;}
 		number KinViscosity_s(){ return nu_s;}
 		number Alpha_max(){ return alpha_max;}
@@ -1975,7 +1990,7 @@ class Interface
 
 
 	protected:
-		float m_P0, rho_s, rho_a, mu_a, nu_s, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, FricMu_1, FricMu_2, I_0, deltaI, deltaPs, m_limit, m_dt, m_interface_value, m_packing_factor, m_gravitation, m_RelVelError, epsilon, m_delta;
+		float m_P0, rho_max, rho_s, rho_a, mu_a, nu_s, dp, Fr, B_phi, alpha_max, alpha_min, deltaGamma, FricMu_1, FricMu_2, I_0, deltaI, deltaPs, m_limit, m_dt, m_interface_value, m_packing_factor, m_gravitation, m_RelVelError, epsilon, m_delta;
 		size_t drag_model;
 		bool m_bParticleGradientForce, m_bConsistentGravity, m_init;
         
