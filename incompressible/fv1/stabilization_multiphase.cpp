@@ -1414,7 +1414,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 	}
 	
 
-	//bool boolSource = (SourceSCV.data_given()) ? true : false;
+	bool boolSource = (SourceSCV.data_given()) ? true : false;
 	
 	//    cache values
 	number vViscoPerDiffLenSq[numIp];
@@ -1633,11 +1633,11 @@ update(const FV1Geometry<TElem, dim>* geo,
 						
 						//sumVel += vPecletScale[ip] *vNormStdVelPerDownLen[ip] *(downwind_shape_sh(ip, k) - upwind_shape_sh(ip, k));
 						
-						/*for(int d2 = 0; d2 < dim; ++d2)
+						for(int d2 = 0; d2 < dim; ++d2)
 						{
 							if(d2 == d) continue;
 							
-							sumVel -= density[ip] * vStdVel[ip][d2] * (scvf.global_grad(k))[d2];
+							sumVel -= density[ip] * vStdVel_stab[ip][d2] * (scvf.global_grad(k))[d2];
 							
 						}
 						
@@ -1645,13 +1645,12 @@ update(const FV1Geometry<TElem, dim>* geo,
 						{
 							if(d2 == d) continue;
 							
-							const number sumVel2 = density[ip]*vStdVel[ip][d] * (scvf.global_grad(k))[d2];
+							const number sumVel2 = density[ip]*vStdVel_stab[ip][d] * (scvf.global_grad(k))[d2];
 							
 							rhs += sumVel2 * vCornerValue(d2, k);
 							
 							stab_shape_vel(ip, d, d2, k) = sumVel2 / diag;
-						}*/
-						
+						}
 						
 					}
 

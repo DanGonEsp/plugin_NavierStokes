@@ -186,6 +186,15 @@ set_density(SmartPtr<CplUserData<number, dim> > data)
     m_imDensitySCVF_old.set_data(data);
 	m_imDensitySCV_old.set_data(data);
 }
+template<typename TDomain>
+void NavierStokesFV1M<TDomain>::
+set_density(SmartPtr<CplUserData<number, dim> > data, const bool LinDef)
+{
+	set_density(data);
+	m_imDensitySCV.set_comp_lin_defect(LinDef);
+}
+
+
 
 
 template<typename TDomain>
@@ -2398,7 +2407,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             
 	}
 	
-	if(m_limex_correction && this->is_time_dependent())
+	if(m_limex_correction && this->is_time_dependent() && !m_bStokes)
 	{
 		const number rho_s = Inter->Density_s();
 		const number rho_a = Inter->Density_a();

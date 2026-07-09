@@ -174,6 +174,8 @@ class NavierStokesFV1M
 
 	///	sets the density
 		void set_density(SmartPtr<CplUserData<number, dim> > user);
+	///	sets the density
+		void set_density(SmartPtr<CplUserData<number, dim> > user, const bool LinDef);
 
 	///	returns density
 		SmartPtr<CplUserData<number, dim> > density() {return m_imDensitySCVF.user_data ();}

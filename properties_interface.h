@@ -574,7 +574,7 @@ class Interface
 
 		void Godunov_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
-			
+			UG_THROW("Interface Godunov flux Module: Not implemented with W/rho");
 			number fL = Vn*UL + wFL;
 			number fR = Vn*UR + wFR;
 			
@@ -667,7 +667,7 @@ class Interface
 		void Godunov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
 			
-			
+			UG_THROW("Interface Godunov flux Jac : Not implemented with W/rho");
 			const number SL = Vn + wSL;
 			const number SR = Vn + wSR;
 			number Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
@@ -897,7 +897,7 @@ class Interface
 		}
 		void Roe_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
-
+			UG_THROW("Interface Roe flux : Not implemented with W/rho");
 			number S;
 			const number SR =Vn + wSR;
 			const number SL =Vn + wSL;
@@ -917,6 +917,7 @@ class Interface
 		}
 		void Roe_jac(number& JacVL,number& JacVR, number& JacWL,number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
+			UG_THROW("Interface Roe flux Jac : Not implemented with W/rho");
 			number S;
 			const number SR =Vn + wSR;
 			const number SL =Vn + wSL;
@@ -990,6 +991,75 @@ class Interface
 			
 			return S_abs;
 		}*/
+
+		inline number FluxPlus (const number U);
+		inline number FluxMinus(const number U);
+
+		void EO_flux(number& Flux,
+					 const number UL,
+					 const number UR,
+					 const number wSL,
+					 const number wSR,
+					 const number wFL,
+					 const number wFR,
+					 const number Vn)
+		{
+
+			Flux = (Vn > 0.0) ? UL*Vn : UR*Vn;
+
+			Flux += FluxPlus(UL);
+			Flux += FluxMinus(UR);
+
+		}
+		void EO_jac(number& JacVL,
+					number& JacVR,
+					number& JacWL,
+					number& JacWR,
+					const number UL,
+					const number UR,
+					const number wSL,
+					const number wSR,
+					const number wFL,
+					const number wFR,
+					const number Vn)
+		{
+
+			JacWL = (wSL > 0.0) ? wSL : 0.0;
+			JacWR = (wSR < 0.0) ? wSR : 0.0;
+
+			JacVL = (Vn > 0.0) ? Vn : 0.0;
+			JacVR = (Vn > 0.0) ? 0.0 : Vn;
+
+		}
+		void Engquist_Osher_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
+		{
+			// 1. Passive advection splitting (Vn)
+			number Flux_Vn = (Vn > 0.0) ? UL * Vn : UR * Vn;
+
+			// 2. Physical flux splitting based on sign of local characteristic wave speeds
+			// f+(u) uses the left state (UL) and captures positive wave speeds
+			// f-(u) uses the right state (UR) and captures negative wave speeds
+			number wFL_plus  = SmoothMax(wFL, 0.0, 1e-06);
+			number wFR_minus = SmoothMin(wFR, 0.0, 1e-06);
+
+			// Total Engquist-Osher Numerical Flux
+			Flux = Flux_Vn + wFL_plus + wFR_minus;
+		}
+
+		void Engquist_Osher_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
+		{
+			// 1. Derivatives of the passive advection velocity (Vn)
+			JacVL = (Vn > 0.0) ? Vn : 0.0;
+			JacVR = (Vn > 0.0) ? 0.0 : Vn;
+
+			// 2. Derivatives of the numerical flux with respect to characteristic speeds
+			// JacWL is d(Flux)/d(UL), which depends on whether the left wave speed is positive
+			// JacWR is d(Flux)/d(UR), which depends on whether the right wave speed is negative
+			
+			// Smooth derivative approximations corresponding to max(wSL, 0) and min(wSR, 0)
+			JacWL = SmoothMax(wSL, 0.0, 1e-06);
+			JacWR = SmoothMin(wSR, 0.0, 1e-06);
+		}
 	 
 
 		/*
@@ -1224,10 +1294,13 @@ class Interface
 			cut_scv=cut;
 		}*/
 		
-		number SmoothMax( const number a, const number b, const number SmoothEps)
-		{
-			const number diff = a-b;
-			return (a + b + sqrt(diff*diff + SmoothEps))/2.0;
+		// Helper functions for smooth splitting to ensure continuous derivatives
+		inline number SmoothMax(const number a, const number b, const number eps = 1e-06) {
+			return 0.5 * (a + b + sqrt((a - b) * (a - b) + eps));
+		}
+
+		inline number SmoothMin(const number a, const number b, const number eps = 1e-06) {
+			return 0.5 * (a + b - sqrt((a - b) * (a - b) + eps));
 		}
 
 
