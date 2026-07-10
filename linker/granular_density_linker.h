@@ -121,7 +121,7 @@ class GranularDensityLinker
             {
 				
 				//c[ip] = packing_factor * vVolumeFraction[ip];
-				c[ip]=packing_factor*(vVolumeFraction[ip] + sqrt(vVolumeFraction[ip]*vVolumeFraction[ip] + m_eps))/2.0;
+				c[ip]=packing_factor*(vVolumeFraction[ip] + sqrt(vVolumeFraction[ip]*vVolumeFraction[ip] + m_eps*m_eps))/2.0;
 				
                 switch (m_model) {
                     case 0:
@@ -170,7 +170,7 @@ class GranularDensityLinker
             for(size_t ip = 0; ip < nip; ++ip)
             {
 				//c[ip] = packing_factor * vVolumeFraction[ip];
-				c[ip]=packing_factor*(vVolumeFraction[ip] + sqrt(vVolumeFraction[ip]*vVolumeFraction[ip] + m_eps))/2.0;
+				c[ip]=packing_factor*(vVolumeFraction[ip] + sqrt(vVolumeFraction[ip]*vVolumeFraction[ip] + m_eps*m_eps))/2.0;
                 
 
                 switch (m_model) {
@@ -207,7 +207,7 @@ class GranularDensityLinker
                 for(size_t ip = 0; ip < nip; ++ip)
                 {
 					//const number vol2 = vVolumeFraction[ip]*vVolumeFraction[ip];
-					const number deriv_value = packing_factor *(rho_s-rho_a);// (c[ip]/sqrt(vol2 + m_eps));
+					const number deriv_value = packing_factor *(rho_s-rho_a);// (c[ip]/sqrt(vol2 + m_eps*m_eps));
 					
                     for(size_t fct = 0; fct < m_spDVolumeFraction->num_fct(); ++fct)
                     {

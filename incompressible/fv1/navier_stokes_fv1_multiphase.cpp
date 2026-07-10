@@ -192,6 +192,7 @@ set_density(SmartPtr<CplUserData<number, dim> > data, const bool LinDef)
 {
 	set_density(data);
 	m_imDensitySCV.set_comp_lin_defect(LinDef);
+	m_imDensitySCV_A.set_comp_lin_defect(LinDef);
 }
 
 
@@ -677,6 +678,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 		number Flux_ip_jacV[numSh] = {0};
 		number Flux_ip_jacW[numSh] = {0};
 		
+		MathVector<dim> JacVip = 0.0;
+		
 		if(m_upwind_vol_method != 0)
 		{
 			if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
@@ -703,8 +706,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				
 				number JacVL = 0.0;
 				number JacVR = 0.0;
-		
-				Inter->Flux_Jac_ip(JacVL,JacVR,JacWL, JacWR, u(_C_,from), u(_C_,to), Wrel_L, Wrel_R,  TransportingVel_ip[ip], scvf.normal(), m_upwind_vol_method);
+				
+				Inter->Flux_Jac_ip(JacVL,JacVR,JacWL, JacWR, JacVip, u(_C_,from), u(_C_,to), Wrel_L, Wrel_R,  TransportingVel_ip[ip], scvf.normal(), m_upwind_vol_method);
 				
 				
 				Flux_ip_jacV[from] = JacVL;
@@ -714,6 +717,11 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				Flux_ip_jacW[from] = JacWL;
 				Flux_ip_jacW[to]  = JacWR;
 					
+			}
+			else
+			{
+				UG_THROW("NavierStokes Multiphase: Non implemented for without SLip and relative velocity");
+				
 			}
 			
 		}
@@ -1279,32 +1287,9 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             // Convective Term (Transport Equation)
             ////////////////////////////////////////////////////
             
-			number ratio_diff = 1.0;
-			number ratio_star = 1.0;
 			number S = VecLength(StdCharacteristicVel[ip]);
 			number eps = fmax(Inter->Epsilon(),S);
 		
-			if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
-			{
-			
-				if(ShockCase[ip] == 0 || ShockCase[ip] == 1 )
-				{
-					ratio_diff = 0.0;
-					ratio_star = 0.0;
-				}
-				if(ShockCase[ip] == 2)
-				{
-					ratio_diff = 0.0;
-					ratio_star = 1.0;
-				}
-				if (ShockCase[ip] == 3)
-				{
-					ratio_diff = 1.0;// - ratio_up;
-					ratio_star = 0.0;
-					
-				}
-				
-			}
 			if(m_upwind_vol_method==0)
 			{
 				const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
@@ -1394,6 +1379,48 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 					
 					
 				}
+				if(m_transporting_vel_stab)
+				{
+					//	Add derivative of stabilized flux w.r.t velocity comp to local matrix
+					if(stab.vel_comp_connected())
+					{
+						for(int d1 = 0; d1 < dim; ++d1)
+						{
+							number contFlux_vel = 0.0;
+							for(int d2 = 0; d2 < dim; ++d2)
+								contFlux_vel += stab.stab_shape_vel(ip, d2, d1, sh)
+								* JacVip[d2]; //* m_imDensitySCVF[ip];
+							
+							J(_C_, scvf.from(), d1, sh) += contFlux_vel;
+							J(_C_, scvf.to()  , d1, sh) -= contFlux_vel;
+						}
+					}
+					else
+					{
+						for(int d1 = 0; d1 < dim; ++d1)
+						{
+							const number contFlux_vel = stab.stab_shape_vel(ip, d1, d1, sh)
+							* JacVip[d1]; //* m_imDensitySCVF[ip];
+							
+							J(_C_, scvf.from(), d1, sh) += contFlux_vel;
+							J(_C_, scvf.to()  , d1, sh) -= contFlux_vel;
+						}
+					}
+					
+					
+					//	Add derivative of stabilized flux w.r.t pressure to local matrix
+					number contFlux_p = 0.0;
+					for(int d1 = 0; d1 < dim; ++d1)
+						contFlux_p += stab.stab_shape_p(ip, d1, sh) * JacVip[d1]; //* m_imDensitySCVF[ip];
+					
+					J(_C_, scvf.from(), _P_, sh) += contFlux_p;
+					J(_C_, scvf.to()  , _P_, sh) -= contFlux_p;
+				}
+				else
+				{
+					UG_THROW("NavierStokes Multiphase: Transporting Velocity Jacobian not implemented");
+				}
+				
 				/*if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
 				{
 					const size_t from = scvf.from();
@@ -2270,34 +2297,9 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             //      sum up convective flux using convection shapes
 		
 		
-		number ratio_diff = 1.0;
-		number ratio_star = 1.0;
 		number S = VecLength(StdCharacteristicVel[ip]);
 		number eps = fmax(Inter->Epsilon(),S);
 	
-		/*if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
-		{
-		
-			if(ShockCase[ip] == 0 || ShockCase[ip] == 1 )
-			{
-				ratio_diff = 0.0;
-				ratio_star = 0.0;
-			}
-			if(ShockCase[ip] == 2)
-			{
-				ratio_diff = 0.0;
-				ratio_star = 1.0;
-			}
-			if (ShockCase[ip] == 3)
-			{
-				ratio_diff = 1.0;// - ratio_up;
-				ratio_star = 0.0;
-				
-			}
-			
-		}*/
-		
-		
 		number conv_flux_vol = 0.0;
 		number conv_flux = VecProd(TransportingVel_ip[ip], scvf.normal());
 		
@@ -2341,7 +2343,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 				if(ShockCase[ip] == 2)
 				{
 					
-					conv_flux_vol += ratio_star * VecProd(StdCharacteristicVel[ip], scvf.normal());
+					conv_flux_vol += VecProd(StdCharacteristicVel[ip], scvf.normal());
 					
 				}
 				if(ShockCase[ip] == 3)
@@ -2362,6 +2364,11 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 
 				
 					
+			}
+			else
+			{
+				UG_THROW("NavierStokes Multiphase: Non implemented for without SLip and relative velocity");
+				
 			}
 			
 		}
@@ -3586,13 +3593,15 @@ lin_def_densitySCV_A(const LocalVector& u,
 		{
 			
 			m_spConvUpwind->update(&geo, StdVel_ip);
-			m_spConvUpwind->update_downwind(&geo, StdVel_ip);
+			//m_spConvUpwind->update_downwind(&geo, StdVel_ip);
 		}
 		else
 		{
 			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 			
 		}
+		if(m_bPecletBlend)
+			UG_THROW("NavierStokes Density A: PecletBlend Not implemented");
 
 		
 		//const INavierStokesFV1StabilizationM<dim>& convStab = *m_spConvStab;
@@ -3741,7 +3750,7 @@ lin_def_viscosity(const LocalVector& u,
     
 
 	//	check for solutions to pass to stabilization in time-dependent case
-	const LocalVector *pSol = &u, *pOldSol = NULL;
+	/*const LocalVector *pSol = &u, *pOldSol = NULL;
 	number dt = 0.0;
 	if(this->is_time_dependent())
 	{
@@ -3829,7 +3838,7 @@ lin_def_viscosity(const LocalVector& u,
 	
 
 
-	const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;
+	const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;*/
 
 //     loop Sub Control Volume Faces (SCVF)
     for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -5364,7 +5373,7 @@ ex_nodal_mix_viscosity(number vValue[],
 				
 			vValue[ip] = Viscosity;
 		//    compute derivative w.r.t. to unknowns iff needed
-			/*if(bDeriv)
+			if(bDeriv)
 			{
 				if (  !(m_pressure_jump && cut_elem))
 					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
@@ -5385,7 +5394,7 @@ ex_nodal_mix_viscosity(number vValue[],
 							vvvDeriv[ip][_C_][sh] = DMs[sh] * scvf.shape(sh);
 					}
 
-			}*/
+			}
 		}
 	}
 //    FV1M SCV ip

@@ -158,7 +158,7 @@ class Interface
 			//Dynamic pressure
 			ParticlePressure = pff+pa;
 			if(DERIVATIVE)
-				DCParticlePressure = dpff + dpa;
+				DCParticlePressure = (dpff + dpa)*m_packing_factor;
 
 			if(std::isnan(pff) || std::isnan(pa) || pff < 0.0 || pa<0.0 ) UG_THROW("Error in PropertiesInterface: Export particlePressure: Ps = " << ParticlePressure << "   phi = "<< phi<< "   Pa = "<< pa<< "   Pf = "<< pff);
 		}
@@ -207,7 +207,7 @@ class Interface
 				if(deriv)
 					Dss =  slope ;
 			}
-			
+			Dss *= m_packing_factor;  // derivative of M respec phi , multipled by derivative of phi respect c
 			if(std::isnan(ss) || ss<0.0 ) UG_THROW("Error in Einstein ViscosityLinker: Value = NaN" <<"  Volume Fraction = "<<phi<<"  m_packing_factor =  " << m_packing_factor << ".");
 			//if(phi > alpha_max) UG_LOG("Phi > phi_max in Einstein Viscosity\n");
 		}
@@ -470,10 +470,10 @@ class Interface
 			
 			
 		}
-		void Flux_Jac_ip(number& JacVL, number& JacVR, number& JacWL, number& JacWR, const number UL, const number UR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method)
+		void Flux_Jac_ip(number& JacVL, number& JacVR, number& JacWL, number& JacWR, MathVector<dim>& JacVip, const number UL, const number UR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method)
 		{
 			
-			number wFL, wSL, wFR, wSR, WL, WR, Vn, Flux;
+			number wFL, wSL, wFR, wSR, WL, WR, Vn, JacVn, Flux;
 			bool GeoDegL, GeoDegR;
 			bool MagDegL, MagDegR;
 			number area = VecLength(vNormal);
@@ -485,13 +485,13 @@ class Interface
 				
 			switch (upwind_vol_method) {
 				case 1:
-					Godunov_jac(JacVL,JacVR, JacWL,JacWR,  UL, UR, wSL, wSR, wFL, wFR,  WL, WR,  Vn);
+					Godunov_jac(JacVL,JacVR, JacWL,JacWR, JacVn,  UL, UR, wSL, wSR, wFL, wFR,  WL, WR,  Vn);
 					break;
 				case 2:
-					Rusanov_jac(JacVL,JacVR,JacWL,JacWR, UL, UR,  wSL,  wSR,  wFL,  wFR,  Vn);
+					Rusanov_jac(JacVL,JacVR,JacWL,JacWR, JacVn, UL, UR,  wSL,  wSR,  wFL,  wFR,  Vn);
 					break;
 				case 3:
-					Roe_jac(JacVL,JacVR,JacWL,JacWR, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
+					Roe_jac(JacVL,JacVR,JacWL,JacWR, JacVn, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
 					break;
 				default:
 					UG_THROW("Wrong model selected for solving riemman problem: PropInterface has options"
@@ -499,10 +499,10 @@ class Interface
 					break;
 			}
 			
-			if(std::isnan(JacWL + JacWR + JacVL + JacVR))
+			if(std::isnan(JacWL + JacWR + JacVL + JacVR + JacVn))
 			{
 				
-				UG_THROW("Non valid number for Jacobian in NonLinearTransportEquation JacWL = " <<JacWL<<"  JacWR = "<< JacWR << "  JacVL = "<< JacVL<<"  JacVR = "<< JacVR <<".\n");
+				UG_THROW("Non valid number for Jacobian in NonLinearTransportEquation JacWL = " <<JacWL<<"  JacWR = "<< JacWR << "  JacVL = "<< JacVL<<"  JacVR = "<< JacVR <<"  JacVn = "<< JacVn <<".\n");
 				
 			}
 			
@@ -510,6 +510,7 @@ class Interface
 			JacWR = area * JacWR;
 			JacVL = area * JacVL;
 			JacVR = area * JacVR;
+			VecScale(JacVip,vNormal,JacVn);
 			
 			
 		}
@@ -664,7 +665,7 @@ class Interface
 			Flux = GodunovFlux;// - 0.5 * 0.01 *Smax * (UR-UL);*/
 			
 		}
-		void Godunov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
+		void Godunov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
 			
 			UG_THROW("Interface Godunov flux Jac : Not implemented with W/rho");
@@ -680,6 +681,7 @@ class Interface
 			JacVR = 0.0;
 			JacWL = 0.0;
 			JacWR = 0.0;
+			JacVn = 0.0;
 			
 			number eps_diss = 1e-02;
 			
@@ -706,6 +708,7 @@ class Interface
 						JacVL = (Sw > 0)?  Vn : 0.0;
 						JacVR = (Sw > 0)? 0.0 : Vn;
 						
+						UG_THROW("JacVn Godunov flux Jac : Not implemented");
 						
 					}
 					
@@ -720,6 +723,8 @@ class Interface
 					
 					JacVL = (Sw > 0)?  Vn : 0.0;
 					JacVR = (Sw > 0)? 0.0 : Vn;
+					
+					UG_THROW("JacVn Godunov flux Jac : Not implemented");
 				}
 			} else {
 				// Shock/Decreasing case: Look for a Maximum
@@ -733,6 +738,8 @@ class Interface
 						
 						JacVL = (Sw > 0)?  Vn : 0.0;
 						JacVR = (Sw > 0)? 0.0 : Vn;
+						
+						UG_THROW("JacVn Godunov flux Jac : Not implemented");
 						
 						
 					}
@@ -748,6 +755,8 @@ class Interface
 					
 					JacVL = (Sw > 0)?  Vn : 0.0;
 					JacVR = (Sw > 0)? 0.0 : Vn;
+					
+					UG_THROW("JacVn Godunov flux Jac : Not implemented");
 					
 				}
 			}
@@ -878,7 +887,7 @@ class Interface
 			Flux +=  0.5 * (wFL + wFR) - 0.5*S*(UR-UL);
 			
 		}
-		void Rusanov_jac(number& JacVL,number& JacVR,number& JacWL,number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
+		void Rusanov_jac(number& JacVL,number& JacVR,number& JacWL,number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
 		{
 
 			const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
@@ -892,6 +901,8 @@ class Interface
 			
 			//JacVL = (Vn > 0)?  Vn : 0.0;
 			//JacVR = (Vn > 0)? 0.0 : Vn;
+			
+			JacVn = 0.5 * (UL + UR);
 			
 			
 		}
@@ -915,7 +926,7 @@ class Interface
 			Flux +=   0.5 * (wFL + wFR) - 0.5*S_abs*(UR-UL);
 			
 		}
-		void Roe_jac(number& JacVL,number& JacVR, number& JacWL,number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
+		void Roe_jac(number& JacVL,number& JacVR, number& JacWL,number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
 			UG_THROW("Interface Roe flux Jac : Not implemented with W/rho");
 			number S;
@@ -935,6 +946,8 @@ class Interface
 			//JacVR = (Vn > 0)? 0.0 : Vn;
 			JacVL =  0.5 * Vn;
 			JacVR =  0.5 * Vn;
+			
+			JacVn = 0.5 * (UL + UR);
 			
 			
 		}
