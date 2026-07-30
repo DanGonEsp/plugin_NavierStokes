@@ -287,6 +287,10 @@ class NavierStokesFV1M
 		{
 			m_mass_term = user;
 		}
+		void set_mass_mean(const bool user)
+		{
+			m_mass_mean = user;
+		}
 	
     
     ///    returns the export of the VolumeFractions
@@ -624,6 +628,10 @@ class NavierStokesFV1M
         template <typename TFVGeom>
         inline void vel_grad(const LocalVector& u, const TFVGeom& geo, number* Gamma);
 
+	
+		template<typename TFVGeom,size_t NumSCVF, size_t NumSH>
+		inline void vol_flux( const LocalVector& u, const TFVGeom& geo, number* conv_flux_vol, MathVector<dim>* conv_flux_grad, number (&FluxVol_ip_jacV)[NumSCVF][NumSH], number (&FluxVol_ip_jacW)[NumSCVF][NumSH], MathVector<dim>* FluxJacVip, const MathVector<dim> TransportingVel_ip[], const bool jac);
+	
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>
 		void ex_nodal_velocity(MathVector<dim> vValue[],
@@ -834,6 +842,7 @@ class NavierStokesFV1M
 		bool m_transport_jac = false;
 		bool m_limex_correction = false;
 		bool m_mass_term = false;
+		bool m_mass_mean = false;
 		int m_upwind_vol_method = 0;
 
 		virtual void init();

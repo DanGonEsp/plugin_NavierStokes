@@ -384,9 +384,11 @@ class Interface
 		number RankineHugoniot(const number wFR, const number wFL, const number UR, const number UL)
 		{
 			return (wFR-wFL)/(UR-UL);
+			UG_THROW("Interface Roe flux : Not implemented with W/rho");
 		}
 		number RankineHugoniotCharac(const number uL, const number uR, const number Vn, const number Wn)
 		{
+			UG_THROW("Interface Roe flux : Not implemented with W/rho");
 			return Vn + (1.0-(uL+uR))*Wn;
 		}
 		
@@ -430,35 +432,43 @@ class Interface
 			
 		}
 
-		void Flux_ip(number& Flux_ip, const number UL, const number UR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method)
+		void Flux_ip(number& Flux_ip, MathVector<dim>& Mom_ip, number& Div_ip, MathVector<dim>& Grad_ip, const number UL, const number UR, const number RhoL, const number RhoR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method, const bool m_mass_mean)
 		{
 			
-			number wFL, wSL, wFR, wSR, WL, WR, Vn, Flux;
+			Flux_ip = 0.0;
+			Mom_ip = 0.0;
+			Div_ip = 0.0;
+			Grad_ip = 0.0;
+			
+			number wFL, wSL, wFR, wSR, WL, WR, Vn, Flux, DiffFlux = 0.0;
 			bool GeoDegL, GeoDegR;
 			bool MagDegL, MagDegR;
 			number area = VecLength(vNormal);
 			MathVector<dim> normal; VecScale(normal,vNormal, 1.0/area);
 			
-			Flux_function_interface(wFL,wSL, UL, WL, vWL, GeoDegL, MagDegL,
-									wFR,wSR, UR, WR, vWR, GeoDegR, MagDegR, Vn, vVel_ip, normal, true,true);
+			MathVector<dim> Wip = 0.0;  VecScaleAdd(Wip, 0.5, vWL, 0.5, vWR);
+			number Wn = VecProd(Wip,normal);
+			
+			Flux_function_interface(wFL,wSL, UL, WL, vWL, RhoL, GeoDegL, MagDegL,
+									wFR,wSR, UR, WR, vWR, RhoR, GeoDegR, MagDegR, Vn, vVel_ip, normal, m_mass_mean, true,true);
 			
 				
 			switch (upwind_vol_method) {
 				case 1:
-					Godunov_flux(Flux,UL,UR,wSL,wSR,wFL,wFR, WL,WR,Vn);
+					Godunov_flux(Flux,DiffFlux,UL,UR,wSL,wSR,wFL,wFR, WL,WR,Vn,Wn);
 					break;
 				case 2:
-					Rusanov_flux(Flux, UL,UR,wSL,wSR,wFL,wFR,Vn);
+					Rusanov_flux(Flux,DiffFlux, UL,UR,wSL,wSR,wFL,wFR,Vn,Wn);
 					break;
 				case 3:
-					Roe_flux(Flux, UL,UR,wSL,wSR,wFL,wFR, WL,WR,Vn);
+					Roe_flux(Flux, DiffFlux, UL,UR,wSL,wSR,wFL,wFR, WL,WR,Vn,Wn);
 					break;
 				default:
 					UG_THROW("Wrong model selected for solving riemman problem: PropInterface has options"
 							 " model= 0, 1 , 2, 3");
 					break;
 			}
-			if(std::isnan(Flux))
+			if(std::isnan(Flux) || std::isnan(DiffFlux))
 			{
 				UG_THROW("Non valid number for FLUX = " <<Flux<<".\n");
 				
@@ -467,10 +477,22 @@ class Interface
 			
 			
 			Flux_ip = area * Flux;
+			if(m_mass_mean)
+			{
+				VecScale(Mom_ip,Wip,rho_max*Flux_ip);
+				VecScale(Grad_ip,Wip,rho_max*DiffFlux);
+				Div_ip = (rho_max/rho_a-1.0)*Flux_ip;
+				
+				
+		
+
+			}
+			
+			
 			
 			
 		}
-		void Flux_Jac_ip(number& JacVL, number& JacVR, number& JacWL, number& JacWR, MathVector<dim>& JacVip, const number UL, const number UR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method)
+		void Flux_Jac_ip(number& JacVL, number& JacVR, number& JacWL, number& JacWR, MathVector<dim>& JacVip, const number UL, const number UR, const number RhoL, const number RhoR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method, const bool m_mass_mean)
 		{
 			
 			number wFL, wSL, wFR, wSR, WL, WR, Vn, JacVn, Flux;
@@ -479,8 +501,8 @@ class Interface
 			number area = VecLength(vNormal);
 			MathVector<dim> normal; VecScale(normal,vNormal, 1.0/area);
 			
-			Flux_function_interface(wFL,wSL, UL, WL, vWL, GeoDegL, MagDegL,
-									wFR,wSR, UR, WR, vWR, GeoDegR, MagDegR, Vn, vVel_ip, normal, true,true);
+			Flux_function_interface(wFL,wSL, UL, WL, vWL, RhoL, GeoDegL, MagDegL,
+									wFR,wSR, UR, WR, vWR, RhoR, GeoDegR, MagDegR, Vn, vVel_ip, normal, m_mass_mean, true,true);
 			
 				
 			switch (upwind_vol_method) {
@@ -514,9 +536,12 @@ class Interface
 			
 			
 		}
-		void Flux_function_interface( number& wFL, number& wSL, const number uL, number& WL, const MathVector<dim> vWL, bool& boolGeomDegL, bool& boolMagDegL,
-									  number& wFR, number& wSR, const number uR, number& WR, const MathVector<dim> vWR, bool& boolGeomDegR, bool& boolMagDegR,
-						    number& Vn, const MathVector<dim> Vel_ip, const MathVector<dim> normal, const bool boolFlux, const bool boolFluxDeriv )
+		void Flux_function_interface(
+		number& wFL, number& wSL, const number uL, number& WL, const MathVector<dim> vWL, const number RhoL,
+		bool& boolGeomDegL, bool& boolMagDegL,
+		number& wFR, number& wSR, const number uR, number& WR, const MathVector<dim> vWR, const number RhoR,
+		bool& boolGeomDegR, bool& boolMagDegR,
+						    number& Vn, const MathVector<dim> Vel_ip, const MathVector<dim> normal, const bool m_mass_mean, const bool boolFlux, const bool boolFluxDeriv )
 		{
 			bool boolSameU = false;
 			
@@ -532,14 +557,14 @@ class Interface
 			}*/
 	
 			
-			Flux_function( uL, wFL,  wSL, WL,  vWL, Vel_ip, vDW, normal, boolGeomDegL, boolMagDegL,  boolFlux, boolFluxDeriv );
-			Flux_function( uR, wFR,  wSR, WR,  vWR, Vel_ip, vDW, normal, boolGeomDegR, boolMagDegR,  boolFlux, boolFluxDeriv );
+			Flux_function( uL, wFL,  wSL, WL,  vWL, RhoL, Vel_ip, vDW, normal, m_mass_mean, boolGeomDegL, boolMagDegL, boolFlux, boolFluxDeriv );
+			Flux_function( uR, wFR,  wSR, WR,  vWR, RhoR, Vel_ip, vDW, normal, m_mass_mean, boolGeomDegR, boolMagDegR, boolFlux, boolFluxDeriv );
 			Vn = VecProd(Vel_ip,normal);
 			
 			
 		}
 	
-		void Flux_function( const number u, number& Flux, number& Flux_prime, number& Wn, const MathVector<dim> vW, const MathVector<dim> Vel_ip, const MathVector<dim> vDW, const MathVector<dim> normal,
+		void Flux_function( const number u, number& Flux, number& Flux_prime, number& Wn, const MathVector<dim> vW, const number Rho, const MathVector<dim> Vel_ip, const MathVector<dim> vDW, const MathVector<dim> normal, const bool m_mass_mean,
 						   bool& boolGeomDeg, bool& boolMagDeg, const bool boolFlux, const bool boolFluxDeriv )
 		{
 			boolMagDeg = false;
@@ -548,11 +573,17 @@ class Interface
 			MathVector<dim> vFlux;
 			MathVector<dim> vFlux_prime;
 			
-			const number func = u*(1.0-u);
-			const number func_prime = 1.0-2.0*u;
+			number factor1 = m_mass_mean? rho_a*rho_max/Rho: 0.0;
+			number factor2 = m_mass_mean? rho_a/Rho: 1.0;
 			
-			VecScale(vFlux, vW,func);
-			VecScaleAdd(vFlux_prime, func_prime, vW, func, vDW);
+			const number func = u*(1.0-u);
+			const number func_prime = (1.0-2.0*u);
+			//if (m_mass_mean) func_prime += - func*(rho_s-rho_a)*m_packing_factor/Rho;
+			
+			
+			VecScale(vFlux, vW,func*factor2);
+			VecScale(vFlux_prime, vW, func_prime*factor2);
+			//VecScaleAdd(vFlux_prime, func_prime, vW, func, vDW);
 			
 			
 			number Smag = VecLength(vFlux_prime);
@@ -573,7 +604,7 @@ class Interface
 			
 		}
 
-		void Godunov_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
+		void Godunov_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn, const number Wn)
 		{
 			UG_THROW("Interface Godunov flux Module: Not implemented with W/rho");
 			number fL = Vn*UL + wFL;
@@ -875,38 +906,43 @@ class Interface
 			
 			
 		}
-		void Rusanov_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR,  const number Vn )
+	
+		void Rusanov_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR,  const number Vn, const number Wn )
 		{
 
-			const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
-			//const number S=fmax(fabs(wSL),fabs(wSR));
+			//const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
+			const number S=SmoothMax(fabs(wSL),fabs(wSR), 1e-06);
 			
-			Flux = 0.5*(UL+UR)*Vn;
-			//Flux = (Vn > 0)? UL*Vn:UR*Vn;
+			//Flux = 0.5*(UL+UR)*Vn;
+			Flux = (Vn > 0)? UL*Vn:UR*Vn;
 			
-			Flux +=  0.5 * (wFL + wFR) - 0.5*S*(UR-UL);
+			Flux +=  0.5 * (wFL + wFR) - 0.5*S*(UR-UL); //Flux in transport equation
+			
+			DiffFlux = (Wn>0)? wFR- wFL : wFL- wFR;
+			
 			
 		}
 		void Rusanov_jac(number& JacVL,number& JacVR,number& JacWL,number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
 		{
 
-			const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
-			//const number S=fmax(fabs(wSL),fabs(wSR));
+			//const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
+			const number S=SmoothMax(fabs(wSL),fabs(wSR), 1e-06);
 			
 			JacWL = 0.5*(wSL) + 0.5*S;
 			JacWR = 0.5*(wSR) - 0.5*S;
 			
-			JacVL = 0.5 * Vn;
-			JacVR = 0.5 * Vn;
+			//JacVL = 0.5 * Vn;
+			//JacVR = 0.5 * Vn;
 			
-			//JacVL = (Vn > 0)?  Vn : 0.0;
-			//JacVR = (Vn > 0)? 0.0 : Vn;
+			JacVL = (Vn > 0)?  Vn : 0.0;
+			JacVR = (Vn > 0)? 0.0 : Vn;
 			
-			JacVn = 0.5 * (UL + UR);
+			//JacVn = 0.5 * (UL + UR);
+			JacVn = (Vn > 0)?  UL : UR;
 			
 			
 		}
-		void Roe_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
+		void Roe_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn, const number Wn)
 		{
 			UG_THROW("Interface Roe flux : Not implemented with W/rho");
 			number S;
@@ -1008,14 +1044,14 @@ class Interface
 		inline number FluxPlus (const number U);
 		inline number FluxMinus(const number U);
 
-		void EO_flux(number& Flux,
+		void EO_flux(number& Flux, number& DiffFlux,
 					 const number UL,
 					 const number UR,
 					 const number wSL,
 					 const number wSR,
 					 const number wFL,
 					 const number wFR,
-					 const number Vn)
+					 const number Vn, const number Wn)
 		{
 
 			Flux = (Vn > 0.0) ? UL*Vn : UR*Vn;
@@ -1044,7 +1080,7 @@ class Interface
 			JacVR = (Vn > 0.0) ? 0.0 : Vn;
 
 		}
-		void Engquist_Osher_flux(number& Flux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
+		void Engquist_Osher_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn, const number Wn)
 		{
 			// 1. Passive advection splitting (Vn)
 			number Flux_Vn = (Vn > 0.0) ? UL * Vn : UR * Vn;

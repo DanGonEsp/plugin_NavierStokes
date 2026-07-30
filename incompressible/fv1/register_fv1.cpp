@@ -391,6 +391,7 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_div_correction", &T::set_div_correction)
 			.add_method("set_limex_correction", &T::set_limex_correction)
 			.add_method("set_mass_term", &T::set_mass_term)
+			.add_method("set_mass_mean", &T::set_mass_mean)
             .set_construct_as_smart_pointer(true);
         reg.add_class_to_group(name, "NavierStokesFV1M", tag);
     }
