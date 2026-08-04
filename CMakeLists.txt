@@ -83,7 +83,7 @@ set(SOURCES	navier_stokes_base.cpp
 ################################################################################
 # The code below doesn't have to be changed (usually)
 ################################################################################
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 2.8.12...3.20)
 
 project(UG_PLUGIN_${pluginName})
 
