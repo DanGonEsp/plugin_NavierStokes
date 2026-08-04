@@ -630,7 +630,10 @@ class NavierStokesFV1M
 
 	
 		template<typename TFVGeom,size_t NumSCVF, size_t NumSH>
-		inline void vol_flux( const LocalVector& u, const TFVGeom& geo, number* conv_flux_vol, MathVector<dim>* conv_flux_grad, number (&FluxVol_ip_jacV)[NumSCVF][NumSH], number (&FluxVol_ip_jacW)[NumSCVF][NumSH], MathVector<dim>* FluxJacVip, const MathVector<dim> TransportingVel_ip[], const bool jac);
+		inline void vol_flux( const LocalVector& u, const TFVGeom& geo, number* conv_flux_vol, MathVector<dim>* conv_flux_mom, MathVector<dim>* conv_flux_grad, number* conv_flux_div, number (&FluxVol_ip_jacV)[NumSCVF][NumSH], number (&FluxVol_ip_jacW)[NumSCVF][NumSH], MathVector<dim>* FluxJacVip, const MathVector<dim> TransportingVel_ip[], const bool jac);
+	
+		template<typename TFVGeom>
+		inline void vol_flux_grad( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* conv_flux_grad);
 	
 	///	export value of the velocity
 		template <typename TElem, typename TFVGeom>

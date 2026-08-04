@@ -138,7 +138,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
 	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
-	   const MathVector<dim> vStdRelVel[],
+	   const MathVector<dim> vStdRelVelDrift[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCVF,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
@@ -465,7 +465,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
 	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
-	   const MathVector<dim> vStdRelVel[],
+	   const MathVector<dim> vStdRelVelDrift[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCVF,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
@@ -846,7 +846,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
 	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
-	   const MathVector<dim> vStdRelVel[],
+	   const MathVector<dim> vStdRelVelDrift[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCVF,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
@@ -1227,7 +1227,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 	   const DataImport<number, dim>& densitySCV,
 	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
-	   const MathVector<dim> vStdRelVel[],
+	   const MathVector<dim> vStdRelVelDrift[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCVF,
 	   const DataImport<MathVector<dim>, dim>& Source,
 	   const DataImport<MathVector<dim>, dim>& SourceSCV,
@@ -1346,8 +1346,8 @@ update(const FV1Geometry<TElem, dim>* geo,
 		
 		/*if(RelVelSCVF.data_given())
 		{
-			this->compute_upwind_rel(geo, vStdRelVel);
-			this->compute_downwind_rel(geo, vStdRelVel);
+			this->compute_upwind_rel(geo, vStdRelVelDrift);
+			this->compute_downwind_rel(geo, vStdRelVelDrift);
 		}*/
 			
 	}
@@ -1463,7 +1463,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 			{
 				const number rhos = Inter->Density_max();
 				const number alpha_max = Inter->Alpha_max();
-				vNormRelVelPerConvLen[ip] = (rhos/alpha_max) * VecTwoNorm(vStdRelVel[ip]) / (upwind_conv_length_rel(ip) + downwind_conv_length_rel(ip));
+				vNormRelVelPerConvLen[ip] = (rhos/alpha_max) * VecTwoNorm(vStdRelVelDrift[ip]) / (upwind_conv_length_rel(ip) + downwind_conv_length_rel(ip));
 
 			}*/
 			
@@ -1581,6 +1581,12 @@ update(const FV1Geometry<TElem, dim>* geo,
 					rhs +=  vStdVel[ip][d] * vNormStdVelPerDownLen[ip] * (RHO_do[ip]-RHO_up[ip]);//
 					
 				}*/
+				/*if (! bStokes && pvCornerValueOldTime != NULL)
+				{
+					rhs +=  -vStdRelVelDrift[ip][d];//
+					
+				}*/
+				
 				
 				//    loop shape functions
 				for(size_t k = 0; k < scvf.num_sh(); ++k)
@@ -1837,7 +1843,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
 	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
-	   const MathVector<dim> vStdRelVel[],
+	   const MathVector<dim> vStdRelVelDrift[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCVF,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
@@ -1956,8 +1962,8 @@ update(const FV1Geometry<TElem, dim>* geo,
 		
 		/*if(RelVelSCVF.data_given())
 		{
-			this->compute_upwind_rel(geo, vStdRelVel);
-			this->compute_downwind_rel(geo, vStdRelVel);
+			this->compute_upwind_rel(geo, vStdRelVelDrift);
+			this->compute_downwind_rel(geo, vStdRelVelDrift);
 		}*/
 			
 	}
@@ -2073,7 +2079,7 @@ update(const FV1Geometry<TElem, dim>* geo,
 			{
 				const number rhos = Inter->Density_max();
 				const number alpha_max = Inter->Alpha_max();
-				vNormRelVelPerConvLen[ip] = (rhos/alpha_max) * VecTwoNorm(vStdRelVel[ip]) / (upwind_conv_length_rel(ip) + downwind_conv_length_rel(ip));
+				vNormRelVelPerConvLen[ip] = (rhos/alpha_max) * VecTwoNorm(vStdRelVelDrift[ip]) / (upwind_conv_length_rel(ip) + downwind_conv_length_rel(ip));
 
 			}*/
 			
@@ -2449,7 +2455,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
 	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
-	   const MathVector<dim> vStdRelVel[],
+	   const MathVector<dim> vStdRelVelDrift[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCVF,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,
@@ -2553,7 +2559,7 @@ update(const FV1Geometry<TElem, dim>* geo,
        const DataImport<number, dim>& densitySCV,
 	   const DataImport<number, dim>& densitySCV_old,
 	   const number ps[],
-	   const MathVector<dim> vStdRelVel[],
+	   const MathVector<dim> vStdRelVelDrift[],
 	   const DataImport<MathVector<dim>, dim>& RelVelSCVF,
        const DataImport<MathVector<dim>, dim>& Source,
        const DataImport<MathVector<dim>, dim>& SourceSCV,

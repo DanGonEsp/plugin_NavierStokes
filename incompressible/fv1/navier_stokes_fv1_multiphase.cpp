@@ -530,6 +530,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	MathVector<dim> Vel_ip[numSCVF];
 	MathVector<dim> TransportingVel_ip[numSCVF];
 	MathVector<dim> conv_flux_grad[numSCVF];
+	MathVector<dim> conv_flux_mom[numSCVF];
 	number Gamma[numSh];
 	number Rho_up[numSCVF];
 	number Rho_do[numSCVF];
@@ -537,6 +538,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	number Ps[numSh];
 	number DPs[numSh];
 	number conv_flux_vol[numSCVF];
+	number conv_flux_div[numSCVF];
 	
 	number FluxVol_ip_jacV[numSCVF][numSh] = {0};
 	number FluxVol_ip_jacW[numSCVF][numSh] = {0};
@@ -593,6 +595,8 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	
 	std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCVF, m_imDensitySCV_A, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
 	
+	vol_flux_grad( u, geo, conv_flux_grad);
+	
     if(Inter->ParticleGradientForce())
 	{
 		if( m_imAverageGammaSCV.data_given())
@@ -608,7 +612,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	}
     
 
-	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV_A, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
+	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV_A, m_imDensitySCV_old, Ps, conv_flux_grad, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
     
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
@@ -681,7 +685,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;
 	//const INavierStokesUpwind<dim>& upwind_rel = *m_spConvUpwind_rel;
 	
-	vol_flux( u, geo, conv_flux_vol, conv_flux_grad, FluxVol_ip_jacV, FluxVol_ip_jacW, JacVip, TransportingVel_ip, true);
+	vol_flux( u, geo, conv_flux_vol,conv_flux_mom, conv_flux_grad, conv_flux_div, FluxVol_ip_jacV, FluxVol_ip_jacW, JacVip, TransportingVel_ip, true);
 
 // 	loop Sub Control Volume Faces (SCVF)
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -1832,6 +1836,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	MathVector<dim> Vel_ip[numSCVF];
 	MathVector<dim> TransportingVel_ip[numSCVF];
 	MathVector<dim> conv_flux_grad[numSCVF];
+	MathVector<dim> conv_flux_mom[numSCVF];
 	number Gamma[numSh];
 	number Rho_up[numSCVF];
 	number Rho_do[numSCVF];
@@ -1839,6 +1844,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	number Ps[numSh];
 	number DPs[numSh];
 	number conv_flux_vol[numSCVF];
+	number conv_flux_div[numSCVF];
 	number MassChange[numSh];
 	
 	number FluxVol_ip_jacV[numSCVF][numSh] = {0};
@@ -1908,6 +1914,9 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 
 	std_vel(  u,  geo, StdVel, StdVel_ip, StdMomentum, m_imDensitySCVF, m_imDensitySCV_A, m_imKinViscositySCV, Rho_up,Rho_do,ConvRatio);
 	
+	vol_flux_grad( u, geo, conv_flux_grad);
+	
+	
     if(Inter->ParticleGradientForce())
 	{
 		if( m_imAverageGammaSCV.data_given())
@@ -1926,7 +1935,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     //	compute stabilized velocities and shapes for continuity equation
     // \todo: (optional) Here we can skip the computation of shapes, implement?
 
-	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV_A, m_imDensitySCV_old, Ps, StdCharacteristicVel, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
+	m_spStab->update(&geo, *pSol, StdVel_ip, m_bStokes, m_imKinViscosity, m_imKinViscositySCV, m_imDensitySCVF, m_imDensitySCVF_old, m_imDensitySCV_A, m_imDensitySCV_old, Ps, conv_flux_grad, m_imRelativeVelocitySCVF, m_imSourceSCVF, m_imSourceSCV, m_imPressureGradientSCVF, pOldSol, dt, JumpShape, Phase2, cut_elem);
     if (! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
     {
         //	compute stabilized velocities and shapes for convection upwind
@@ -2000,7 +2009,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	//const INavierStokesUpwind<dim>& upwind_rel = *m_spConvUpwind_rel;
 
 	
-	vol_flux( u, geo, conv_flux_vol, conv_flux_grad, FluxVol_ip_jacV, FluxVol_ip_jacW, JacVip, TransportingVel_ip, false);
+	vol_flux( u, geo, conv_flux_vol, conv_flux_mom, conv_flux_grad, conv_flux_div, FluxVol_ip_jacV, FluxVol_ip_jacW, JacVip, TransportingVel_ip, false);
 
 
 // 	loop Sub Control Volume Faces (SCVF)
@@ -2131,24 +2140,19 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 				d(d1, scvf.to()  ) -= UpwindMomentum[d1] * prod;
 			}
 			
-			/*if(m_imRelativeVelocitySCVF.data_given())
-			{
-				const number rhos = Inter->Density_s();
-				MathVector<dim> UpwindRelMomentum = upwind_rel.upwind_vector( ip, u, _C_, m_imRelativeVelocitySCVF.values(), rhos);
 
-			//	compute product of relative Velocity and normal
-				const number rel_prod = VecProd(StdCharacteristicVel[ip], scvf.normal()) ;
 				
-			//	Add contributions to local velocity components
+		//	Add contributions to local velocity components due to dirft velcocity Div(rhos rhoa c(1-c) W/Rho)
+			if(this->is_time_dependent())
+			{
 				for(int d1 = 0; d1 < dim; ++d1)
 				{
-					d(d1, scvf.from()) += UpwindRelMomentum[d1] * rel_prod;
-					d(d1, scvf.to()  ) -= UpwindRelMomentum[d1] * rel_prod;
+					d(d1, scvf.from()) += conv_flux_mom[ip][d1];
+					d(d1, scvf.to()  ) -= conv_flux_mom[ip][d1];
 				}
+			}
 				
 				
-			}*/
-			
 			
             
             
@@ -2199,6 +2203,15 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	//	Add contributions to local defect
 		d(_P_, scvf.from()) += contFlux;
 		d(_P_, scvf.to()  ) -= contFlux;
+		
+		
+		if(this->is_time_dependent())
+		{
+			
+			//	Add contributions to local defect due to drift velocity
+			d(_P_, scvf.from()) += (-1.0) * conv_flux_div[ip];
+			d(_P_, scvf.to()  ) -= (-1.0) * conv_flux_div[ip];
+		}
         
         
         /*if(m_imRelativeVelocitySCVF.data_given())
@@ -3104,7 +3117,7 @@ template<typename TFVGeom,size_t NumSCVF, size_t NumSH>
 inline
 void
 NavierStokesFV1M<TDomain>::
-vol_flux( const LocalVector& u, const TFVGeom& geo, number* conv_flux_vol, MathVector<dim>* conv_flux_grad, number (&FluxVol_ip_jacV)[NumSCVF][NumSH], number (&FluxVol_ip_jacW)[NumSCVF][NumSH], MathVector<dim>* FluxJacVip, const MathVector<dim> TransportingVel_ip[], const bool jac)
+vol_flux( const LocalVector& u, const TFVGeom& geo, number* conv_flux_vol, MathVector<dim>* conv_flux_mom, MathVector<dim>* conv_flux_grad, number* conv_flux_div, number (&FluxVol_ip_jacV)[NumSCVF][NumSH], number (&FluxVol_ip_jacW)[NumSCVF][NumSH], MathVector<dim>* FluxJacVip, const MathVector<dim> TransportingVel_ip[], const bool jac)
 {
 	const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;
 	
@@ -3160,21 +3173,26 @@ vol_flux( const LocalVector& u, const TFVGeom& geo, number* conv_flux_vol, MathV
 				Inter->Flux_ip(FluxVol_ip, FluxMom_ip, FluxDiv_ip, FluxGrad_ip, u(_C_,from), u(_C_,to), m_imDensitySCV_A[from], m_imDensitySCV_A[to], Wrel_L, Wrel_R,  TransportingVel_ip[ip], scvf.normal() ,m_upwind_vol_method, m_mass_mean);
 				
 				if(jac)
+				{
 					Inter->Flux_Jac_ip(JacVL,JacVR,JacWL, JacWR, JacVip, u(_C_,from), u(_C_,to), m_imDensitySCV_A[from], m_imDensitySCV_A[to], Wrel_L, Wrel_R,  TransportingVel_ip[ip], scvf.normal(), m_upwind_vol_method, m_mass_mean);
-				
-				
+					
+					FluxVol_ip_jacV[ip][from] = JacVL;
+					FluxVol_ip_jacV[ip][to]  = JacVR;
+					
+					
+					FluxVol_ip_jacW[ip][from] = JacWL;
+					FluxVol_ip_jacW[ip][to]  = JacWR;
+					
+					FluxJacVip[ip] = JacVip;
+				}
 				
 				conv_flux_vol[ip] += FluxVol_ip;
+				
+				conv_flux_mom[ip] = FluxMom_ip;
+				
 				VecScale(conv_flux_grad[ip],FluxGrad_ip,1.0/dist);
 				
-				FluxVol_ip_jacV[ip][from] = JacVL;
-				FluxVol_ip_jacV[ip][to]  = JacVR;
-				
-				
-				FluxVol_ip_jacW[ip][from] = JacWL;
-				FluxVol_ip_jacW[ip][to]  = JacWR;
-				
-				FluxJacVip[ip] = JacVip;
+				conv_flux_div[ip] = FluxDiv_ip;
 				
 			}
 			else
@@ -3184,6 +3202,68 @@ vol_flux( const LocalVector& u, const TFVGeom& geo, number* conv_flux_vol, MathV
 			}
 			
 		}
+	}
+
+	
+	
+}
+
+template<typename TDomain>
+template<typename TFVGeom>
+inline
+void
+NavierStokesFV1M<TDomain>::
+vol_flux_grad( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* conv_flux_grad)
+{
+	
+	MathVector<dim> DumbVariable = 0.0;
+	
+	// 	loop Sub Control Volume Faces (SCVF)
+	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+	{
+		const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+		
+		const size_t from = scvf.from();
+		const size_t to = scvf.to();
+		const number dist = VecDistance(geo.corners() [to], geo.corners() [from]);
+		
+		
+		number FluxVol_ip = 0.0;
+		MathVector<dim> Wrel_L = 0, Wrel_R = 0.0;
+		MathVector<dim> Wslip_L = 0, Wslip_R = 0.0;
+		
+		MathVector<dim> FluxMom_ip = 0.0;
+		number FluxDiv_ip = 0.0;
+		MathVector<dim> FluxGrad_ip = 0.0;
+		
+		if(m_upwind_vol_method != 0)
+		{
+			if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
+			{
+			
+				if(m_imRelativeVelocitySCV.data_given())
+				{
+					Wrel_L = m_imRelativeVelocitySCV[from];
+					Wrel_R = m_imRelativeVelocitySCV[to];
+				}
+				if(m_imSlipVelocitySCVF.data_given())
+				{
+					VecAdd(Wrel_L, m_imSlipVelocitySCVF[ip], Wrel_L );
+					VecAdd(Wrel_R, m_imSlipVelocitySCVF[ip], Wrel_R );
+				}
+				
+				
+				
+				Inter->Flux_ip(FluxVol_ip, FluxMom_ip, FluxDiv_ip, FluxGrad_ip, u(_C_,from), u(_C_,to), m_imDensitySCV_A[from], m_imDensitySCV_A[to], Wrel_L, Wrel_R,  DumbVariable, scvf.normal() ,m_upwind_vol_method, m_mass_mean);
+				
+			
+			
+				
+			}
+
+			
+		}
+		VecScale(conv_flux_grad[ip],FluxGrad_ip,1.0/dist);
 	}
 
 	
