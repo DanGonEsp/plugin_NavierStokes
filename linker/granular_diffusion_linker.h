@@ -125,7 +125,6 @@ class GranularDiffusionLinker
 			bool cut_elem=false;
 			bool inside = false;
 			Inter->cut_element(cut_elem,inside,  u,dim+1);
-			const number deltaGamma = Inter->param_deltaGamma();
 			const number packing_factor = Inter->packing_factor();
 			
             for(size_t ip = 0; ip < nip; ++ip)
@@ -145,7 +144,7 @@ class GranularDiffusionLinker
 							gamma += pow((vVelocityGrad[ip](d1,d2) + vVelocityGrad[ip](d2,d1)),2.0);
 						}
 					}
-					gamma =sqrt(pow(deltaGamma,2)+(0.5*gamma));
+					gamma =sqrt((0.5*gamma));
 					MatDiagSet(Diff,m_Diff_factor * packing_factor * vMixViscosity[ip] * gamma);
 				}
 				else
@@ -184,7 +183,6 @@ class GranularDiffusionLinker
 			bool cut_elem=false;
 			bool inside = false;
 			Inter->cut_element(cut_elem,inside,  u,dim+1);
-			const number deltaGamma = Inter->param_deltaGamma();
 			const number packing_factor = Inter->packing_factor();
 			
 
@@ -207,7 +205,7 @@ class GranularDiffusionLinker
 						}
 					}
 					
-					gamma =sqrt(pow(deltaGamma,2)+(0.5*gamma));
+					gamma =sqrt((0.5*gamma));
 					
 					Diffusion[ip] = m_Diff_factor * packing_factor * vMixViscosity[ip] * gamma;
 					

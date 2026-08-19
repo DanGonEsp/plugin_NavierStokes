@@ -1182,8 +1182,12 @@ class DuneNormal
 private:
 
 	//    Normal attachment accessor (average normal in vertices)
-	AMathVectorDim m_aNormal;
-	aVertexDimVector m_normal;
+	AMathVectorDim m_aNewNormal;
+	aVertexDimVector m_new_normal;
+	
+	//    Normal attachment accessor (average normal in vertices)
+	AMathVectorDim m_aOldNormal;
+	aVertexDimVector m_old_normal;
 	
 	//    Normal attachment accessor (average normal in vertices)
 	//AMathVectorDim m_aTang;
@@ -1205,6 +1209,7 @@ private:
 	number m_limit = 1e-03;
 	number m_limit_grad = 1e-03;
 	number m_theta_cr = 34.0*3.1416/180.0;
+	number m_omega = 1.0;
 
 private:
 
@@ -1248,16 +1253,18 @@ public:
 		grid_type& grid = *domain.grid();
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
-		grid.template attach_to<Vertex>(m_aNormal);
-		//grid.template attach_to<Vertex>(m_aTang);
+		grid.template attach_to<Vertex>(m_aNewNormal);
+		grid.template attach_to<Vertex>(m_aOldNormal);
 		grid.template attach_to<Vertex>(m_aVol);
-		m_normal.access(grid,m_aNormal);
-		//m_tang.access(grid,m_aTang);
+		m_new_normal.access(grid,m_aNewNormal);
+		m_old_normal.access(grid,m_aOldNormal);
 		m_vol.access(grid,m_aVol);
 		// set all values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_new_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_old_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		
+		
 		//this->update();
 	}
 
@@ -1332,7 +1339,7 @@ public:
 			for (size_t sh=0;sh<numVertices;sh++)
 				for(int d = 0; d < refDim; ++d)
 				{
-					normal[d] += m_normal[vVrt[sh]][d]*shapes[sh];
+					normal[d] += m_new_normal[vVrt[sh]][d]*shapes[sh];
 				}
 			number normal_mag =  VecTwoNorm(normal);
 
@@ -1348,6 +1355,7 @@ public:
 	void update(){
 		//    get domain
 		UG_LOG("Updating normal... \n");
+		
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1363,7 +1371,8 @@ public:
 
 		// set volume, tang and normal values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_new_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_old_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		// compute pressure in vertices by averaging
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
@@ -1380,10 +1389,11 @@ public:
 				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
 				for(size_t i = 0; i < numVertices; ++i){
 					number scvVol = geo.scv(i).volume();
-					
+					const number eps_grad = 1e-04;
 					MathVector<dim> GradC; VecSet(GradC,0.0);
 					MathVector<dim> Normal; VecSet(Normal,0.0);
-					MathVector<dim> nn; VecSet(Normal,0.0); nn[dim-1] = -1.0;
+					MathVector<dim> nn; VecSet(nn,0.0); nn[dim-1] = -eps_grad;
+					
 					
 					//    sum up contributions of each shape
 					for(size_t sh = 0; sh < numVertices; ++sh)
@@ -1398,38 +1408,35 @@ public:
 							GradC[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
 						}
 					}
+					
 					const number grad_c_mag = VecTwoNorm(GradC);
-					const number eps = 5e-01;
+					const number eps = 1e-01;
 					const number p = 2.0;
-					const number alpha = fmin(pow(grad_c_mag,p)/(pow(grad_c_mag,p) + eps),1.0 );
-					VecScaleAdd(GradC,alpha, GradC, 1.0-alpha,nn);
-					const number GRAD_c_mag = VecTwoNorm(GradC);
-					/*if(grad_c_mag<=m_limit_grad)
-					{
-						VecSet(Normal,0.0);
-					}
-					else
-					{
-						VecScale(Normal,GradC,-1.0/grad_c_mag);
-						m_vol[vVrt[i]]+=scvVol;
-					}*/
-					VecScale(Normal,GradC,-1.0/GRAD_c_mag);
+					const number alpha = pow(grad_c_mag,p)/(pow(grad_c_mag,p) + eps) ;
+					VecScaleAdd(GradC,alpha, GradC, 1.0,nn);
+					
 					m_vol[vVrt[i]]+=scvVol;
 					
 					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol;
+						m_new_normal[vVrt[i]][d1] += GradC[d1] * scvVol;
 					
 					
 				}
+			
 			}
 		}
 		
 		#ifdef UG_PARALLEL
 			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol, PCL_RO_SUM);
-			AttachmentAllReduce<Vertex> (*domain.grid(), m_aNormal, PCL_RO_SUM);
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aNewNormal, PCL_RO_SUM);
 		#endif
 		
 		PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
+		
+		
+		
+
+		
 		// go over all vertices and average
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
 			VertexIterator iter = m_u->template begin<Vertex>(si);
@@ -1440,34 +1447,20 @@ public:
 				if (pbm && pbm->is_slave(vrt)) continue;
 
 				for(int d1 = 0; d1 <dim; ++d1)
-					m_normal[vrt][d1] /= m_vol[vrt];
+					m_new_normal[vrt][d1] /= m_vol[vrt];
+				
+				
+				const number NormalMag = VecTwoNorm(m_new_normal[vrt]);
+				
+			
+				VecScaleAdd(m_new_normal[vrt],-1.0*m_omega/NormalMag,m_new_normal[vrt],1-m_omega, m_old_normal[vrt]);
+				m_old_normal[vrt] = m_new_normal[vrt];
+				
 
-				/*MathVector<dim> tang; VecSet(tang,0.0);
-				if(dim == 2)
-				{
-					number ss;
-					if(fabs(m_normal[vrt][0])<m_limit)
-						ss = 1.0;
-					else
-						ss = (m_normal[vrt][0]*m_normal[vrt][1]>0.0)? 1.0 : -1.0;
-					
-					tang[0] =   ss * m_normal[vrt][1];
-					tang[1] = - fabs(m_normal[vrt][0]);
-				}
-				else if (dim == 3)
-				{
-					tang[0] = -m_normal[vrt][0]*m_normal[vrt][1];
-					tang[1] = -m_normal[vrt][1]*m_normal[vrt][2];
-					tang[2] =  m_normal[vrt][0]*m_normal[vrt][0] + m_normal[vrt][1]*m_normal[vrt][1];
-					UG_THROW("DuneNormal: Works only for Dim = 2");
-				}
-				else UG_THROW("DuneNormal: Works only for Dim = 2 , 3");
-
-				//VecScale(tang, tang,1.0/VecTwoNorm(tang));
-				m_tang[vrt] = tang;*/
 				
 			}
 		}
+		
 	}
 
 private:
@@ -1562,14 +1555,14 @@ class SlipVelocity
 
 private:
 
-	//    Normal attachment accessor (average normal in vertices)
-	AMathVectorDim m_aNormal;
-	aVertexDimVector m_normal;
+	//    OldNormal attachment accessor (average normal in vertices)
+	AMathVectorDim m_aOldNormal;
+	aVertexDimVector m_old_normal;
 	
-	//    Normal attachment accessor (average normal in vertices)
-	//AMathVectorDim m_aTang;
-	//aVertexDimVector m_tang;
-
+	//    NewNormal attachment accessor (average normal in vertices)
+	AMathVectorDim m_aNewNormal;
+	aVertexDimVector m_new_normal;
+	
 	//  volume attachment accessor
 	ANumber m_aVol;
 	aVertexNumber m_vol;
@@ -1593,6 +1586,10 @@ private:
 	///    Data import for source
 	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imSource;
 	Interface<dim>* Inter;
+	
+	int m_counter = -1;
+	int m_skip_update = 0;
+	number m_omega = 1.0;
 
 		  public:
 	void set_theta(number data)
@@ -1607,6 +1604,12 @@ private:
 	{
 		m_limit = data;
 		m_limit_grad = 0.001 * data;
+	}
+	void set_omega(number data)
+	{
+		if (data>1.0 || data<0.0)
+			UG_THROW("SlipVelocity: Damping factor must be between 1.0 and 0.0");
+		m_omega = data;
 	}
 	
 	void set_phase_parameters(Interface<dim>* user)
@@ -1634,16 +1637,20 @@ public:
 		grid_type& grid = *domain.grid();
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
-		grid.template attach_to<Vertex>(m_aNormal);
-		//grid.template attach_to<Vertex>(m_aTang);
+		
+		
+		grid.template attach_to<Vertex>(m_aNewNormal);
+		grid.template attach_to<Vertex>(m_aOldNormal);
 		grid.template attach_to<Vertex>(m_aVol);
-		m_normal.access(grid,m_aNormal);
-		//m_tang.access(grid,m_aTang);
+		
+		m_new_normal.access(grid,m_aNewNormal);
+		m_old_normal.access(grid,m_aOldNormal);
 		m_vol.access(grid,m_aVol);
 		// set all values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_new_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_old_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		
 		//this->update();
 	}
 
@@ -1698,13 +1705,13 @@ public:
 		
 
 	//    storage for shape function at ip
-		MathVector<refDim> vLocGrad[numVertices];
-		MathVector<refDim> locGrad;
+		//MathVector<refDim> vLocGrad[numVertices];
+		//MathVector<refDim> locGrad;
 
 	//    Reference Mapping
-		MathMatrix<dim, refDim> JTInv;
+		//MathMatrix<dim, refDim> JTInv;
 		
-		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
+		//DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
 		
 		bool cut_elem=false;
 		bool boolInside = false;
@@ -1714,14 +1721,16 @@ public:
 		for (size_t ip=0;ip<nip;ip++)
 		{
 			MathVector<dim> tang = 0.0;
-			MathVector<dim> normal; VecSet(normal, 0.0);
-			const number eps_n = 1e-10;
-			const number eps_t = 1e-10;
-			const number eps_slope = 1e-05;
+			MathVector<dim> normal = 0.0;
+			number Value = 0.0;
+			const number eps_z = 1e-5;
+			const number eps_slope = 1e-02;
+			const number eps_grad = 1e-03;
+			
 			
 			if(ComputeSlipVel)
 			{
-				//MathVector<dim> GradC = 0.0;
+				//MathVector<dim> NormalGradC = 0.0;
 				rTrialSpace.shapes(shapes,vLocIP[ip]);
 				
 				
@@ -1733,19 +1742,26 @@ public:
 					//VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
 				
 				//    compute global grad
-				mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
-				//MatVecMult(GradC, JTInv, locGrad);
+				//mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
+				//MatVecMult(NormalGradC, JTInv, locGrad);
 				
-				//number gradc_mag =  VecTwoNorm(GradC);
+				//for(int d = 0; d < dim-1; ++d)
+					//NormalGradC[d] += eps_grad;
+				//number gradc_mag_sq =  VecTwoNorm(NormalGradC);
+				
+				//VecScale(NormalGradC,NormalGradC,-1.0/gradc_mag_sq);
 				
 				for (size_t sh=0;sh<numVertices;sh++)
 				{
-					for(int d = 0; d < refDim; ++d)
+					for(int d = 0; d < dim; ++d)
 					{
-						normal[d] += m_normal[vVrt[sh]][d]*shapes[sh];
+						normal[d] += m_new_normal[vVrt[sh]][d]*shapes[sh];
 					}
 				}
-				number normal_mag =  sqrt(pow(VecTwoNorm(normal),2.0) + eps_n*eps_n);
+				
+				number normal_mag = VecTwoNorm(normal);
+				
+				
 
 				VecScale(normal,normal,1.0/normal_mag);
 				
@@ -1753,41 +1769,54 @@ public:
 				for(int d = 0; d < dim-1; ++d)
 					nxy2 += normal[d]*normal[d];
 
-				number nxy = sqrt(nxy2 + eps_t*eps_t);
-				number nz = sqrt(normal[dim-1]*normal[dim-1] + eps_n*eps_n);
+				number nxy = sqrt(nxy2);
+				number nz = sqrt(normal[dim-1]*normal[dim-1] + eps_z*eps_z);
 				
 
 
 				
-				MathVector<dim> h = normal;
+				MathVector<dim> h = 0;
 				h[dim-1] = 0.0;
-
-				number hmag = sqrt(VecProd(h,h) + eps_t*eps_t);
+				h[dim-2] += -eps_grad;
+				
+				number hmag = sqrt(VecProd(h,h));
 				VecScale(h, h, 1.0 / hmag);
 				
 				MathVector<dim> z = 0.0;
 				z[dim-1] = 1.0;
 				VecScaleAdd(tang,cos(m_theta_cr),  h, - sin(m_theta_cr),z);
 				
+				UG_THROW("SlipVel:  Unitary direction not defined, Oscilations due to the change direction");
+				
 				
 				
 				
 				number slope = nxy / nz;
-				number Value = slope - tan(m_theta_cr);
-				Value = (Value + sqrt(pow(Value,2.0) + eps_slope)) / 2.0;
-				//Value = (Value + fabs(Value))/2.0;
+				Value = slope - tan(m_theta_cr);
+				Value = (Value + sqrt(pow(Value,2.0) + eps_slope*eps_slope)) / 2.0;
 				Value /= sqrt(1.0 + pow(slope,2.0));
+				
 				
 				if(std::isnan(Value))
 				{
+					
+					UG_LOG("  normal_mag = " <<normal_mag<<".\n");
 					UG_LOG("  normal = " <<normal[0]<<"  "<<normal[1]<<".\n");
 					
-					UG_LOG("  normal0 = " <<m_normal[vVrt[0]][0]<<"  "<<m_normal[vVrt[0]][1]<<".\n");
-					UG_LOG("  normal1 = " <<m_normal[vVrt[1]][0]<<"  "<<m_normal[vVrt[1]][1]<<".\n");
-					UG_LOG("  normal2 = " <<m_normal[vVrt[2]][0]<<"  "<<m_normal[vVrt[2]][1]<<".\n");
+					UG_LOG("  normal0 = " <<m_new_normal[vVrt[0]][0]<<"  "<<m_new_normal[vVrt[0]][1]<<".\n");
+					UG_LOG("  normal1 = " <<m_new_normal[vVrt[1]][0]<<"  "<<m_new_normal[vVrt[1]][1]<<".\n");
+					UG_LOG("  normal2 = " <<m_new_normal[vVrt[2]][0]<<"  "<<m_new_normal[vVrt[2]][1]<<".\n");
+					UG_LOG("  normal3 = " <<m_new_normal[vVrt[3]][0]<<"  "<<m_new_normal[vVrt[3]][1]<<".\n");
+					
+					UG_LOG("  shapes = " <<shapes[0]<<" .\n");
+					UG_LOG("  shapes = " <<shapes[1]<<" .\n");
+					UG_LOG("  shapes = " <<shapes[2]<<" .\n");
+					UG_LOG("  shapes = " <<shapes[3]<<" .\n");
 					
 					
-					UG_THROW("Non valid number SlipVel  Value = " <<Value<<"  slope = "<< slope <<"  tang_mag = .\n");
+					
+					
+					UG_THROW("Non valid number SlipVel  Value = " <<Value<<"  slope = "<< slope <<"  nz = "<< nz <<"  nxy = "<< nxy <<"  tang_mag = "<<tang[0]<<"  "<<tang[1]<<" \n");
 				}
 				VecScale(tang,tang,m_vel*Value);
 			}
@@ -1805,8 +1834,20 @@ public:
 	}; // evaluate
 
 	void update(){
-		//    get domain
+		
+		if(m_counter>=0)
+		{
+			++m_counter;
+			if( m_counter % (m_skip_update+1) != 0)
+			{
+				UG_LOG("Skipping...\n");
+				return ;
+			}
+			else m_counter = 0;
+		}else{m_counter = 0;}
+		
 		UG_LOG("Updating Slip Velocity... \n");
+		//    get domain
 		domain_type& domain = *m_u->domain().get();
 		//    create Multiindex
 		std::vector<DoFIndex> multInd;
@@ -1822,7 +1863,8 @@ public:
 
 		// set volume, tang and normal values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_new_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_old_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		// compute pressure in vertices by averaging
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
@@ -1839,10 +1881,11 @@ public:
 				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
 				for(size_t i = 0; i < numVertices; ++i){
 					number scvVol = geo.scv(i).volume();
-					
+					const number eps_grad = 1e-04;
 					MathVector<dim> GradC; VecSet(GradC,0.0);
 					MathVector<dim> Normal; VecSet(Normal,0.0);
-					MathVector<dim> nn; VecSet(Normal,0.0); nn[dim-1] = -1.0;
+					MathVector<dim> nn; VecSet(nn,0.0); nn[dim-1] = -eps_grad;
+					
 					
 					//    sum up contributions of each shape
 					for(size_t sh = 0; sh < numVertices; ++sh)
@@ -1857,40 +1900,35 @@ public:
 							GradC[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
 						}
 					}
+					
 					const number grad_c_mag = VecTwoNorm(GradC);
-					const number eps = 5e-01;
+					const number eps = 1e-01;
 					const number p = 2.0;
 					const number alpha = pow(grad_c_mag,p)/(pow(grad_c_mag,p) + eps) ;
-					VecScaleAdd(GradC,alpha, GradC, 1.0-alpha,nn);
-					const number GRAD_c_mag = VecTwoNorm(GradC);
+					VecScaleAdd(GradC,alpha, GradC, 1.0,nn);
 					
-					/*if(grad_c_mag<=m_limit_grad)
-					{
-						VecSet(Normal,0.0);
-					}
-					else
-					{
-						VecScale(Normal,GradC,-1.0/grad_c_mag);
-						m_vol[vVrt[i]]+=scvVol;
-					}*/
-					
-					VecScale(Normal,GradC,-1.0/GRAD_c_mag);
 					m_vol[vVrt[i]]+=scvVol;
 					
 					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol;
+						m_new_normal[vVrt[i]][d1] += GradC[d1] * scvVol;
 					
 					
 				}
+			
 			}
 		}
 		
 		#ifdef UG_PARALLEL
-			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol,    PCL_RO_SUM);
-			AttachmentAllReduce<Vertex> (*domain.grid(), m_aNormal, PCL_RO_SUM);
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol, PCL_RO_SUM);
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aNewNormal, PCL_RO_SUM);
 		#endif
 		
 		PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
+		
+		
+		
+
+		
 		// go over all vertices and average
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
 			VertexIterator iter = m_u->template begin<Vertex>(si);
@@ -1901,34 +1939,23 @@ public:
 				if (pbm && pbm->is_slave(vrt)) continue;
 
 				for(int d1 = 0; d1 <dim; ++d1)
-					m_normal[vrt][d1] /= m_vol[vrt];
+					m_new_normal[vrt][d1] /= m_vol[vrt];
+				
+				
+				const number NormalMag = VecTwoNorm(m_new_normal[vrt]);
+				
+			
+				VecScaleAdd(m_new_normal[vrt],-1.0*m_omega/NormalMag,m_new_normal[vrt],1-m_omega, m_old_normal[vrt]);
+				m_old_normal[vrt] = m_new_normal[vrt];
+				
 
-				/*MathVector<dim> tang; VecSet(tang,0.0);
-				if(dim == 2)
-				{
-					number ss;
-					if(fabs(m_normal[vrt][0])<m_limit)
-						ss = 1.0;
-					else
-						ss = (m_normal[vrt][0]*m_normal[vrt][1]>0.0)? 1.0 : -1.0;
-					
-					tang[0] =   ss * m_normal[vrt][1];
-					tang[1] = - fabs(m_normal[vrt][0]);
-				}
-				else if (dim == 3)
-				{
-					tang[0] = -m_normal[vrt][0]*m_normal[vrt][1];
-					tang[1] = -m_normal[vrt][1]*m_normal[vrt][2];
-					tang[2] =  m_normal[vrt][0]*m_normal[vrt][0] + m_normal[vrt][1]*m_normal[vrt][1];
-					UG_THROW("SlipVelocity: Works only for Dim = 2");
-				}
-				else UG_THROW("SlipVelocity: Works only for Dim = 2 , 3");
-
-				//VecScale(tang, tang,1.0/VecTwoNorm(tang));
-				m_tang[vrt] = tang;*/
 				
 			}
 		}
+		
+		//this->transferToLowerLevels(m_new_normal,*m_spApproxSpace);
+		//this->transferToLowerLevels(m_old_normal,*m_spApproxSpace);
+		
 	}
 
 private:
@@ -2023,12 +2050,12 @@ class SlipDiffusion
 private:
 
 	//    Normal attachment accessor (average normal in vertices)
-	AMathVectorDim m_aNormal;
-	aVertexDimVector m_normal;
+	AMathVectorDim m_aNewNormal;
+	aVertexDimVector m_new_normal;
 	
 	//    Normal attachment accessor (average normal in vertices)
-	//AMathVectorDim m_aTang;
-	//aVertexDimVector m_tang;
+	AMathVectorDim m_aOldNormal;
+	aVertexDimVector m_old_normal;
 
 	//  volume attachment accessor
 	ANumber m_aVol;
@@ -2047,6 +2074,7 @@ private:
 	number m_limit_grad = 1e-03;
 	number m_theta_cr = 34.0*3.1416/180.0;
 	number m_diff = 0.15;
+	number m_omega = 1.0;
 
 private:
 
@@ -2129,6 +2157,12 @@ public:
 		m_limit = data;
 		m_limit_grad = 0.001 * data;
 	}
+	void set_omega(number data)
+	{
+		if (data>1.0 || data<0.0)
+			UG_THROW("SlipDiffusion: Damping factor must be between 1.0 and 0.0");
+		m_omega = data;
+	}
 	
 	void set_phase_parameters(Interface<dim>* user)
 	{
@@ -2158,16 +2192,16 @@ public:
 		set_diffusion(0.0);
 		set_normal(0.0);
 
-		grid.template attach_to<Vertex>(m_aNormal);
-		//grid.template attach_to<Vertex>(m_aTang);
+		grid.template attach_to<Vertex>(m_aNewNormal);
+		grid.template attach_to<Vertex>(m_aOldNormal);
 		grid.template attach_to<Vertex>(m_aVol);
-		m_normal.access(grid,m_aNormal);
-		//m_tang.access(grid,m_aTang);
+		m_new_normal.access(grid,m_aNewNormal);
+		m_old_normal.access(grid,m_aOldNormal);
 		m_vol.access(grid,m_aVol);
 		// set all values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_new_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_old_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		this->update();
 	}
 
@@ -2225,28 +2259,33 @@ public:
 
 	//    storage for shape function at ip
 		//MathVector<refDim> vLocGrad[numVertices];
-		MathVector<refDim> locGrad;
+		//MathVector<refDim> locGrad;
 
 	//    Reference Mapping
 		//MathMatrix<dim, refDim> JTInv;
 		
-		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
+		//DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
 		
 		(*m_imDiffusion)(vValue, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 		
-		std::vector<MathVector<dim> > vNormal(nip);
-		(*m_imNormal)(&vNormal[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
+		//std::vector<MathVector<dim> > vNormal(nip);
+		//(*m_imNormal)(&vNormal[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 		
 		bool cut_elem = false;
 		bool boolInside = false;
 		Inter->cut_element(cut_elem,boolInside, u, _C_);
-		bool ComputeSlipDiff =(cut_elem || boolInside)? true : false;
+		bool ComputeSlipDiff =(cut_elem || boolInside || !boolInside)? true : false;
 		
 		for (size_t ip=0;ip<nip;ip++)
 		{
 			MathVector<dim> normal = 0.0;
 			MathVector<dim> tang = 0.0;
 			number Value = 0.0;
+			
+			const number eps_z = 1e-5;
+			const number eps_t = 1e-2;
+			const number eps_slope = 1e-02;
+			const number eps_norm = 1e-8;
 			
 			if(ComputeSlipDiff)
 			{
@@ -2268,44 +2307,65 @@ public:
 				for (size_t sh=0;sh<numVertices;sh++)
 					for(int d = 0; d < dim; ++d)
 					{
-						normal[d] += m_normal[vVrt[sh]][d]*shapes[sh];
+						normal[d] += m_new_normal[vVrt[sh]][d]*shapes[sh];
 						//tang[d] += m_tang[vVrt[sh]][d]*shapes[sh];
 					}
+				normal[dim-1] +=eps_norm;
 				number normal_mag =  VecTwoNorm(normal);
 				//number gradc_mag =  VecTwoNorm(GradC);
-				if(normal_mag<m_limit)
-				{
-					VecSet(normal,0.0);
-					normal[dim-1] = 1.0;
-				}
-
+				
 				VecScale(normal,normal,1.0/normal_mag);
+
 				
-				number tang_mag =  0.0;
+				number nxy2 = 0.0;
 				for(int d = 0; d < dim-1; ++d)
-					tang_mag += pow(normal[d],2.0);
-				tang_mag = sqrt(tang_mag);
+					nxy2 += normal[d]*normal[d];
+
+				number nxy = sqrt(nxy2);
+				number nz = sqrt(normal[dim-1]*normal[dim-1] + eps_z*eps_z);
 				
-				VecSet(tang,0.0);
-				if(tang_mag>m_limit)// && gradc_mag > m_limit)
+
+
+				
+				//MathVector<dim> h = normal;
+				//h[dim-1] = 0.0;
+
+				//number hmag = sqrt(VecProd(h,h) + eps_t*eps_t);
+				//VecScale(h, h, 1.0 / hmag);
+				
+				//MathVector<dim> z = 0.0;
+				//z[dim-1] = 1.0;
+				//VecScaleAdd(tang,cos(m_theta_cr),  h, - sin(m_theta_cr),z);
+				// VecProd(tang,-GradC) > 0)
+				
+				number slope = nxy / nz;
+				Value = slope - tan(m_theta_cr);
+				Value = (Value + sqrt(pow(Value,2.0) + eps_slope*eps_slope)) / 2.0;
+				Value /= sqrt(1.0 + pow(slope,2.0));
+				//Value = (Value + fabs(Value))/2.0;
+				Value *= m_diff;
+				
+				
+				if(std::isnan(Value) || Value <0.0)
 				{
-					for(int d = 0; d < dim-1; ++d)
-						tang[d] = normal[d]*cos(m_theta_cr) / tang_mag;
-					tang[dim-1] = -sin(m_theta_cr);
-				}
-				//if(gradc_mag > 1e-01)
-				//if((cut_elem || boolInside) && VecProd(tang,-GradC) > 0)
-				if(true)// VecProd(tang,-GradC) > 0)
-				{
-					number eps_slope = 1e-03;
-					number theta = acos(normal[dim-1]);
-					//UG_LOG("theta = "<< theta<<"\n");
-					number slope = tan(theta);
-					Value = (slope - tan(m_theta_cr))/sqrt(1.0 + pow(slope,2.0));
-					//*sin(theta-m_theta_cr)
-					Value = (Value + sqrt(pow(Value,2.0) + eps_slope)) / 2.0;
-					//Value = (Value + fabs(Value))/2.0;
-					Value *= m_diff;
+					
+					UG_LOG("  normal_mag = " <<normal_mag<<".\n");
+					UG_LOG("  normal = " <<normal[0]<<"  "<<normal[1]<<".\n");
+					
+					UG_LOG("  normal0 = " <<m_new_normal[vVrt[0]][0]<<"  "<<m_new_normal[vVrt[0]][1]<<".\n");
+					UG_LOG("  normal1 = " <<m_new_normal[vVrt[1]][0]<<"  "<<m_new_normal[vVrt[1]][1]<<".\n");
+					UG_LOG("  normal2 = " <<m_new_normal[vVrt[2]][0]<<"  "<<m_new_normal[vVrt[2]][1]<<".\n");
+					UG_LOG("  normal3 = " <<m_new_normal[vVrt[3]][0]<<"  "<<m_new_normal[vVrt[3]][1]<<".\n");
+					
+					UG_LOG("  shapes = " <<shapes[0]<<" .\n");
+					UG_LOG("  shapes = " <<shapes[1]<<" .\n");
+					UG_LOG("  shapes = " <<shapes[2]<<" .\n");
+					UG_LOG("  shapes = " <<shapes[3]<<" .\n");
+					
+					
+					
+					
+					UG_THROW("Non valid number SlipVel  Value = " <<Value<<"  slope = "<< slope <<"  nz = "<< nz <<"  nxy = "<< nxy <<"  tang_mag = "<<tang[0]<<"  "<<tang[1]<<" \n");
 				}
 			}
 			
@@ -2339,7 +2399,8 @@ public:
 
 		// set volume, tang and normal values to zero
 		SetAttachmentValues(m_vol, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
-		SetAttachmentValues(m_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		SetAttachmentValues(m_new_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
+		//SetAttachmentValues(m_old_normal, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		//SetAttachmentValues(m_tang, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0);
 		// compute pressure in vertices by averaging
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
@@ -2356,9 +2417,11 @@ public:
 				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
 				for(size_t i = 0; i < numVertices; ++i){
 					number scvVol = geo.scv(i).volume();
-					
+					const number eps_grad = 1e-04;
 					MathVector<dim> GradC; VecSet(GradC,0.0);
 					MathVector<dim> Normal; VecSet(Normal,0.0);
+					MathVector<dim> nn; VecSet(nn,0.0); nn[dim-1] = -eps_grad;
+					
 					
 					//    sum up contributions of each shape
 					for(size_t sh = 0; sh < numVertices; ++sh)
@@ -2373,31 +2436,35 @@ public:
 							GradC[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
 						}
 					}
-					number grad_c_mag = VecTwoNorm(GradC);
-					if(grad_c_mag<m_limit_grad)
-					{
-						VecSet(Normal,0.0);
-					}
-					else
-					{
-						VecScale(Normal,GradC,-1.0/grad_c_mag);
-						m_vol[vVrt[i]]+=scvVol;
-					}
+					
+					const number grad_c_mag = VecTwoNorm(GradC);
+					const number eps = 1e-01;
+					const number p = 2.0;
+					const number alpha = pow(grad_c_mag,p)/(pow(grad_c_mag,p) + eps) ;
+					VecScaleAdd(GradC,alpha, GradC, 1.0,nn);
+					
+					m_vol[vVrt[i]]+=scvVol;
 					
 					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vVrt[i]][d1] += Normal[d1] * scvVol;
+						m_new_normal[vVrt[i]][d1] += GradC[d1] * scvVol;
 					
 					
 				}
+			
 			}
 		}
 		
 		#ifdef UG_PARALLEL
 			AttachmentAllReduce<Vertex> (*domain.grid(), m_aVol, PCL_RO_SUM);
-			AttachmentAllReduce<Vertex> (*domain.grid(), m_aNormal, PCL_RO_SUM);
+			AttachmentAllReduce<Vertex> (*domain.grid(), m_aNewNormal, PCL_RO_SUM);
 		#endif
 		
 		PeriodicBoundaryManager* pbm = (domain.grid())->periodic_boundary_manager();
+		
+		
+		
+
+		
 		// go over all vertices and average
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
 			VertexIterator iter = m_u->template begin<Vertex>(si);
@@ -2406,42 +2473,22 @@ public:
 			{
 				Vertex* vrt = *iter;
 				if (pbm && pbm->is_slave(vrt)) continue;
-				if(m_vol[vrt] > 1e-10)
-				{
-					for(int d1 = 0; d1 <dim; ++d1)
-						m_normal[vrt][d1] /= m_vol[vrt];
-				}
-				else
-				{
-					VecSet(m_normal[vrt],0.0);
-					m_normal[vrt][dim-1] = 1.0;
-				}
-				/*MathVector<dim> tang; VecSet(tang,0.0);
-				if(dim == 2)
-				{
-					number ss;
-					if(fabs(m_normal[vrt][0])<m_limit)
-						ss = 1.0;
-					else
-						ss = (m_normal[vrt][0]*m_normal[vrt][1]>0.0)? 1.0 : -1.0;
-					
-					tang[0] =   ss * m_normal[vrt][1];
-					tang[1] = - fabs(m_normal[vrt][0]);
-				}
-				else if (dim == 3)
-				{
-					tang[0] = -m_normal[vrt][0]*m_normal[vrt][1];
-					tang[1] = -m_normal[vrt][1]*m_normal[vrt][2];
-					tang[2] =  m_normal[vrt][0]*m_normal[vrt][0] + m_normal[vrt][1]*m_normal[vrt][1];
-					UG_THROW("SlipDiffusion: Works only for Dim = 2");
-				}
-				else UG_THROW("SlipDiffusion: Works only for Dim = 2 , 3");
 
-				//VecScale(tang, tang,1.0/VecTwoNorm(tang));
-				m_tang[vrt] = tang;*/
+				for(int d1 = 0; d1 <dim; ++d1)
+					m_new_normal[vrt][d1] /= m_vol[vrt];
+				
+				
+				const number NormalMag = VecTwoNorm(m_new_normal[vrt]);
+				
+			
+				VecScaleAdd(m_new_normal[vrt],-1.0*m_omega/NormalMag,m_new_normal[vrt],1-m_omega, m_old_normal[vrt]);
+				m_old_normal[vrt] = m_new_normal[vrt];
+				
+
 				
 			}
 		}
+		
 	}
 
 private:

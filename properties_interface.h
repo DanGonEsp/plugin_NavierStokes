@@ -479,6 +479,7 @@ class Interface
 			Flux_ip = area * Flux;
 			if(m_mass_mean)
 			{
+				UG_THROW("Check Scaling for the flux in the different transport equations")
 				VecScale(Mom_ip,Wip,rho_max*Flux_ip);
 				VecScale(Grad_ip,Wip,rho_max*DiffFlux);
 				Div_ip = (rho_max/rho_a-1.0)*Flux_ip;

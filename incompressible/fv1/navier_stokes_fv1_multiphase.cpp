@@ -1387,10 +1387,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 					J(_C_, scvf.from(), _P_, sh) += contFlux_p;
 					J(_C_, scvf.to()  , _P_, sh) -= contFlux_p;
 				}
-				else
-				{
-					UG_THROW("NavierStokes Multiphase: Transporting Velocity Jacobian not implemented");
-				}
+
 				
 				/*if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
 				{

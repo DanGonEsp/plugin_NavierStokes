@@ -50,7 +50,7 @@ NavierStokesInflowFV1M(SmartPtr< NavierStokesFV1M<TDomain> > spMaster)
 
 	if(vFctName.size() != TDomain::dim + 2)
 		UG_THROW("NavierStokesInflow::set_functions: This Boundary "
-				"Condition works on exactly dim+1 (velocity+pressure+Volume fraction) "
+				"Condition works on exactly dim+2 (velocity+pressure+Volume fraction) "
 				"components, but "<<vFctName.size()<<"components given.");
 }
 
