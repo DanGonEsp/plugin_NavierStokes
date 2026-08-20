@@ -1206,8 +1206,7 @@ private:
 	//  grid
 	grid_type* m_grid;
 	
-	number m_limit = 1e-03;
-	number m_limit_grad = 1e-03;
+	number m_grad = 2.0;
 	number m_theta_cr = 34.0*3.1416/180.0;
 	number m_omega = 1.0;
 
@@ -1217,15 +1216,22 @@ private:
 	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imSource;
 	Interface<dim>* Inter;
 
-		  public:
+public:
+	
+	void set_omega(number data)
+	{
+		if (data>1.0 || data<0.0)
+			UG_THROW("Normal: Damping factor must be between 1.0 and 0.0");
+		m_omega = data;
+	}
+	
 	void set_theta(number data)
 	{
 		m_theta_cr = data*3.1416/180.0;
 	}
 	void set_gradient_limit(number data)
 	{
-		m_limit = data;
-		m_limit_grad = 0.001 * data;
+		m_grad = data;
 	}
 	
 	void set_phase_parameters(Interface<dim>* user)
@@ -1317,33 +1323,41 @@ public:
 
 		std::vector<number> shapes;
 		
-
-	//    storage for shape function at ip
-		MathVector<refDim> vLocGrad[numVertices];
-		MathVector<refDim> locGrad;
-
-	//    Reference Mapping
-		MathMatrix<dim, refDim> JTInv;
+		MathVector<refDim> LocIP = 0.0;
 		
-		DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
+		
+		for(size_t sh = 0; sh < numVertices; ++sh)
+		{
+			//     get current SCV
+			const typename DimFV1Geometry<dim>::SCV& scv = geo.scv(sh);
+		
+			for(int d = 0; d < dim; ++d)
+				LocIP[d] += scv.local_ip()[d];
+		}
+		VecScale(LocIP,LocIP,1.0/numVertices);
+		rTrialSpace.shapes(shapes,LocIP);
+		
+
+
+		
+		MathVector<dim> normal = 0.0;
+		
+		for (size_t sh=0;sh<numVertices;sh++)
+		{
+
+			for(int d = 0; d < refDim; ++d)
+			{
+				normal[d] += m_new_normal[vVrt[sh]][d] * shapes[sh];
+			}
+
+		}
+
+		number normal_mag =  VecTwoNorm(normal) + 1e-08;
+		VecScale(normal,normal,1.0/normal_mag);
 		
 		
 		for (size_t ip=0;ip<nip;ip++)
 		{
-			MathVector<dim> normal = 0.0;
-			
-			//MathVector<dim> GradC = 0.0;
-			rTrialSpace.shapes(shapes,vLocIP[ip]);
-			
-			
-			for (size_t sh=0;sh<numVertices;sh++)
-				for(int d = 0; d < refDim; ++d)
-				{
-					normal[d] += m_new_normal[vVrt[sh]][d]*shapes[sh];
-				}
-			number normal_mag =  VecTwoNorm(normal);
-
-			VecScale(normal,normal,1.0/normal_mag);
 			
 			vValue[ip] = normal;
 		}
@@ -1386,34 +1400,61 @@ public:
 					vVrt[i] = elem->vertex(i);
 					coCoord[i] = posAcc[vVrt[i]];
 				};
+				//    reference object id
+				ReferenceObjectID roid = elem->reference_object_id();
+				
 				geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+				
+				// Lagrange 1 trial space
+				const LocalShapeFunctionSet<dim>& rTrialSpace =
+						LocalFiniteElementProvider::get<dim>(roid, LFEID(LFEID::LAGRANGE, dim, 1));
+
+			//    Reference Mapping
+				MathMatrix<dim, dim> JTInv;
+				
+				DimReferenceMapping<dim, dim>& mapping = ReferenceMappingProvider::get<dim, dim>(roid, coCoord);
+				
+			//    storage for shape function at ip
+				MathVector<dim> GradC = 0.0;
+				MathVector<dim> vLocGrad[numVertices];
+				MathVector<dim> locGrad;
+				MathVector<dim> LocIP = 0.0;
+				
+				number Solution[numVertices];
+				
+				
+				for(size_t sh = 0; sh < numVertices; ++sh)
+				{
+					//     get current SCV
+					const typename DimFV1Geometry<dim>::SCV& scv = geo.scv(sh);
+				
+					for(int d = 0; d < dim; ++d)
+						LocIP[d] += scv.local_ip()[d];
+				}
+				VecScale(LocIP,LocIP,1.0/numVertices);
+				
+				//    evaluate at shapes at ip
+				rTrialSpace.grads(vLocGrad, LocIP);
+				//    compute grad at ip
+				VecSet(locGrad, 0.0);
+				for(size_t sh = 0; sh < numVertices; ++sh)
+				{
+					m_u->dof_indices(elem->vertex(sh), _C_, multInd);
+					//    read value of index from vector
+					number uVal = DoFRef(*m_u,multInd[0]);
+					Solution[sh] = uVal;
+					VecScaleAppend(locGrad, uVal, vLocGrad[sh]);
+				}
+				
+				//    compute global grad
+				mapping.jacobian_transposed_inverse(JTInv, LocIP);
+				MatVecMult(GradC, JTInv, locGrad);
+				
+				
+				
+				
 				for(size_t i = 0; i < numVertices; ++i){
 					number scvVol = geo.scv(i).volume();
-					const number eps_grad = 1e-04;
-					MathVector<dim> GradC; VecSet(GradC,0.0);
-					MathVector<dim> Normal; VecSet(Normal,0.0);
-					MathVector<dim> nn; VecSet(nn,0.0); nn[dim-1] = -eps_grad;
-					
-					
-					//    sum up contributions of each shape
-					for(size_t sh = 0; sh < numVertices; ++sh)
-					{
-						m_u->dof_indices(elem->vertex(sh), _C_, multInd);
-						//    read value of index from vector
-						number uVal = DoFRef(*m_u,multInd[0]);
-						//uVal = fmax(uVal, 0.0);
-						//  Loop dimensions for derivative
-						for(int d1 = 0; d1 <dim; ++d1)
-						{
-							GradC[d1] += uVal*geo.scv(i).global_grad(sh)[d1];
-						}
-					}
-					
-					const number grad_c_mag = VecTwoNorm(GradC);
-					const number eps = 1e-01;
-					const number p = 2.0;
-					const number alpha = pow(grad_c_mag,p)/(pow(grad_c_mag,p) + eps) ;
-					VecScaleAdd(GradC,alpha, GradC, 1.0,nn);
 					
 					m_vol[vVrt[i]]+=scvVol;
 					
@@ -1435,7 +1476,9 @@ public:
 		
 		
 		
-
+		const number g0 = m_grad; // tune this
+		MathVector<dim> vertical = 0.0;
+		vertical[dim-1] = 1.0;
 		
 		// go over all vertices and average
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si){
@@ -1447,15 +1490,26 @@ public:
 				if (pbm && pbm->is_slave(vrt)) continue;
 
 				for(int d1 = 0; d1 <dim; ++d1)
-					m_new_normal[vrt][d1] /= m_vol[vrt];
+					m_new_normal[vrt][d1] *= -1.0/m_vol[vrt];
+				
+				MathVector<dim> GradC = m_new_normal[vrt];
+				
+				const number Gmag = VecTwoNorm(GradC) + 1e-08;
+				
+				VecScale(GradC,GradC,1.0/Gmag);
 				
 				
-				const number NormalMag = VecTwoNorm(m_new_normal[vrt]);
+				number alpha =Gmag*Gmag / (Gmag*Gmag + g0*g0);
 				
-			
-				VecScaleAdd(m_new_normal[vrt],-1.0*m_omega/NormalMag,m_new_normal[vrt],1-m_omega, m_old_normal[vrt]);
-				m_old_normal[vrt] = m_new_normal[vrt];
+				MathVector<dim> normal = 0.0;
+
+				VecScaleAdd( normal, alpha, GradC, 1.0-alpha, vertical);
 				
+				//const number
+				
+				//VecScaleAdd(m_new_normal[vrt],m_omega,m_new_normal[vrt],1-m_omega, m_old_normal[vrt]);
+				m_old_normal[vrt] = normal;
+				m_new_normal[vrt] = normal;
 
 				
 			}
@@ -1576,22 +1630,70 @@ private:
 	//  grid
 	grid_type* m_grid;
 	
-	number m_limit = 1e-03;
-	number m_limit_grad = 1e-03;
+	number m_slope = 3e-02;
 	number m_theta_cr = 34.0*3.1416/180.0;
 	number m_vel = 0.15;
 
 private:
 
-	///    Data import for source
-	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imSource;
+	///    Data import for normal
+	SmartPtr<CplUserData<MathVector<dim>,dim> > m_imNormal;
 	Interface<dim>* Inter;
 	
 	int m_counter = -1;
 	int m_skip_update = 0;
-	number m_omega = 1.0;
+	bool m_bool_normal_given = false;
 
-		  public:
+public:
+	void set_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+	{
+		m_imNormal = data;
+		m_bool_normal_given = true;
+		
+	}
+	void set_normal(number f_x)
+	{
+		SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+		for (int i=0;i<dim;i++){
+			f->set_entry(i, f_x);
+		}
+		set_normal(f);
+	}
+	void set_normal(number f_x, number f_y)
+	{
+		if (dim!=2){
+			UG_THROW("NavierStokes: Setting source vector of dimension 2"
+					" to a Discretization for world dim " << dim);
+		} else {
+			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+			f->set_entry(0, f_x);
+			f->set_entry(1, f_y);
+			set_normal(f);
+		}
+	}
+
+	void set_normal(number f_x, number f_y, number f_z)
+	{
+		if (dim<3){
+			UG_THROW("NavierStokes: Setting source vector of dimension 3"
+					" to a Discretization for world dim " << dim);
+		}
+		else
+		{
+			SmartPtr<ConstUserVector<dim> > f(new ConstUserVector<dim>());
+			f->set_entry(0, f_x);
+			f->set_entry(1, f_y);
+			f->set_entry(2, f_z);
+			set_normal(f);
+		}
+	}
+#ifdef UG_FOR_LUA
+	void set_normal(const char* fctName)
+	{
+		set_normal(LuaUserDataFactory<MathVector<dim>, dim>::create(fctName));
+	}
+#endif
+	
 	void set_theta(number data)
 	{
 		m_theta_cr = data*3.1416/180.0;
@@ -1600,17 +1702,11 @@ private:
 	{
 		m_vel = data;
 	}
-	void set_gradient_limit(number data)
+	void set_slope_limit(number data)
 	{
-		m_limit = data;
-		m_limit_grad = 0.001 * data;
+		m_slope = data;
 	}
-	void set_omega(number data)
-	{
-		if (data>1.0 || data<0.0)
-			UG_THROW("SlipVelocity: Damping factor must be between 1.0 and 0.0");
-		m_omega = data;
-	}
+
 	
 	void set_phase_parameters(Interface<dim>* user)
 	{
@@ -1667,6 +1763,8 @@ public:
 						 LocalVector* u,
 						 const MathMatrix<refDim, dim>* vJT = NULL) const
 	{
+		if (!m_bool_normal_given)
+			UG_THROW("SlipVel: Normal input not set and needed");
 		UG_ASSERT(dynamic_cast<elem_type*>(elem) != NULL, "Unsupported element type");
 		elem_type* element = static_cast<elem_type*>(elem);
 
@@ -1713,6 +1811,9 @@ public:
 		
 		//DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
 		
+		std::vector<MathVector<dim> > vNormal(nip);
+		(*m_imNormal)(&vNormal[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
+		
 		bool cut_elem=false;
 		bool boolInside = false;
 		Inter->cut_element(cut_elem,boolInside,  u,_C_);
@@ -1730,40 +1831,9 @@ public:
 			
 			if(ComputeSlipVel)
 			{
-				//MathVector<dim> NormalGradC = 0.0;
-				rTrialSpace.shapes(shapes,vLocIP[ip]);
-				
-				
-				//    evaluate at shapes at ip
-				//rTrialSpace.grads(vLocGrad, vLocIP[ip]);
-				//    compute grad at ip
-				//VecSet(locGrad, 0.0);
-				//for(size_t sh = 0; sh < numVertices; ++sh)
-					//VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
-				
-				//    compute global grad
-				//mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
-				//MatVecMult(NormalGradC, JTInv, locGrad);
-				
-				//for(int d = 0; d < dim-1; ++d)
-					//NormalGradC[d] += eps_grad;
-				//number gradc_mag_sq =  VecTwoNorm(NormalGradC);
-				
-				//VecScale(NormalGradC,NormalGradC,-1.0/gradc_mag_sq);
-				
-				for (size_t sh=0;sh<numVertices;sh++)
-				{
-					for(int d = 0; d < dim; ++d)
-					{
-						normal[d] += m_new_normal[vVrt[sh]][d]*shapes[sh];
-					}
-				}
-				
+				normal = vNormal[ip];
 				number normal_mag = VecTwoNorm(normal);
 				
-				
-
-				VecScale(normal,normal,1.0/normal_mag);
 				
 				number nxy2 = 0.0;
 				for(int d = 0; d < dim-1; ++d)
@@ -1834,7 +1904,7 @@ public:
 	}; // evaluate
 
 	void update(){
-		
+		/*
 		if(m_counter>=0)
 		{
 			++m_counter;
@@ -1955,6 +2025,7 @@ public:
 		
 		//this->transferToLowerLevels(m_new_normal,*m_spApproxSpace);
 		//this->transferToLowerLevels(m_old_normal,*m_spApproxSpace);
+		*/
 		
 	}
 
@@ -2070,11 +2141,10 @@ private:
 	//  grid
 	grid_type* m_grid;
 	
-	number m_limit = 1e-03;
-	number m_limit_grad = 1e-03;
+	number m_slope = 3e-02;
 	number m_theta_cr = 34.0*3.1416/180.0;
 	number m_diff = 0.15;
-	number m_omega = 1.0;
+	bool m_bool_normal_given = false;
 
 private:
 
@@ -2100,6 +2170,7 @@ public:
 	void set_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
 	{
 		m_imNormal = data;
+		m_bool_normal_given = true;
 	}
 	void set_normal(number f_x)
 	{
@@ -2152,16 +2223,9 @@ public:
 	{
 		m_diff = data;
 	}
-	void set_gradient_limit(number data)
+	void set_slope_limit(number data)
 	{
-		m_limit = data;
-		m_limit_grad = 0.001 * data;
-	}
-	void set_omega(number data)
-	{
-		if (data>1.0 || data<0.0)
-			UG_THROW("SlipDiffusion: Damping factor must be between 1.0 and 0.0");
-		m_omega = data;
+		m_slope = data;
 	}
 	
 	void set_phase_parameters(Interface<dim>* user)
@@ -2190,7 +2254,7 @@ public:
 		m_grid = &grid;
 		m_spApproxSpace = approxSpace;
 		set_diffusion(0.0);
-		set_normal(0.0);
+		
 
 		grid.template attach_to<Vertex>(m_aNewNormal);
 		grid.template attach_to<Vertex>(m_aOldNormal);
@@ -2218,6 +2282,8 @@ public:
 						 LocalVector* u,
 						 const MathMatrix<refDim, dim>* vJT = NULL) const
 	{
+		if (!m_bool_normal_given)
+			UG_THROW("SlipDiff: Normal input not set and needed");
 		UG_ASSERT(dynamic_cast<elem_type*>(elem) != NULL, "Unsupported element type");
 		elem_type* element = static_cast<elem_type*>(elem);
 
@@ -2268,8 +2334,8 @@ public:
 		
 		(*m_imDiffusion)(vValue, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 		
-		//std::vector<MathVector<dim> > vNormal(nip);
-		//(*m_imNormal)(&vNormal[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
+		std::vector<MathVector<dim> > vNormal(nip);
+		(*m_imNormal)(&vNormal[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 		
 		bool cut_elem = false;
 		bool boolInside = false;
@@ -2284,13 +2350,13 @@ public:
 			
 			const number eps_z = 1e-5;
 			const number eps_t = 1e-2;
-			const number eps_slope = 1e-02;
+			const number eps_slope = m_slope;
 			const number eps_norm = 1e-8;
 			
 			if(ComputeSlipDiff)
 			{
 				//MathVector<dim> GradC = 0.0;
-				rTrialSpace.shapes(shapes,vLocIP[ip]);
+				//rTrialSpace.shapes(shapes,vLocIP[ip]);
 				
 				//    evaluate at shapes at ip
 				//rTrialSpace.grads(vLocGrad, vLocIP[ip]);
@@ -2304,17 +2370,18 @@ public:
 				//MatVecMult(GradC, JTInv, locGrad);
 				
 				
-				for (size_t sh=0;sh<numVertices;sh++)
-					for(int d = 0; d < dim; ++d)
-					{
-						normal[d] += m_new_normal[vVrt[sh]][d]*shapes[sh];
+				//for (size_t sh=0;sh<numVertices;sh++)
+					//for(int d = 0; d < dim; ++d)
+					//{
+						//normal[d] += m_new_normal[vVrt[sh]][d]*shapes[sh];
 						//tang[d] += m_tang[vVrt[sh]][d]*shapes[sh];
-					}
-				normal[dim-1] +=eps_norm;
-				number normal_mag =  VecTwoNorm(normal);
+					//}
+				normal = vNormal[ip];
+				//normal[dim-1] +=eps_norm;
+				number normal_mag =  VecTwoNorm(normal) + eps_norm;
 				//number gradc_mag =  VecTwoNorm(GradC);
 				
-				VecScale(normal,normal,1.0/normal_mag);
+				//VecScale(normal,normal,1.0/normal_mag);
 
 				
 				number nxy2 = 0.0;
@@ -2348,7 +2415,7 @@ public:
 				
 				if(std::isnan(Value) || Value <0.0)
 				{
-					
+					UG_LOG("  Value = " <<Value<<".\n");
 					UG_LOG("  normal_mag = " <<normal_mag<<".\n");
 					UG_LOG("  normal = " <<normal[0]<<"  "<<normal[1]<<".\n");
 					
@@ -2381,7 +2448,7 @@ public:
 			
 	}; // evaluate
 
-	void update(){
+	void update(){/*
 		//    get domain
 		UG_LOG("Updating Slip Diffusion... \n");
 		domain_type& domain = *m_u->domain().get();
@@ -2487,7 +2554,7 @@ public:
 
 				
 			}
-		}
+		}*/
 		
 	}
 
