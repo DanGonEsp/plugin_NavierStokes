@@ -531,14 +531,17 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	MathVector<dim> TransportingVel_ip[numSCVF];
 	MathVector<dim> conv_flux_grad[numSCVF];
 	MathVector<dim> conv_flux_mom[numSCVF];
-	number Gamma[numSh];
-	number Rho_up[numSCVF];
-	number Rho_do[numSCVF];
-	number ConvRatio[numSCVF];
-	number Ps[numSh];
-	number DPs[numSh];
-	number conv_flux_vol[numSCVF];
-	number conv_flux_div[numSCVF];
+
+	
+	number Gamma[numSh] = {0};
+	number Rho_up[numSCVF] = {0};
+	number Rho_do[numSCVF] = {0};
+	number ConvRatio[numSCVF] = {0};
+	number Ps[numSh] = {0};
+	number DPs[numSh] = {0};
+	number conv_flux_vol[numSCVF] = {0};
+	number conv_flux_div[numSCVF] = {0};
+	number MassChange[numSh] = {0};
 	
 	number FluxVol_ip_jacV[numSCVF][numSh] = {0};
 	number FluxVol_ip_jacW[numSCVF][numSh] = {0};
@@ -1834,15 +1837,15 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	MathVector<dim> TransportingVel_ip[numSCVF];
 	MathVector<dim> conv_flux_grad[numSCVF];
 	MathVector<dim> conv_flux_mom[numSCVF];
-	number Gamma[numSh];
-	number Rho_up[numSCVF];
-	number Rho_do[numSCVF];
-	number ConvRatio[numSCVF];
-	number Ps[numSh];
-	number DPs[numSh];
-	number conv_flux_vol[numSCVF];
-	number conv_flux_div[numSCVF];
-	number MassChange[numSh];
+	number Gamma[numSh] = {0};
+	number Rho_up[numSCVF] = {0};
+	number Rho_do[numSCVF] = {0};
+	number ConvRatio[numSCVF] = {0};
+	number Ps[numSh] = {0};
+	number DPs[numSh] = {0};
+	number conv_flux_vol[numSCVF] = {0};
+	number conv_flux_div[numSCVF] = {0};
+	number MassChange[numSh] = {0};
 	
 	number FluxVol_ip_jacV[numSCVF][numSh] = {0};
 	number FluxVol_ip_jacW[numSCVF][numSh] = {0};
