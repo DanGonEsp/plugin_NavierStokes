@@ -912,7 +912,7 @@ class Interface
 		{
 
 			//const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
-			const number S=SmoothMax(fabs(wSL),fabs(wSR), 1e-06);
+			const number S=SmoothMax(fabs(wSL),fabs(wSR), 1e-015);
 			
 			//Flux = 0.5*(UL+UR)*Vn;
 			Flux = (Vn > 0)? UL*Vn:UR*Vn;
@@ -927,7 +927,7 @@ class Interface
 		{
 
 			//const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
-			const number S=SmoothMax(fabs(wSL),fabs(wSR), 1e-06);
+			const number S=SmoothMax(fabs(wSL),fabs(wSR), 1e-015);
 			
 			JacWL = 0.5*(wSL) + 0.5*S;
 			JacWR = 0.5*(wSR) - 0.5*S;
@@ -1351,6 +1351,40 @@ class Interface
 
 		inline number SmoothMin(const number a, const number b, const number eps = 1e-06) {
 			return 0.5 * (a + b - sqrt((a - b) * (a - b) + eps));
+		}
+		inline number one_side_reg(number x, number eps) const
+		{
+			if (x <= 0.0)
+				return 0.0;
+
+			if ( x >= eps)
+				return x;
+
+			return 2.0*x*x/eps - x*x*x/(eps*eps);
+		}
+		inline number squared_root_reg(number x, number eps) const
+		{
+			return (x + sqrt(pow(x,2.0) + eps*eps)) / 2.0;
+		}
+		inline number symmetric_quadratic_reg(number x, number eps) const
+		{
+			if (eps <= 0.0)
+				return (x > 0.0) ? x : 0.0;
+
+			if (x <= -eps)
+				return 0.0;
+
+			if (x >= eps)
+				return x;
+
+			return (x + eps)*(x + eps) / (4.0*eps);
+		}
+		inline number fourth_root_reg(number x, number eps) const
+		{
+			number x2   = x*x;
+			number eps2 = eps*eps;
+
+			return 0.5 * (x + sqrt(sqrt(x2*x2 + eps2*eps2)));
 		}
 
 

@@ -1341,14 +1341,20 @@ public:
 
 		
 		MathVector<dim> normal = 0.0;
+		number wieght = 0.0;
+		number Phi = 0.0;
 		
 		for (size_t sh=0;sh<numVertices;sh++)
 		{
-
+			Phi += (*u)(_C_, sh)*shapes[sh];
+			number F = 4.0*Phi*(1.0 - Phi);
+			F = Inter->fourth_root_reg(F, 1e-08);
+			//F = pow(F,1.0);
 			for(int d = 0; d < refDim; ++d)
 			{
-				normal[d] += m_new_normal[vVrt[sh]][d] * shapes[sh];
+				normal[d] += m_new_normal[vVrt[sh]][d] * F *shapes[sh];
 			}
+
 
 		}
 
@@ -1420,8 +1426,6 @@ public:
 				MathVector<dim> locGrad;
 				MathVector<dim> LocIP = 0.0;
 				
-				number Solution[numVertices];
-				
 				
 				for(size_t sh = 0; sh < numVertices; ++sh)
 				{
@@ -1441,8 +1445,7 @@ public:
 				{
 					m_u->dof_indices(elem->vertex(sh), _C_, multInd);
 					//    read value of index from vector
-					number uVal = DoFRef(*m_u,multInd[0]);
-					Solution[sh] = uVal;
+					number uVal = fmin(fmax(DoFRef(*m_u,multInd[0]),0.0),1.0);
 					VecScaleAppend(locGrad, uVal, vLocGrad[sh]);
 				}
 				
@@ -1478,6 +1481,7 @@ public:
 		
 		const number g0 = m_grad; // tune this
 		MathVector<dim> vertical = 0.0;
+		MathVector<dim> normal = 0.0;
 		vertical[dim-1] = 1.0;
 		
 		// go over all vertices and average
@@ -1498,12 +1502,18 @@ public:
 				
 				VecScale(GradC,GradC,1.0/Gmag);
 				
+				number delta = pow(m_vol[vrt],(number)1.0/(number)dim);
+				number alpha =delta*Gmag;
 				
-				number alpha =Gmag*Gmag / (Gmag*Gmag + g0*g0);
+				alpha =alpha*alpha / (alpha*alpha + g0*g0);
 				
-				MathVector<dim> normal = 0.0;
-
+				
 				VecScaleAdd( normal, alpha, GradC, 1.0-alpha, vertical);
+				
+				
+				const number Normag = VecTwoNorm(normal) + 1e-09;
+				
+				VecScale(normal,normal,1.0/Normag);
 				
 				//const number
 				
@@ -2142,6 +2152,7 @@ private:
 	grid_type* m_grid;
 	
 	number m_slope = 3e-02;
+	number m_grad = 0.1;
 	number m_theta_cr = 34.0*3.1416/180.0;
 	number m_diff = 0.15;
 	bool m_bool_normal_given = false;
@@ -2226,6 +2237,10 @@ public:
 	void set_slope_limit(number data)
 	{
 		m_slope = data;
+	}
+	void set_gradient_limit(number data)
+	{
+		m_grad = data;
 	}
 	
 	void set_phase_parameters(Interface<dim>* user)
@@ -2313,6 +2328,16 @@ public:
 
 		// evaluate finite volume geometry
 		geo.update(elem, &(coCoord[0]), domain.subset_handler().get());
+		
+		number delta = 0.0;
+		for(size_t sh = 0; sh < numVertices; ++sh)
+		{
+			//     get current SCV
+			const typename DimFV1Geometry<dim>::SCV& scv = geo.scv(sh);
+			
+			delta += scv.volume();
+		}
+		delta = pow(delta,(number)1.0/(number)dim);
 
 		// Lagrange 1 trial space
 		const LocalShapeFunctionSet<refDim>& rTrialSpace =
@@ -2320,17 +2345,6 @@ public:
 		
 		
 
-		std::vector<number> shapes;
-		
-
-	//    storage for shape function at ip
-		//MathVector<refDim> vLocGrad[numVertices];
-		//MathVector<refDim> locGrad;
-
-	//    Reference Mapping
-		//MathMatrix<dim, refDim> JTInv;
-		
-		//DimReferenceMapping<refDim, dim>& mapping = ReferenceMappingProvider::get<refDim, dim>(roid, coCoord);
 		
 		(*m_imDiffusion)(vValue, vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 		
@@ -2352,101 +2366,76 @@ public:
 			const number eps_t = 1e-2;
 			const number eps_slope = m_slope;
 			const number eps_norm = 1e-8;
+			const number eps_dir = 1e-5;
+			
 			
 			if(ComputeSlipDiff)
 			{
-				//MathVector<dim> GradC = 0.0;
-				//rTrialSpace.shapes(shapes,vLocIP[ip]);
-				
-				//    evaluate at shapes at ip
-				//rTrialSpace.grads(vLocGrad, vLocIP[ip]);
-				//    compute grad at ip
-				//VecSet(locGrad, 0.0);
-				//for(size_t sh = 0; sh < numVertices; ++sh)
-					//VecScaleAppend(locGrad, (*u)(_C_, sh), vLocGrad[sh]);
-				
-				//    compute global grad
-				//mapping.jacobian_transposed_inverse(JTInv, vLocIP[ip]);
-				//MatVecMult(GradC, JTInv, locGrad);
-				
-				
-				//for (size_t sh=0;sh<numVertices;sh++)
-					//for(int d = 0; d < dim; ++d)
-					//{
-						//normal[d] += m_new_normal[vVrt[sh]][d]*shapes[sh];
-						//tang[d] += m_tang[vVrt[sh]][d]*shapes[sh];
-					//}
-				normal = vNormal[ip];
-				//normal[dim-1] +=eps_norm;
-				number normal_mag =  VecTwoNorm(normal) + eps_norm;
-				//number gradc_mag =  VecTwoNorm(GradC);
-				
-				//VecScale(normal,normal,1.0/normal_mag);
 
-				
+
+
+				normal = vNormal[ip];
 				number nxy2 = 0.0;
 				for(int d = 0; d < dim-1; ++d)
 					nxy2 += normal[d]*normal[d];
 
 				number nxy = sqrt(nxy2);
 				number nz = sqrt(normal[dim-1]*normal[dim-1] + eps_z*eps_z);
+				number slope =  nxy / nz;
+				number Factor = sin(asin(slope/sqrt(1.0 + pow(slope,2.0))) - m_theta_cr);
 				
-
-
 				
-				//MathVector<dim> h = normal;
-				//h[dim-1] = 0.0;
-
-				//number hmag = sqrt(VecProd(h,h) + eps_t*eps_t);
-				//VecScale(h, h, 1.0 / hmag);
 				
-				//MathVector<dim> z = 0.0;
-				//z[dim-1] = 1.0;
-				//VecScaleAdd(tang,cos(m_theta_cr),  h, - sin(m_theta_cr),z);
-				// VecProd(tang,-GradC) > 0)
-				
-				number slope = nxy / nz;
 				Value = slope - tan(m_theta_cr);
-				Value = (Value + sqrt(pow(Value,2.0) + eps_slope*eps_slope)) / 2.0;
+				Value = Inter->fourth_root_reg(Value, eps_slope);
 				Value /= sqrt(1.0 + pow(slope,2.0));
-				//Value = (Value + fabs(Value))/2.0;
 				Value *= m_diff;
 				
 				
-				if(std::isnan(Value) || Value <0.0)
+
+			}
+			
+			// Tangential diffusion tensor:
+			//
+			//      P = I - n \otimes n
+			//
+			// and
+			//
+			//      D = Value * P
+			//
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				for(int d2 = 0; d2 < dim; ++d2)
 				{
-					UG_LOG("  Value = " <<Value<<".\n");
-					UG_LOG("  normal_mag = " <<normal_mag<<".\n");
-					UG_LOG("  normal = " <<normal[0]<<"  "<<normal[1]<<".\n");
-					
-					UG_LOG("  normal0 = " <<m_new_normal[vVrt[0]][0]<<"  "<<m_new_normal[vVrt[0]][1]<<".\n");
-					UG_LOG("  normal1 = " <<m_new_normal[vVrt[1]][0]<<"  "<<m_new_normal[vVrt[1]][1]<<".\n");
-					UG_LOG("  normal2 = " <<m_new_normal[vVrt[2]][0]<<"  "<<m_new_normal[vVrt[2]][1]<<".\n");
-					UG_LOG("  normal3 = " <<m_new_normal[vVrt[3]][0]<<"  "<<m_new_normal[vVrt[3]][1]<<".\n");
-					
-					UG_LOG("  shapes = " <<shapes[0]<<" .\n");
-					UG_LOG("  shapes = " <<shapes[1]<<" .\n");
-					UG_LOG("  shapes = " <<shapes[2]<<" .\n");
-					UG_LOG("  shapes = " <<shapes[3]<<" .\n");
-					
-					
-					
-					
-					UG_THROW("Non valid number SlipVel  Value = " <<Value<<"  slope = "<< slope <<"  nz = "<< nz <<"  nxy = "<< nxy <<"  tang_mag = "<<tang[0]<<"  "<<tang[1]<<" \n");
+					number delta_ij = (d1 == d2) ? 1.0 : 0.0;
+
+					vValue[ip](d1,d2) +=
+						Value * (delta_ij - normal[d1]*normal[d2]);
 				}
 			}
 			
-			//for(int d1 = 0; d1 < dim; ++d1)
-				//for(int d2 = 0; d2 < dim; ++d2)
-					//vValue[ip](d1,d2) += Value * tang[d1]*tang[d2];
-			for(int d1 = 0; d1 < dim; ++d1)
-				vValue[ip](d1,d1) += Value;
+			
+			if(std::isnan(Value) || Value <0.0)
+			{
+				UG_LOG("  Value = " <<Value<<".\n");
+				//UG_LOG("  normal_mag = " <<normal_mag<<".\n");
+				UG_LOG("  normal = " <<normal[0]<<"  "<<normal[1]<<".\n");
+				
+				UG_LOG("  normal0 = " <<m_new_normal[vVrt[0]][0]<<"  "<<m_new_normal[vVrt[0]][1]<<".\n");
+				UG_LOG("  normal1 = " <<m_new_normal[vVrt[1]][0]<<"  "<<m_new_normal[vVrt[1]][1]<<".\n");
+				UG_LOG("  normal2 = " <<m_new_normal[vVrt[2]][0]<<"  "<<m_new_normal[vVrt[2]][1]<<".\n");
+				UG_LOG("  normal3 = " <<m_new_normal[vVrt[3]][0]<<"  "<<m_new_normal[vVrt[3]][1]<<".\n");
+				
+				
+				
+				//UG_THROW("Non valid number SlipVel  Value = " <<Value<<"  slope = "<< slope <<"  nz = "<< nz <<"  nxy = "<< nxy <<"  tang_mag = "<<tang[0]<<"  "<<tang[1]<<" \n");
+			}
 		
 		}
 		
 		
 			
-	}; // evaluate
+	};
 
 	void update(){/*
 		//    get domain
