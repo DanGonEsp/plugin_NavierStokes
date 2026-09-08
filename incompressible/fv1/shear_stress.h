@@ -2410,7 +2410,7 @@ public:
 					number delta_ij = (d1 == d2) ? 1.0 : 0.0;
 
 					vValue[ip](d1,d2) +=
-						Value * (delta_ij - normal[d1]*normal[d2]);
+					Value * (delta_ij - normal[d1]*normal[d2]) + 1e-14 * (normal[d1]*normal[d2]);
 				}
 			}
 			
