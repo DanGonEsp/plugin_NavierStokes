@@ -48,6 +48,9 @@
 #include "../../properties_interface.h"
 #include "common/math/ugmath.h"
 
+#include "lib_disc/function_spaces/approximation_space.h"
+#include "lib_grid/multi_grid.h"
+
 #ifdef UG_FOR_LUA
 #include "bindings/lua/lua_user_data.h"
 #endif
@@ -1354,11 +1357,12 @@ public:
 			{
 				normal[d] += m_new_normal[vVrt[sh]][d] * F *shapes[sh];
 			}
+			normal[dim-1] += 1e-09;
 
 
 		}
 
-		number normal_mag =  VecTwoNorm(normal) + 1e-08;
+		number normal_mag =  VecTwoNorm(normal);
 		VecScale(normal,normal,1.0/normal_mag);
 		
 		
@@ -1520,15 +1524,58 @@ public:
 				//VecScaleAdd(m_new_normal[vrt],m_omega,m_new_normal[vrt],1-m_omega, m_old_normal[vrt]);
 				m_old_normal[vrt] = normal;
 				m_new_normal[vrt] = normal;
-
-				
 			}
 		}
-		
+
+		// Transfer the final normals after averaging and normalization.
+		transferToLowerLevels(m_new_normal);
+		transferToLowerLevels(m_old_normal);
 	}
 
 private:
 	static const size_t max_number_of_ips = 20;
+	
+	
+	// Transfer a vector attachment to lower levels by vertex injection.
+	void transferToLowerLevels(aVertexDimVector& aaData)
+	{
+		const size_t numLevels = m_spApproxSpace->num_levels();
+		if (numLevels < 2) return;
+
+		PeriodicBoundaryManager* pbm = m_grid->periodic_boundary_manager();
+		const int numSubsets = m_spApproxSpace->domain()->subset_handler()->num_subsets();
+
+		typedef DoFDistribution::traits<Vertex>::const_iterator LevelVertexIterator;
+
+		// Complete each level before proceeding to the next coarser level.
+		for (size_t fineLevel = numLevels - 1; fineLevel > 0; --fineLevel)
+		{
+			const size_t coarseLevel = fineLevel - 1;
+			const DoFDistribution& lDD = *m_spApproxSpace->dof_distribution(GridLevel(coarseLevel, GridLevel::LEVEL));
+			const MultiGrid& grid = *lDD.multi_grid();
+
+			for (int si = 0; si < numSubsets; ++si)
+			{
+				LevelVertexIterator iter = lDD.template begin<Vertex>(si);
+				LevelVertexIterator iterEnd = lDD.template end<Vertex>(si);
+
+				for (; iter != iterEnd; ++iter)
+				{
+					Vertex* vertex = *iter;
+
+					// Periodic slave values are accessed through their master.
+					if (pbm && pbm->is_slave(vertex)) continue;
+
+					Vertex* child = grid.get_child<Vertex>(vertex, 0);
+
+					// Leave vertices without a local child unchanged.
+					if (child == NULL) continue;
+
+					aaData[vertex] = aaData[child];
+				}
+			}
+		}
+	}
 
 public:
 	virtual void operator() (MathVector<dim>& value,
