@@ -53,6 +53,7 @@ set(SOURCES	navier_stokes_base.cpp
 			
 			incompressible/fv1/navier_stokes_fv1.cpp
             incompressible/fv1/navier_stokes_fv1_multiphase.cpp
+            incompressible/fv1/rans_turbulence_fv1.cpp
 			incompressible/fe/navier_stokes_fe.cpp
 			incompressible/fvcr/navier_stokes_fvcr.cpp
 			incompressible/fv/navier_stokes_fv.cpp

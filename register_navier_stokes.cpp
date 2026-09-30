@@ -44,6 +44,8 @@
 #include "linker/relative_velocity_linker.h"
 #include "linker/granular_diffusion_linker.h"
 #include "linker/scale_linker.h"
+#include "linker/interface_normal_linker.h"
+#include "linker/saltation_flux_linker.h"
 
 
 using namespace std;
@@ -315,6 +317,38 @@ static void Dimension(Registry& reg, string grp)
 			.add_constructor()
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "ScaleLinker", tag);
+	}
+	// InterfaceNormalLinker
+	{
+		typedef InterfaceNormalLinker<dim> T;
+		typedef DependentUserData<MathVector<dim>, dim> TBase;
+		string name = string("InterfaceNormalLinker").append(suffix);
+
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_volume_grad", &T::set_volume_grad)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+
+		reg.add_class_to_group(name, "InterfaceNormalLinker", tag);
+	}
+	// SaltationFluxLinker
+	{
+		typedef SaltationFluxLinker<dim> T;
+		typedef DependentUserData<MathVector<dim>, dim> TBase;
+		string name = string("SaltationFluxLinker").append(suffix);
+
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_volume_grad", &T::set_volume_grad)
+			.add_method("set_velocity_gradient", &T::set_velocity_gradient)
+			.add_method("set_phase_parameters", &T::set_phase_parameters)
+			.add_method("set_saltation_coefficient", &T::set_saltation_coefficient)
+			.add_method("set_threshold_friction_velocity", &T::set_threshold_friction_velocity)
+			.add_method("set_normal_epsilon", &T::set_normal_epsilon)
+			.add_method("set_delta_epsilon", &T::set_delta_epsilon)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+
+		reg.add_class_to_group(name, "SaltationFluxLinker", tag);
 	}
 
 //    check whether those classes have already been registered

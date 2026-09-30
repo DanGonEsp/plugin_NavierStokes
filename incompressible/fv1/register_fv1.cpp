@@ -46,6 +46,7 @@
 #include "shear_stress.h"
 #include "pressure_jump.h"
 #include "turbulent_viscosity_fv1.h"
+#include "rans_turbulence_fv1.h"
 
 #include "lib_disc/function_spaces/grid_function.h"
 
@@ -143,7 +144,7 @@ static void DomainAlgebra(Registry& reg, string grp)
 			.add_method("set_turbulence_zero_bnd", &T::setTurbulenceZeroBoundaries)
 			.add_method("set_time_filter", &T::set_time_filter)
 			.add_method("set_time_filter_eps", &T::set_time_filter_eps)
-			.add_method("set_space_filter", &T::set_time_filter)
+			.add_method("set_space_filter", &T::set_space_filter)
 			.add_method("update", &T::update)
 			.set_construct_as_smart_pointer(true);
 		reg.add_class_to_group(name, "FV1DynamicTurbViscData", tag);
@@ -410,6 +411,26 @@ static void Domain(Registry& reg, string grp)
             .set_construct_as_smart_pointer(true);
         reg.add_class_to_group(name, "NavierStokesFV1M", tag);
     }
+	// RANS turbulence FV1
+	{
+		typedef RANSTurbulenceFV1<TDomain> T;
+		typedef IElemDisc<TDomain> TBase;
+
+		string name = string("RANSTurbulenceFV1").append(suffix);
+
+		reg.add_class_<T, TBase>(name, grp)
+			.template add_constructor<void (*)(const char*, const char*)>("Functions#Subset(s)")
+			.add_method("set_velocity",
+				static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_velocity),"", "Velocity")
+			.add_method("set_velocity",static_cast<void (T::*)(const std::vector<number>&)>(&T::set_velocity),"", "Velocity")
+			.add_method("set_velocity_gradient",static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim>>)>(&T::set_velocity_gradient),"", "VelocityGradient")
+			.add_method("set_kinematic_viscosity",static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_kinematic_viscosity),"", "KinematicViscosity")
+			.add_method("set_wall_distance",static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_wall_distance),"", "WallDistance")
+			.add_method("set_upwind",static_cast<void (T::*)(const std::string&)>(&T::set_upwind),"", "Upwind")
+			.set_construct_as_smart_pointer(true);
+
+		reg.add_class_to_group(name, "RANSTurbulenceFV1", tag);
+	}
 
 
 	//	NavierStokesNoNormalStressOutflow FV1
