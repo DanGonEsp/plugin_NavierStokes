@@ -274,7 +274,7 @@ class FV1SmagorinskyTurbViscData
 		aVertexTensor m_acDeformation;
 		ATensor m_aDeformation;
 		
-	//  Smagorinsky model parameter, typical values [0.01 0.1]
+	// Smagorinsky constant Cs
 		number m_c;
 
 		//	approximation space for level and surface grid
@@ -294,6 +294,7 @@ class FV1SmagorinskyTurbViscData
 			grid_type& grid = *domain.grid();
 			m_grid = &grid;
 			m_pbm = m_grid->periodic_boundary_manager();
+			m_imKinViscosity = make_sp(new ConstUserNumber<dim>(0.0));
 			// attachments
 			grid.template attach_to<Vertex>(m_aTurbulentViscosity);
 			grid.template attach_to<Vertex>(m_aVolume);
@@ -302,6 +303,7 @@ class FV1SmagorinskyTurbViscData
 			m_acTurbulentViscosity.access(grid,m_aTurbulentViscosity);
 			m_acVolume.access(grid,m_aVolume);
 			m_acDeformation.access(grid,m_aDeformation);
+			SetAttachmentValues(m_acTurbulentViscosity,m_grid->template begin<Vertex>(),m_grid->template end<Vertex>(),0);
 
 		}
 		
@@ -380,9 +382,7 @@ class FV1SmagorinskyTurbViscData
 		
 		static const size_t max_number_of_ips = 20;
 	
-		int m_counter = 0;
-		const int m_update = 5;
-	
+
 
 		void update();
 
@@ -439,7 +439,6 @@ class FV1DynamicTurbViscData
 			m_imKinViscosity = user;
 		}
 		void set_kinematic_viscosity(number val){
-			m_viscosityNumber = val;
 			set_kinematic_viscosity(make_sp(new ConstUserNumber<dim>(val)));
 		}
 	#ifdef UG_FOR_LUA
@@ -452,10 +451,6 @@ class FV1DynamicTurbViscData
 	private:
 		///	Data import for kinematic viscosity
 		SmartPtr<CplUserData<number,dim> > m_imKinViscosity;
-
-		number m_viscosityNumber;
-
-		static const number m_small;
 
 	private:
 	// grid function
@@ -470,6 +465,10 @@ class FV1DynamicTurbViscData
 	//  turbulent model parameter attachment
 		aVertexNumber m_acTurbulentC;
 		ANumber m_aTurbulentC;
+	
+	// spatially filtered dynamic model coefficient
+		aVertexNumber m_acFilteredC;
+		ANumber m_aFilteredC;
 
 	//  volume attachment
 		aVertexNumber m_acVolume;
@@ -515,9 +514,11 @@ class FV1DynamicTurbViscData
 			grid_type& grid = *domain.grid();
 			m_grid = &grid;
 			m_pbm = m_grid->periodic_boundary_manager();
+			m_imKinViscosity = make_sp(new ConstUserNumber<dim>(0.0));
 			// attachments
 			grid.template attach_to<Vertex>(m_aTurbulentViscosity);
 			grid.template attach_to<Vertex>(m_aTurbulentC);
+			grid.template attach_to<Vertex>(m_aFilteredC);
 			grid.template attach_to<Vertex>(m_aVolume);
 			grid.template attach_to<Vertex>(m_aVolumeHat);
 			grid.template attach_to<Vertex>(m_aUHat);
@@ -528,6 +529,7 @@ class FV1DynamicTurbViscData
 			// accessors
 			m_acTurbulentViscosity.access(grid,m_aTurbulentViscosity);
 			m_acTurbulentC.access(grid,m_aTurbulentC);
+			m_acFilteredC.access(grid,m_aFilteredC);
 			m_acVolume.access(grid,m_aVolume);
 			m_acVolumeHat.access(grid,m_aVolumeHat);
 			m_acUHat.access(grid,m_aUHat);
@@ -539,6 +541,10 @@ class FV1DynamicTurbViscData
 			m_spaceFilter=true;
 			m_timeFilter=false;
 			m_timeFilterEps=1;
+			
+			SetAttachmentValues(m_acTurbulentViscosity,m_grid->template begin<Vertex>(),m_grid->template end<Vertex>(),0);
+			SetAttachmentValues(m_acTurbulentC,m_grid->template begin<Vertex>(),m_grid->template end<Vertex>(),0);
+			SetAttachmentValues(m_acFilteredC,m_grid->template begin<Vertex>(),m_grid->template end<Vertex>(),0);
 		}
 		
 		virtual ~FV1DynamicTurbViscData() {
@@ -546,6 +552,7 @@ class FV1DynamicTurbViscData
 			grid_type& grid = *domain.grid();
 			grid.template detach_from<Vertex>(m_aTurbulentViscosity);
 			grid.template detach_from<Vertex>(m_aTurbulentC);
+			grid.template detach_from<Vertex>(m_aFilteredC);
 			grid.template detach_from<Vertex>(m_aVolume);
 			grid.template detach_from<Vertex>(m_aVolumeHat);
 			grid.template detach_from<Vertex>(m_aUHat);
@@ -631,18 +638,17 @@ class FV1DynamicTurbViscData
 			m_timeFilter=b;
 			m_timeFilterEps=0.001;
 		}
-		void set_time_filter_eps(number eps){
-			if (eps!=1)
-				m_timeFilter=true;
-			else
-				m_timeFilter=false;
-			m_timeFilterEps=eps;
+		void set_time_filter_eps(number eps)
+		{
+			UG_COND_THROW(
+				eps < 0.0 || eps > 1.0,
+				"FV1DynamicTurbViscData: time filter epsilon must be in [0,1].");
+
+			m_timeFilterEps = eps;
+			m_timeFilter = (eps < 1.0);
 		}
 };
 
-
-template <typename TGridFunction>
-const number FV1DynamicTurbViscData<TGridFunction>::m_small = 1e-8;
 
 } // namespace NavierStokes
 } // end namespace ug

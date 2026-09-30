@@ -52,7 +52,7 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::transferToLowe
 			clvIterEnd = lDD.template end<Vertex>(si);
 			for (;clvIter != clvIterEnd;clvIter++){
 				Vertex* vertex = *clvIter;
-				aaData[vertex] += aaData[grid.get_child<Vertex>(vertex, 0)];
+				aaData[vertex] = aaData[grid.get_child<Vertex>(vertex, 0)];
 			}
 			if (lev==0) break;
 		}
@@ -70,7 +70,7 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::fillAttachment
 		ElemIterator iterEnd = u->template end<Vertex>(si);
 		for(  ;iter !=iterEnd; ++iter)
 		{
-			Vertex* vertex = iter;
+			Vertex* vertex = *iter;
 			for (int d=0;d<dim;d++){
 				u->dof_indices(vertex, d, multInd);
 				aaU[vertex][d]=DoFRef(*u,multInd[0]);
@@ -365,10 +365,11 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::scvFilter(Peri
 
 				scvLocalBary = 0;
 				// compute barycenter of scv
-				for (size_t i=0;i<scv->num_corners();i++){
-					scvLocalBary += scv->loal_corner(i);
+				for (size_t i = 0; i < scv.num_corners(); ++i)
+				{
+					scvLocalBary += scv.local_corner(i);
 				}
-				scvLocalBary/=(number)(scv->num_corners());
+				scvLocalBary /= (number)scv.num_corners();
 				//	memory for shapes
 				std::vector<number> vShape;
 				rTrialSpace.shapes(vShape, scvLocalBary);
@@ -487,9 +488,8 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::scvFilter(aVer
 				rTrialSpace.shapes(vShape, scvLocalBary);
 				MathVector<dim> localValue = 0;
 
-				for (size_t j=0;j<noc;j++)
-					for (int d=0;d<dim;d++)
-						localValue += vShape[j]*uValue[j];
+				for (size_t j = 0; j < noc; ++j)
+					localValue += vShape[j] * uValue[j];
 
 				localValue *= scv.volume();
 				aaVol[elem->vertex(co)]  += scv.volume();
@@ -840,12 +840,6 @@ void StdTurbulentViscosityDataFV1<TData,dim,TImpl,TGridFunction>::addUiUjTerm(aV
 template<typename TGridFunction>
 void FV1SmagorinskyTurbViscData<TGridFunction>::update(){
 	
-	m_counter += 1;
-	if(m_counter % m_update != 0)
-		return;
-	else
-		m_counter = 0;
-	
 	UG_LOG("Updating SmagorinskyTurbViscData... \n");
 	//	get domain of grid function
 	domain_type& domain = *m_u->domain().get();
@@ -888,18 +882,18 @@ void FV1DynamicTurbViscData<TGridFunction>::update(){
 	//	get position accessor
 	// for debug typedef typename domain_type::position_accessor_type position_accessor_type;
 	// for debug const position_accessor_type& posAcc = domain.position_accessor();
-
+	
 	// initialize attachment values with 0
-//	SetAttachmentValues(m_acDeformation , m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
+	//	SetAttachmentValues(m_acDeformation , m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
 	SetAttachmentValues(m_acTurbulentViscosity, m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
-//	SetAttachmentValues(m_acVolume,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
-	SetAttachmentValues(m_acTurbulentC,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
-//	SetAttachmentValues(m_acVolumeHat,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
-//	SetAttachmentValues(m_acUHat,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
-//	SetAttachmentValues(m_acDeformationHat,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
-//	SetAttachmentValues(m_acLij,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
+	//	SetAttachmentValues(m_acVolume,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
+	//	SetAttachmentValues(m_acTurbulentC,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
+	//	SetAttachmentValues(m_acVolumeHat,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
+	//	SetAttachmentValues(m_acUHat,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
+	//	SetAttachmentValues(m_acDeformationHat,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
+	//	SetAttachmentValues(m_acLij,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
 	SetAttachmentValues(m_acMij,m_grid->template begin<Vertex>(), m_grid->template end<Vertex>(), 0);
-
+	
 	// compute Lij term \hat{u_i u_j} - \hat{u_i} \hat{u_j}
 	// \hat{u}
 	this->elementFilter(m_acUHat, m_aUHat,m_acVolumeHat, m_aVolumeHat,m_u);
@@ -910,7 +904,7 @@ void FV1DynamicTurbViscData<TGridFunction>::update(){
 	this->elementFilter(m_acLij,m_aLij,m_acVolumeHat,m_aVolumeHat,m_acMij);
 	// \hat{u_i u_j} - \hat{u_i} \hat{u_j}
 	this->addUiUjTerm(m_acLij,-1.0,m_acUHat);
-
+	
 	// Mij term
 	// first term |\hat{S}| \hat{S}
 	// assemble \hat{S} using \hat{u}
@@ -923,14 +917,13 @@ void FV1DynamicTurbViscData<TGridFunction>::update(){
 	// compute |S| S
 	this->scaleTensorByNorm(m_acDeformation);
 	// filter |S| S
-	//for debug UG_LOG("------------------------------------------------------\n");
-	this->elementFilter(m_acMij, m_aMij,m_acVolumeHat, m_aVolumeHat,m_acDeformation);
-
+	this->elementFilter(m_acMij,m_aMij,m_acVolumeHat,m_aVolumeHat,m_acDeformation);
+	// Restore the unscaled strain-rate tensor S for the final turbulent viscosity
+	this->assembleDeformationTensor(m_acDeformation,m_aDeformation,m_acVolume,m_aVolume,m_u);
+	
 	bool use_filter = false;
-
-	//	create Multiindex
-	std::vector<DoFIndex> multInd;
-
+	
+	
 	// complete Mij term computation by scaling and adding the two terms,
 	// solve the local least squares problem and compute local c and local turbulent viscosity
 	for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si)
@@ -947,8 +940,6 @@ void FV1DynamicTurbViscData<TGridFunction>::update(){
 			delta = pow(delta,(number)1.0/(number)dim);
 			number deltaHat = m_acVolumeHat[vertex];
 			deltaHat = pow(deltaHat,(number)1.0/(number)dim);
-			m_u->dof_indices(vertex, 0, multInd);
-			m_u->dof_indices(vertex, 1, multInd);
 			m_acDeformationHat[vertex] *= -2*deltaHat*deltaHat;
 			m_acMij[vertex] *= 2*delta*delta;
 			m_acMij[vertex] += m_acDeformationHat[vertex];
@@ -980,51 +971,86 @@ void FV1DynamicTurbViscData<TGridFunction>::update(){
 			if (denom>1e-15)
 				c/=(number)denom;
 			else c=0;
-
-			if (m_spaceFilter==false){
-				if (m_timeFilter==false){
-					m_acTurbulentViscosity[vertex] = c * delta*delta * this->FNorm(m_acDeformation[vertex]);
-				} else {
-					m_acTurbulentC[vertex]= (m_timeFilterEps * c + (1-m_timeFilterEps)*m_acTurbulentC[vertex]);
-					m_acTurbulentViscosity[vertex] = m_acTurbulentC[vertex] * delta*delta * this->FNorm(m_acDeformation[vertex]);
+			
+			if (m_spaceFilter == false)
+			{
+				number cUsed = c;
+				
+				if (m_timeFilter == true)
+				{
+					m_acTurbulentC[vertex] = m_timeFilterEps * c + (1.0 - m_timeFilterEps) * m_acTurbulentC[vertex];
+					cUsed = m_acTurbulentC[vertex];
 				}
-				if (m_acTurbulentViscosity[vertex]+m_viscosityNumber<m_small) m_acTurbulentViscosity[vertex] = m_viscosityNumber + m_small;			}
-			else{
-				// store c in viscosity array
+				
+				number nuT = cUsed * delta * delta * this->FNorm(m_acDeformation[vertex]);
+				
+				// Disable negative SGS viscosity/backscatter for robustness.
+				if (nuT < 0.0)
+					nuT = 0.0;
+				m_acTurbulentViscosity[vertex] = nuT;
+			}
+			else
+			{
+				// Temporary storage of the local dynamic coefficient.
 				m_acTurbulentViscosity[vertex] = c;
 			}
 		}
 	}
-	if (m_spaceFilter==true){
-		// filter c
-		if (m_timeFilter==false)
-			this->elementFilter(m_acTurbulentC,m_aTurbulentC,m_acVolumeHat,m_aVolumeHat,m_acTurbulentViscosity);
-		else
-			// store c in volumeHat array
-			this->elementFilter(m_acVolumeHat, m_aVolumeHat,m_acVolumeHat,m_aVolumeHat,m_acTurbulentViscosity);
-		// compute turbulent viscosity
+	if (m_spaceFilter == true)
+	{
+		// Spatially filter the locally computed dynamic coefficient.
+		this->elementFilter(
+							m_acFilteredC,
+							m_aFilteredC,
+							m_acVolumeHat,
+							m_aVolumeHat,
+							m_acTurbulentViscosity);
+		
 		for(int si = 0; si < domain.subset_handler()->num_subsets(); ++si)
 		{
-			//for debug UG_LOG("si = " << si << "\n");
-			if ((this->m_turbZeroSg.size()!=0) && (this->m_turbZeroSg.contains(si)==true)) continue;
+			if ((this->m_turbZeroSg.size() != 0) &&
+				(this->m_turbZeroSg.contains(si) == true))
+				continue;
+			
 			VertexIterator vertexIter = m_u->template begin<Vertex>(si);
 			VertexIterator vertexIterEnd = m_u->template end<Vertex>(si);
-			for(  ;vertexIter !=vertexIterEnd; vertexIter++){
+			
+			for(; vertexIter != vertexIterEnd; ++vertexIter)
+			{
 				Vertex* vertex = *vertexIter;
-				if (m_pbm && m_pbm->is_slave(vertex)) continue;
+				
+				if (m_pbm && m_pbm->is_slave(vertex))
+					continue;
+				
 				number delta = m_acVolume[vertex];
-				delta = pow(delta,(number)1.0/(number)dim);
-				if (m_timeFilter==true)
-					// time averaging, note that c has been stored in m_acVolumeHat
-					m_acTurbulentC[vertex]= (m_timeFilterEps * m_acVolumeHat[vertex] + (1-m_timeFilterEps)*m_acTurbulentC[vertex]);
-				m_acTurbulentViscosity[vertex] = m_acTurbulentC[vertex] * delta*delta * this->FNorm(m_acDeformation[vertex]);
-				if (m_acTurbulentViscosity[vertex]+m_viscosityNumber<m_small) m_acTurbulentViscosity[vertex] = m_viscosityNumber+m_small;
-				//for debug UG_LOG("nu_t = " << m_acTurbulentViscosity[vertex]  << " c = " << m_acTurbulentC[vertex] << " delta = " << delta << " co=[" << 0.5*(posAcc[vertex->vertex(0)][0] + posAcc[vertex->vertex(1)][0]) << "," << 0.5*(posAcc[vertex->vertex(0)][1] + posAcc[vertex->vertex(1)][1]) << "]\n");
+				delta = pow(delta, (number)1.0/(number)dim);
+				
+				number cUsed = m_acFilteredC[vertex];
+				
+				if (m_timeFilter == true)
+				{
+					m_acTurbulentC[vertex] = m_timeFilterEps * cUsed + (1.0 - m_timeFilterEps) * m_acTurbulentC[vertex];
+					cUsed = m_acTurbulentC[vertex];
+				}
+				else
+				{
+					m_acTurbulentC[vertex] = cUsed;
+				}
+				
+				number nuT = cUsed * delta * delta * this->FNorm(m_acDeformation[vertex]);
+				
+				// Disable negative SGS viscosity/backscatter.
+				if (nuT < 0.0)
+					nuT = 0.0;
+				
+				m_acTurbulentViscosity[vertex] = nuT;
 			}
 		}
 	}
-}
-
+	
+	// transfer turbulent viscosity to lower multigrid levels
+	this->transferToLowerLevels(m_acTurbulentViscosity,*m_spApproxSpace);
+	}
 } // namespace NavierStokes
 } // end namespace ug
 
