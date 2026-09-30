@@ -1297,7 +1297,7 @@ public:
 		ReferenceObjectID roid = elem->reference_object_id();
 
 		const size_t numVertices = element->num_vertices();
-		const size_t MaxVertices = domain_traits<dim>::MaxNumVerticesOfElem;
+
 		//    get domain of grid function
 		const domain_type& domain = *m_u->domain().get();
 
@@ -1334,7 +1334,7 @@ public:
 			//     get current SCV
 			const typename DimFV1Geometry<dim>::SCV& scv = geo.scv(sh);
 		
-			for(int d = 0; d < dim; ++d)
+			for(int d = 0; d < refDim; ++d)
 				LocIP[d] += scv.local_ip()[d];
 		}
 		VecScale(LocIP,LocIP,1.0/numVertices);
@@ -1344,12 +1344,11 @@ public:
 
 		
 		MathVector<dim> normal = 0.0;
-		number wieght = 0.0;
 		number Phi = 0.0;
 		
 		for (size_t sh=0;sh<numVertices;sh++)
 		{
-			Phi += (*u)(_C_, sh)*shapes[sh];
+			Phi = (*u)(_C_, sh)*shapes[sh];
 			number F = 4.0*Phi*(1.0 - Phi);
 			F = Inter->fourth_root_reg(F, 1e-08);
 			//F = pow(F,1.0);
@@ -1528,8 +1527,8 @@ public:
 		}
 
 		// Transfer the final normals after averaging and normalization.
-		transferToLowerLevels(m_new_normal);
-		transferToLowerLevels(m_old_normal);
+		//transferToLowerLevels(m_new_normal);
+		//transferToLowerLevels(m_old_normal);
 	}
 
 private:
@@ -1566,10 +1565,18 @@ private:
 					// Periodic slave values are accessed through their master.
 					if (pbm && pbm->is_slave(vertex)) continue;
 
+					const int numChildren = grid.num_children<Vertex>(vertex);
+
+					if (numChildren == 0) continue;
+
+					UG_COND_THROW(numChildren != 1,
+								  "transferToLowerLevels: coarse vertex has "
+								  << numChildren << " vertex children.");
+
 					Vertex* child = grid.get_child<Vertex>(vertex, 0);
 
-					// Leave vertices without a local child unchanged.
-					if (child == NULL) continue;
+					UG_COND_THROW(child == NULL,
+								  "transferToLowerLevels: child vertex is NULL.");
 
 					aaData[vertex] = aaData[child];
 				}
@@ -1882,14 +1889,21 @@ public:
 			MathVector<dim> normal = 0.0;
 			number Value = 0.0;
 			const number eps_z = 1e-5;
-			const number eps_slope = 1e-02;
-			const number eps_grad = 1e-03;
+			const number eps_slope = m_slope;
 			
 			
 			if(ComputeSlipVel)
 			{
 				normal = vNormal[ip];
 				number normal_mag = VecTwoNorm(normal);
+				
+				MathVector<dim> gravityDir = 0.0;
+				gravityDir[dim-1] = -1.0;
+
+				const number ng = VecProd(normal, gravityDir);
+
+				for(int d = 0; d < dim; ++d)
+					tang[d] = gravityDir[d] - ng*normal[d];
 				
 				
 				number nxy2 = 0.0;
@@ -1898,29 +1912,12 @@ public:
 
 				number nxy = sqrt(nxy2);
 				number nz = sqrt(normal[dim-1]*normal[dim-1] + eps_z*eps_z);
-				
-
-
-				
-				MathVector<dim> h = 0;
-				h[dim-1] = 0.0;
-				h[dim-2] += -eps_grad;
-				
-				number hmag = sqrt(VecProd(h,h));
-				VecScale(h, h, 1.0 / hmag);
-				
-				MathVector<dim> z = 0.0;
-				z[dim-1] = 1.0;
-				VecScaleAdd(tang,cos(m_theta_cr),  h, - sin(m_theta_cr),z);
-				
-				UG_THROW("SlipVel:  Unitary direction not defined, Oscilations due to the change direction");
-				
-				
-				
-				
 				number slope = nxy / nz;
+				
+				
+				
 				Value = slope - tan(m_theta_cr);
-				Value = (Value + sqrt(pow(Value,2.0) + eps_slope*eps_slope)) / 2.0;
+				Value = Inter->fourth_root_reg(Value, eps_slope);
 				Value /= sqrt(1.0 + pow(slope,2.0));
 				
 				
@@ -2429,7 +2426,6 @@ public:
 				number nxy = sqrt(nxy2);
 				number nz = sqrt(normal[dim-1]*normal[dim-1] + eps_z*eps_z);
 				number slope =  nxy / nz;
-				number Factor = sin(asin(slope/sqrt(1.0 + pow(slope,2.0))) - m_theta_cr);
 				
 				
 				
