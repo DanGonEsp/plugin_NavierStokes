@@ -55,9 +55,7 @@ class InterfaceNormalLinker
 
     public:
     InterfaceNormalLinker() :
-            m_spVolumeFraction(NULL), m_spDVolumeFraction(NULL),
-            m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL),
-            interface_volume_fraction(0.5)
+            m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL)
 
         {
         //    this linker needs exactly five input
@@ -65,161 +63,191 @@ class InterfaceNormalLinker
         }
 
 
-        inline void evaluate (MathVector<dim>& value,
-                              const MathVector<dim>& globIP,
-                              number time, int si) const
-        {
-            UG_LOG("InterfaceNormalLinker::evaluate single called");
-            number volume_fraction;
-            MathVector<dim> volume_grad;
-            
-            (*m_spVolumeFraction)(volume_fraction, globIP, time, si);
-            (*m_spVolumeGrad)(volume_grad, globIP, time, si);
+		inline void evaluate(MathVector<dim>& value,
+							 const MathVector<dim>& globIP,
+							 number time, int si) const
+		{
+			MathVector<dim> volumeGrad;
+			(*m_spVolumeGrad)(volumeGrad, globIP, time, si);
 
-                                                    
-                                                                                                                    
-            number vol_grad;
-            const number eps = 1e-04;
+			compute_normal(value, volumeGrad);
+		}
 
-                
-            vol_grad=sqrt(VecProd(volume_grad, volume_grad));
-            
-            MathVector<dim> n;
-            
-            if (vol_grad> eps)
-                VecScale(n, volume_grad,1.0/vol_grad);
-            else
-            {
-                VecSet(n,0.0);
-                n[dim-1] = -1.0;
-            }
-            value=n;
+		template <int refDim>
+		inline void evaluate(MathVector<dim> vNormal[],
+							 const MathVector<dim> vGlobIP[],
+							 number time, int si,
+							 GridObject* elem,
+							 const MathVector<dim> vCornerCoords[],
+							 const MathVector<refDim> vLocIP[],
+							 const size_t nip,
+							 LocalVector* u,
+							 const MathMatrix<refDim, dim>* vJT = NULL) const
+		{
+			std::vector<MathVector<dim> > vVolumeGrad(nip);
 
-        }
+			(*m_spVolumeGrad)(&vVolumeGrad[0], vGlobIP, time, si,
+							  elem, vCornerCoords, vLocIP, nip, u, vJT);
 
-        template <int refDim>
-        inline void evaluate(MathVector<dim> vNormal[],
-                             const MathVector<dim> vGlobIP[],
-                             number time, int si,
-                             GridObject* elem,
-                             const MathVector<dim> vCornerCoords[],
-                             const MathVector<refDim> vLocIP[],
-                             const size_t nip,
-                             LocalVector* u,
-                             const MathMatrix<refDim, dim>* vJT = NULL) const
-        {
-            UG_LOG("InterfaceNormalLinker::evaluate single called");
-            std::vector<number> vVolume(nip);
-            std::vector<MathVector<dim>> vVolumeGrad(nip);
+			for(size_t ip = 0; ip < nip; ++ip)
+				compute_normal(vNormal[ip], vVolumeGrad[ip]);
+		}
 
+		template <int refDim>
+		void eval_and_deriv(MathVector<dim> vNormal[],
+							const MathVector<dim> vGlobIP[],
+							number time, int si,
+							GridObject* elem,
+							const MathVector<dim> vCornerCoords[],
+							const MathVector<refDim> vLocIP[],
+							const size_t nip,
+							LocalVector* u,
+							bool bDeriv,
+							int s,
+							std::vector<std::vector<MathVector<dim> > > vvvDeriv[],
+							const MathMatrix<refDim, dim>* vJT = NULL) const
+		{
+			const int s_DVOL_ = base_type::series_id(_DVOL_, s);
 
-            (*m_spVolumeFraction)(&vVolume[0], vGlobIP, time, si,
-                            elem, vCornerCoords, vLocIP, nip, u, vJT);
-            (*m_spVolumeGrad)(&vVolumeGrad[0], vGlobIP, time, si,
-                            elem, vCornerCoords, vLocIP, nip, u, vJT);
+			const MathVector<dim>* vVolumeGrad = m_spVolumeGrad->values(s_DVOL_);
 
+			std::vector<MathMatrix<dim, dim> > vJ(nip);
 
-            
-            number vol_grad;
-            const number eps = 1e-04;
-            for(size_t ip = 0; ip < nip; ++ip)
-            {
-                
-                vol_grad=sqrt(VecProd(vVolumeGrad[ip], vVolumeGrad[ip]));
-                
-                MathVector<dim> n;
-                
-                if (vol_grad> eps)
-                    VecScale(n, vVolumeGrad[ip],1.0/vol_grad);
-                else
-                {
-                    VecSet(n,0.0);
-                    n[dim-1] = -1.0;
-                }
-                vNormal[ip]=n;
-            }
-        }
+			for(size_t ip = 0; ip < nip; ++ip)
+				compute_normal_and_jacobian(vNormal[ip], vJ[ip], vVolumeGrad[ip]);
 
-        template <int refDim>
-        void eval_and_deriv(MathVector<dim> vNormal[],
-                            const MathVector<dim> vGlobIP[],
-                            number time, int si,
-                            GridObject* elem,
-                            const MathVector<dim> vCornerCoords[],
-                            const MathVector<refDim> vLocIP[],
-                            const size_t nip,
-                            LocalVector* u,
-                            bool bDeriv,
-                            int s,
-                            std::vector<std::vector<MathVector<dim> > > vvvDeriv[],
-                            const MathMatrix<refDim, dim>* vJT = NULL) const
-    {        
-        
-        int s_VOL_ = base_type::series_id(_VOL_, s);
-        int s_DVOL_ = base_type::series_id(_DVOL_, s);
-        
-        const number* vVolumeFraction   = m_spVolumeFraction->values(s_VOL_);
-        const MathVector<dim>* vVolumeGrad = m_spVolumeGrad->values(s_DVOL_);
-        
-        std::vector<number> vVolumeFraction2(nip);
-        (*m_spVolumeFraction)(&vVolumeFraction2[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
-        
-        for(size_t ip = 0; ip < nip; ++ip)
-        {
-            if(fabs(vVolumeFraction[ip]-vVolumeFraction2[ip]) > 1e-05 )
-                UG_THROW("Volume fraction Values are not consistent in Granular Viscosity Linker");
-                             
-        }
+			if(!bDeriv || this->zero_derivative())
+				return;
 
+			this->set_zero(vvvDeriv, nip);
 
-        
-        number vol_grad;
-        const number eps = 1e-04;
-        for(size_t ip = 0; ip < nip; ++ip)
-        {
+			if(m_spVolumeGrad->zero_derivative())
+				return;
 
-            vol_grad=sqrt(VecProd(vVolumeGrad[ip], vVolumeGrad[ip]));
+			for(size_t fct = 0; fct < base_type::input_num_fct(_DVOL_); ++fct)
+			{
+				const size_t commonFct = base_type::input_common_fct(_DVOL_, fct);
 
-            MathVector<dim> n;
-            
-            if (vol_grad> eps)
-                VecScale(n, vVolumeGrad[ip],1.0/vol_grad);
-            else
-            {
-                VecSet(n,0.0);
-                n[dim-1] = -1.0;
-            }
-            vNormal[ip]=n;
-            
-            
-        }
-        
-        //    Compute the derivatives at all ips     //
-        /////////////////////////////////////////////
-        
-        //    check if something to do
-        if(!bDeriv || this->zero_derivative()) return;
-        
-        //    clear all derivative values
-        this->set_zero(vvvDeriv, nip);
-        
-    }
+				for(size_t ip = 0; ip < nip; ++ip)
+				{
+					for(size_t sh = 0; sh < m_spDVolumeGrad->num_sh(fct); ++sh)
+					{
+						const MathVector<dim>& dGrad =
+							m_spDVolumeGrad->deriv(s_DVOL_, ip, fct, sh);
+
+						MathVector<dim> dNormal;
+						VecSet(dNormal, 0.0);
+
+						for(int i = 0; i < dim; ++i)
+							for(int j = 0; j < dim; ++j)
+								dNormal[i] += vJ[ip](i,j)*dGrad[j];
+
+						vvvDeriv[ip][commonFct][sh] += dNormal;
+					}
+				}
+			}
+		}
+	
+		inline void compute_normal_and_jacobian(MathVector<dim>& n,
+												MathMatrix<dim, dim>& J,
+												const MathVector<dim>& grad) const
+		{
+			const number epsGrad = 1e-4;
+			const number epsNorm = 1e-12;
+
+			const number r2 = VecProd(grad, grad);
+			const number R = r2 + epsGrad*epsGrad;
+			const number s = sqrt(R);
+			const number alpha = r2/R;
+
+			MathVector<dim> vertical;
+			VecSet(vertical, 0.0);
+			vertical[dim-1] = 1.0;
+
+			MathVector<dim> gradReg;
+			VecScale(gradReg, grad, -1.0/s);
+
+			MathVector<dim> q;
+			VecScaleAdd(q, alpha, gradReg, 1.0-alpha, vertical);
+
+			const number q2 = VecProd(q, q);
+			const number Q = sqrt(q2 + epsNorm*epsNorm);
+
+			VecScale(n, q, 1.0/Q);
+
+			MathMatrix<dim, dim> DqDg;
+
+			for(int i = 0; i < dim; ++i)
+			{
+				for(int j = 0; j < dim; ++j)
+				{
+					const number dalpha =
+						2.0*epsGrad*epsGrad*grad[j]/(R*R);
+
+					const number delta =
+						(i == j) ? 1.0 : 0.0;
+
+					// derivative of -grad/s
+					const number dGradReg =
+						-delta/s + grad[i]*grad[j]/(s*s*s);
+
+					DqDg(i,j) =
+						dalpha*(gradReg[i] - vertical[i])
+						+ alpha*dGradReg;
+				}
+			}
+
+			for(int i = 0; i < dim; ++i)
+			{
+				for(int j = 0; j < dim; ++j)
+				{
+					J(i,j) = 0.0;
+
+					for(int k = 0; k < dim; ++k)
+					{
+						const number delta =
+							(i == k) ? 1.0 : 0.0;
+
+						const number DnDq =
+							delta/Q - q[i]*q[k]/(Q*Q*Q);
+
+						J(i,j) += DnDq*DqDg(k,j);
+					}
+				}
+			}
+		}
+	
+		inline void compute_normal(MathVector<dim>& n, const MathVector<dim>& grad) const
+		{
+			const number epsGrad = 1e-4;
+			const number epsNorm = 1e-12;
+
+			const number r2 = VecProd(grad, grad);
+			const number R = r2 + epsGrad*epsGrad;
+			const number s = sqrt(R);
+			const number alpha = r2 / R;
+
+			// Local interface normal: -grad(c)
+			MathVector<dim> gradReg;
+			VecScale(gradReg, grad, -1.0/s);
+
+			// Upward fallback for vanishing gradient
+			MathVector<dim> vertical;
+			VecSet(vertical, 0.0);
+			vertical[dim-1] = 1.0;
+
+			MathVector<dim> q;
+			VecScaleAdd(q, alpha, gradReg, 1.0-alpha, vertical);
+
+			const number q2 = VecProd(q, q);
+			const number qNorm = sqrt(q2 + epsNorm*epsNorm);
+
+			VecScale(n, q, 1.0/qNorm);
+		}
     
 
     public:
     
-    ///    set density import
-        void set_volume_fraction(SmartPtr<CplUserData<number, dim> > data)
-        {
-            m_spVolumeFraction = data;
-            m_spDVolumeFraction = data.template cast_dynamic<DependentUserData<number, dim> >();
-            base_type::set_input(_VOL_, data, data);
-        }
-
-        void set_volume_fraction(number val)
-        {
-            set_volume_fraction(make_sp(new ConstUserNumber<dim>(val)));
-        }
     ///    set gravity import
         void set_volume_grad(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
         {
@@ -230,27 +258,11 @@ class InterfaceNormalLinker
 
     protected:
     
-    ///    import for density
-        static const size_t _VOL_ = 0;
-        SmartPtr<CplUserData<number, dim> > m_spVolumeFraction;
-        SmartPtr<DependentUserData<number, dim> > m_spDVolumeFraction;
-    ///    import for density
-        static const size_t _DVOL_ = 1;
+	///    import for volume fraction grad
+        static const size_t _DVOL_ = 0;
         SmartPtr<CplUserData<MathVector<dim>, dim> > m_spVolumeGrad;
         SmartPtr<DependentUserData<MathVector<dim>, dim> > m_spDVolumeGrad;
     
-    
-
-
-    public:
-
-        void set_interface_volume_fraction(float R) {
-            interface_volume_fraction = R;
-        }
-
-    protected:
-
-        float interface_volume_fraction;
 
 
 };
