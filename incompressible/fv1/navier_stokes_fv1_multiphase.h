@@ -850,6 +850,7 @@ class NavierStokesFV1M
 		bool m_mass_term = false;
 		bool m_mass_mean = false;
 		int m_upwind_vol_method = 0;
+		bool m_saltation_transport = false;
 
 		virtual void init();
 

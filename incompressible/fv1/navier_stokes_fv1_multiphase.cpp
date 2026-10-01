@@ -257,6 +257,7 @@ void NavierStokesFV1M<TDomain>::
 set_saltation_flux(SmartPtr<CplUserData<MathVector<dim>, dim> > user)
 {
 	m_imSaltationFlux.set_data(user);
+	m_saltation_transport = true;
 }
 template<typename TDomain>
 void NavierStokesFV1M<TDomain>::
