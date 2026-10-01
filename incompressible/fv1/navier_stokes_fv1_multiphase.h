@@ -189,6 +189,7 @@ class NavierStokesFV1M
         void set_relative_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user, int upwind_scheme);
 		void set_slip_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
         void set_diffusion(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > user);
+		void set_saltation_flux(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
     
         void set_average_gamma(SmartPtr<CplUserData<number, dim> > user);
         void set_interface_normal(SmartPtr<CplUserData<MathVector<dim>, dim> > user);
@@ -793,6 +794,8 @@ class NavierStokesFV1M
     
     ///    Data import for Diffusion
         DataImport<MathMatrix<dim,dim>, dim> m_imDiffusion;
+	/// Data import for Saltation Flux
+		DataImport<MathVector<dim>, dim> m_imSaltationFlux;
     
     ///    Data import for Relative velocity
         DataImport<MathVector<dim>, dim> m_imRelativeVelocitySCV;
@@ -883,8 +886,13 @@ class NavierStokesFV1M
 	///    computes the linearized defect w.r.t to the velocity
 		template <typename TElem, typename TFVGeom>
 		void lin_def_diffusion(const LocalVector& u,
-							  std::vector<std::vector<MathMatrix<dim,dim> > > vvvLinDef[],
+							std::vector<std::vector<MathMatrix<dim,dim> > > vvvLinDef[],
 							  const size_t nip);
+		// header
+		template <typename TElem, typename TFVGeom>
+		void lin_def_saltation_flux(const LocalVector& u,
+							std::vector<std::vector<MathVector<dim> > > vvvLinDef[],
+									const size_t nip);
     
     
 	protected:

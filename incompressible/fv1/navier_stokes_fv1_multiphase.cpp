@@ -112,6 +112,7 @@ void NavierStokesFV1M<TDomain>::init()
 	m_imRelativeVelocitySCVF.set_comp_lin_defect(false);
 	m_imSlipVelocitySCVF.set_comp_lin_defect(false);
     m_imDiffusion.set_comp_lin_defect(false);
+	//m_imSaltationFlux.set_comp_lin_defect(false);
 	
 	m_imAverageGammaSCV.set_comp_lin_defect(false);
     
@@ -135,6 +136,7 @@ void NavierStokesFV1M<TDomain>::init()
 	this->register_import(m_imRelativeVelocitySCVF);
 	this->register_import(m_imSlipVelocitySCVF);
     this->register_import(m_imDiffusion);
+	this->register_import(m_imSaltationFlux);
 	this->register_import(m_imAverageGammaSCV);
     
     m_imSourceSCV.set_rhs_part();
@@ -248,6 +250,13 @@ void NavierStokesFV1M<TDomain>::
 set_diffusion(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > data)
 {
     m_imDiffusion.set_data(data);
+}
+//////// Saltation flux
+template<typename TDomain>
+void NavierStokesFV1M<TDomain>::
+set_saltation_flux(SmartPtr<CplUserData<MathVector<dim>, dim> > user)
+{
+	m_imSaltationFlux.set_data(user);
 }
 template<typename TDomain>
 void NavierStokesFV1M<TDomain>::
@@ -387,6 +396,7 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 		m_imRelativeVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
 		m_imSlipVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip);
+		m_imSaltationFlux.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
 		m_imDensitySCV_old.template set_local_ips<refDim>(vSCVip,numSCVip,1,true);
 		m_imAverageGammaSCV.template set_local_ips<refDim>(vSCVip,numSCVip);
@@ -441,6 +451,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
 		m_imRelativeVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
 		m_imSlipVelocitySCVF.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         m_imDiffusion.template set_local_ips<refDim>(vSCVFip,numSCVFip);
+		m_imSaltationFlux.template set_local_ips<refDim>(vSCVFip,numSCVFip);
         
         m_imDensitySCVF_old.template set_local_ips<refDim>(vSCVFip,numSCVFip,1,true);
 		m_imDensitySCV_old.template set_local_ips<refDim>(vSCVip,numSCVip,1,true);
@@ -471,6 +482,7 @@ prep_elem(const LocalVector& u, GridObject* elem, ReferenceObjectID roid, const 
 	m_imSlipVelocitySCVF.set_global_ips(vSCVFip, numSCVFip);
     
     m_imDiffusion.set_global_ips(vSCVFip, numSCVFip);
+	m_imSaltationFlux.set_global_ips(vSCVFip, numSCVFip);
 	m_imAverageGammaSCV.set_global_ips(vSCVip, numSCVip);
 	
     if(this->is_time_dependent())
@@ -528,7 +540,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	MathVector<dim> StdCharacteristicVel[numSCVF];
 	MathVector<dim> Flux[numSCVF];
 	MathVector<dim> Vel_ip[numSCVF];
-	MathVector<dim> TransportingVel_ip[numSCVF];
+	MathVector<dim> TransportingVel_ip[numSCVF] = {0};
 	MathVector<dim> conv_flux_grad[numSCVF];
 	MathVector<dim> conv_flux_mom[numSCVF];
 
@@ -634,11 +646,13 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 	{
 		Vel_ip[ip] = stab.stab_vel(ip);
-		
-		if(m_transporting_vel_stab)
-			TransportingVel_ip[ip] = Vel_ip[ip];
-		else
-			TransportingVel_ip[ip] = StdVel_ip[ip];
+		if(!m_imSaltationFlux.data_given())
+		{
+			if(m_transporting_vel_stab)
+				TransportingVel_ip[ip] = Vel_ip[ip];
+			else
+				TransportingVel_ip[ip] = StdVel_ip[ip];
+		}
 	}
 	
 	//if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
@@ -1519,7 +1533,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             
         } //end ip shapes
 		
-		if (m_div_correction)
+		if (m_div_correction && !m_imSaltationFlux.data_given())
 		{
 			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 			const number conv_flux = VecProd(TransportingVel_ip[ip], scvf.normal());
@@ -1834,7 +1848,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	MathVector<dim> StdCharacteristicVel[numSCVF];
 	MathVector<dim> Flux[numSCVF];
 	MathVector<dim> Vel_ip[numSCVF];
-	MathVector<dim> TransportingVel_ip[numSCVF];
+	MathVector<dim> TransportingVel_ip[numSCVF] = {0.0};
 	MathVector<dim> conv_flux_grad[numSCVF];
 	MathVector<dim> conv_flux_mom[numSCVF];
 	number Gamma[numSh] = {0};
@@ -1955,11 +1969,13 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 	{
 		Vel_ip[ip] = stab.stab_vel(ip);
-		
-		if(m_transporting_vel_stab)
-			TransportingVel_ip[ip] = Vel_ip[ip];
-		else
-			TransportingVel_ip[ip] = StdVel_ip[ip];
+		if(!m_imSaltationFlux.data_given())
+		{
+			if(m_transporting_vel_stab)
+				TransportingVel_ip[ip] = Vel_ip[ip];
+			else
+				TransportingVel_ip[ip] = StdVel_ip[ip];
+		}
 	}
 
 		
@@ -2294,6 +2310,20 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			MassChange[scvf.from()] += diff_flux;
 			MassChange[scvf.to()  ] -= diff_flux;
         }
+		/////////////////////////////////////////////////////
+		// Saltation Flux
+		/////////////////////////////////////////////////////
+
+		if(m_imSaltationFlux.data_given())
+		{
+			const number salt_flux = VecProd(m_imSaltationFlux[ip], scvf.normal());
+
+			d(_C_, scvf.from()) += salt_flux;
+			d(_C_, scvf.to()  ) -= salt_flux;
+
+			MassChange[scvf.from()] += salt_flux;
+			MassChange[scvf.to()  ] -= salt_flux;
+		}
         
         /////////////////////////////////////////////////////
         // Convective Term in (conservation of mass, transport eq.)
@@ -2307,7 +2337,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		MassChange[scvf.from()] += conv_flux_vol[ip];
 		MassChange[scvf.to()  ] -= conv_flux_vol[ip];
 		
-		if (m_div_correction)
+		if (m_div_correction && !m_imSaltationFlux.data_given())
 		{
 			UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
 			number conv_flux_correction = VecProd(TransportingVel_ip[ip], scvf.normal());
@@ -2338,7 +2368,7 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
             
 	}
 	
-	if(m_limex_correction && this->is_time_dependent() && !m_bStokes)
+	if(m_limex_correction && this->is_time_dependent() && !m_bStokes && !m_imSaltationFlux.data_given())
 	{
 
 		
@@ -3058,8 +3088,8 @@ std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, Math
 		
 		
     }
-    if (false)//! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
-    {
+    //if (false)//! m_bStokes) // no convective terms in the Stokes eq. => no upwinding
+    //{
 		/*MathVector<dim> Characteristic;
 		MathVector<dim> TransportVel;
 		MathVector<dim> Vel_from, Vel_to;
@@ -3108,7 +3138,7 @@ std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, Math
 				
             }
         }*/
-    }
+    //}
     
 }
 
@@ -4094,6 +4124,29 @@ lin_def_diffusion(const LocalVector& u,
 	//	add contributions
 		vvvLinDef[ip][_C_][scvf.from()] += linDefect;
 		vvvLinDef[ip][_C_][scvf.to()  ] -= linDefect;
+	}
+}
+//	computes the linearized defect w.r.t to the saltation_flux
+template<typename TDomain>
+template <typename TElem, typename TFVGeom>
+void NavierStokesFV1M<TDomain>::
+lin_def_saltation_flux(const LocalVector& u,
+					   std::vector<std::vector<MathVector<dim> > > vvvLinDef[],
+					   const size_t nip)
+{
+	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+
+	for(size_t ip = 0; ip < nip; ++ip)
+		for(size_t fct = 0; fct < vvvLinDef[ip].size(); ++fct)
+			for(size_t sh = 0; sh < vvvLinDef[ip][fct].size(); ++sh)
+				VecSet(vvvLinDef[ip][fct][sh], 0.0);
+
+	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+	{
+		const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+
+		vvvLinDef[ip][_C_][scvf.from()] += scvf.normal();
+		vvvLinDef[ip][_C_][scvf.to()] -= scvf.normal();
 	}
 }
 
@@ -6057,6 +6110,7 @@ register_func()
     m_imKinViscosity.   set_fct(id, this, &T::template lin_def_viscosity<TElem, TFVGeom>);
     m_imSourceSCV.      set_fct(id, this, &T::template lin_def_sourceSCV<TElem, TFVGeom>);
 	m_imDiffusion.      set_fct(id, this, &T::template lin_def_diffusion<TElem, TFVGeom>);
+	m_imSaltationFlux.  set_fct(id, this, &T::template lin_def_saltation_flux<TElem, TFVGeom>);
     
 	m_exVelocity->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_velocity<TElem, TFVGeom>);
 	m_exVelocityGrad->template set_fct<T,refDim>(id, this, &T::template ex_velocity_grad<TElem, TFVGeom>);
