@@ -64,12 +64,31 @@ set_velocity_gradient(
 {
 	m_imVelocityGradient.set_data(data);
 }
+template <typename TDomain>
+void RANSTurbulenceFV1<TDomain>::
+set_velocity_gradient(const MathMatrix<dim, dim>& velocityGradient)
+{
+	SmartPtr<ConstUserMatrix<dim> > data(new ConstUserMatrix<dim>());
+
+	for(size_t i = 0; i < dim; ++i)
+		for(size_t j = 0; j < dim; ++j)
+			data->set_entry(i, j, velocityGradient(i,j));
+
+	set_velocity_gradient(data);
+}
 
 template <typename TDomain>
 void RANSTurbulenceFV1<TDomain>::
 set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > data)
 {
 	m_imKinViscosity.set_data(data);
+}
+template <typename TDomain>
+void RANSTurbulenceFV1<TDomain>::
+set_kinematic_viscosity(number viscosity)
+{
+	SmartPtr<ConstUserNumber<dim> > data(new ConstUserNumber<dim>(viscosity));
+	set_kinematic_viscosity(data);
 }
 
 template <typename TDomain>
@@ -127,20 +146,49 @@ template <typename TElem, typename TFVGeom>
 void RANSTurbulenceFV1<TDomain>::
 prep_elem_loop(const ReferenceObjectID roid, const int si)
 {
-	static const int refDim = TElem::dim;
+	// 	Only first order implementation
+	if(!(TFVGeom::order == 1))
+		UG_THROW("Only first order implementation, but other Finite Volume"
+				 " Geometry set.");
+	
+	//	check, that convective upwinding has been set
+	if(m_spConvUpwind.invalid())
+		UG_THROW("RANSTurbulenceFV1: Upwind method has not been set.");
+	
+	m_spConvUpwind->template set_geometry_type<TFVGeom>();
+	
+	if(!m_imVelocity.data_given())
+		UG_THROW("RANSTurbulenceFV1: Velocity field has not been set.");
+	
+	if(!m_imVelocityGradient.data_given())
+		UG_THROW("RANSTurbulenceFV1: Velocity gradient has not been set.");
 
-	TFVGeom& geo = GeomProvider<TFVGeom>::get();
+	if(!m_imKinViscosity.data_given())
+		UG_THROW("RANSTurbulenceFV1: Kinematic viscosity has not been set.");
+	
+	if(!m_imWallDistance.data_given())
+		UG_THROW("RANSTurbulenceFV1: Wall distance has not been set.");
+	
+	
+	//	set local positions for imports
+	if(!TFVGeom::usesHangingNodes)
+	{
+		
+		static const int refDim = TElem::dim;
+		TFVGeom& geo = GeomProvider<TFVGeom>::get();
+		const MathVector<refDim>* vSCVFip = geo.scvf_local_ips();
+		const size_t numSCVFip = geo.num_scvf_ips();
+		const MathVector<refDim>* vSCVip = geo.scv_local_ips();
+		const size_t numSCVip = geo.num_scv_ips();
+		
+		m_imVelocity.template set_local_ips<refDim>(vSCVFip, numSCVFip);
+		m_imVelocityGradient.template set_local_ips<refDim>(vSCVFip, numSCVFip);
+		m_imKinViscosity.template set_local_ips<refDim>(vSCVFip, numSCVFip);
+		m_imWallDistance.template set_local_ips<refDim>(vSCVFip, numSCVFip);
+		
+	}
 
-	const MathVector<refDim>* vSCVFip = geo.scvf_local_ips();
-	const size_t numSCVFip = geo.num_scvf_ips();
 
-	m_imVelocity.template set_local_ips<refDim>(vSCVFip, numSCVFip, false);
-	m_imVelocityGradient.template set_local_ips<refDim>(vSCVFip, numSCVFip, false);
-	m_imKinViscosity.template set_local_ips<refDim>(vSCVFip, numSCVFip, false);
-	m_imWallDistance.template set_local_ips<refDim>(vSCVFip, numSCVFip, false);
-
-	if(m_spConvUpwind.valid())
-		m_spConvUpwind->template set_geometry_type<TFVGeom>();
 }
 
 template <typename TDomain>
@@ -193,36 +241,70 @@ add_jac_A_elem(LocalMatrix& J,
 {
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
 
-	if(!m_imVelocity.data_given())
-		UG_THROW("RANSTurbulenceFV1: Velocity field has not been set.");
-
-	if(m_spConvUpwind.invalid())
-		UG_THROW("RANSTurbulenceFV1: Upwind method has not been set.");
-
 	// Compute the same upwind interpolation weights used in the defect.
 	m_spConvUpwind->update(&geo, m_imVelocity.values());
 
 	const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
 
-	for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 	{
-		// Molecular diffusion
-		const number diffFluxShape = -m_imKinViscosity[ip] * VecDot(scvf.global_grad(sh), scvf.normal());
+		const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
 
-		J(_K_, scvf.from(), _K_, sh) += diffFluxShape;
-		J(_K_, scvf.to(),   _K_, sh) -= diffFluxShape;
+		////////////////////////////////////////////////////////////
+		// Turbulent viscosity
+		////////////////////////////////////////////////////////////
 
-		J(_OMEGA_, scvf.from(), _OMEGA_, sh) += diffFluxShape;
-		J(_OMEGA_, scvf.to(),   _OMEGA_, sh) -= diffFluxShape;
+		number kIP = 0.0;
+		number omegaIP = 0.0;
 
-		// Convection
-		const number fluxShape = volFlux * upwind.upwind_shape_sh(ip, sh);
+		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+		{
+			kIP += scvf.shape(sh) * u(_K_, sh);
+			omegaIP += scvf.shape(sh) * u(_OMEGA_, sh);
+		}
+		// TODO: The turbulent viscosity nu_t, including its dependence through F2,
+		//       is currently frozen in the Jacobian. Derivatives with respect to
+		//       k and omega are not included yet.
+		
+		const number strainMag = strain_rate_magnitude(m_imVelocityGradient[ip]);
+		const number F2 = blending_function_F2(kIP, omegaIP, m_imKinViscosity[ip], m_imWallDistance[ip]);
+		const number nuT = turbulent_kinematic_viscosity(kIP, omegaIP, strainMag, F2);
 
-		J(_K_, scvf.from(), _K_, sh) += fluxShape;
-		J(_K_, scvf.to(),   _K_, sh) -= fluxShape;
+		const number sigmaK = 0.85;
+		const number sigmaOmega = 0.5;
 
-		J(_OMEGA_, scvf.from(), _OMEGA_, sh) += fluxShape;
-		J(_OMEGA_, scvf.to(),   _OMEGA_, sh) -= fluxShape;
+		const number nuEffK = m_imKinViscosity[ip] + sigmaK * nuT;
+		const number nuEffOmega = m_imKinViscosity[ip] + sigmaOmega * nuT;
+		const number volFlux = VecDot(m_imVelocity[ip], scvf.normal());
+
+		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+		{
+			// TODO: Add Jacobian contributions from the dependence of nu_t on k and omega.
+			////////////////////////////////////////////////////////
+			// Diffusion
+			////////////////////////////////////////////////////////
+
+			const number diffFluxShapeK = -nuEffK * VecDot(scvf.global_grad(sh), scvf.normal());
+			const number diffFluxShapeOmega = -nuEffOmega * VecDot(scvf.global_grad(sh), scvf.normal());
+
+			J(_K_, scvf.from(), _K_, sh) += diffFluxShapeK;
+			J(_K_, scvf.to(), _K_, sh) -= diffFluxShapeK;
+
+			J(_OMEGA_, scvf.from(), _OMEGA_, sh) += diffFluxShapeOmega;
+			J(_OMEGA_, scvf.to(), _OMEGA_, sh) -= diffFluxShapeOmega;
+
+			////////////////////////////////////////////////////////
+			// Convection
+			////////////////////////////////////////////////////////
+
+			const number convFluxShape = volFlux * upwind.upwind_shape_sh(ip, sh);
+
+			J(_K_, scvf.from(), _K_, sh) += convFluxShape;
+			J(_K_, scvf.to(), _K_, sh) -= convFluxShape;
+
+			J(_OMEGA_, scvf.from(), _OMEGA_, sh) += convFluxShape;
+			J(_OMEGA_, scvf.to(), _OMEGA_, sh) -= convFluxShape;
+		}
 	}
 }
 
@@ -258,15 +340,6 @@ add_def_A_elem(LocalVector& d,
 {
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
 
-	if(!m_imVelocity.data_given())
-		UG_THROW("RANSTurbulenceFV1: Velocity field has not been set.");
-
-	if(!m_imKinViscosity.data_given())
-		UG_THROW("RANSTurbulenceFV1: Kinematic viscosity has not been set.");
-
-	if(m_spConvUpwind.invalid())
-		UG_THROW("RANSTurbulenceFV1: Upwind method has not been set.");
-
 	// Compute upwind interpolation weights using the prescribed
 	// velocity evaluated at the SCVFs.
 	m_spConvUpwind->update(&geo, m_imVelocity.values());
@@ -277,6 +350,23 @@ add_def_A_elem(LocalVector& d,
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 	{
 		const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+		
+		number kIP = 0.0;
+		number omegaIP = 0.0;
+		const number sigmaK = 0.85;
+		const number sigmaOmega = 0.5;
+
+		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+		{
+			kIP += scvf.shape(sh) * u(_K_, sh);
+			omegaIP += scvf.shape(sh) * u(_OMEGA_, sh);
+		}
+		const number strainMag = strain_rate_magnitude(m_imVelocityGradient[ip]);
+		const number F2 = blending_function_F2(kIP, omegaIP, m_imKinViscosity[ip], m_imWallDistance[ip]);
+		const number nuT = turbulent_kinematic_viscosity(kIP, omegaIP, strainMag, F2);
+		
+		const number nuEffK = m_imKinViscosity[ip] + sigmaK * nuT;
+		const number nuEffOmega = m_imKinViscosity[ip] + sigmaOmega * nuT;
 
 		////////////////////////////////////////////////////////////
 		// Molecular diffusion
@@ -292,59 +382,37 @@ add_def_A_elem(LocalVector& d,
 		{
 			for(int d1 = 0; d1 < dim; ++d1)
 			{
-				gradK[d1] +=
-					scvf.global_grad(sh)[d1] * u(_K_, sh);
-
-				gradOmega[d1] +=
-					scvf.global_grad(sh)[d1] * u(_OMEGA_, sh);
+				gradK[d1] += scvf.global_grad(sh)[d1] * u(_K_, sh);
+				gradOmega[d1] += scvf.global_grad(sh)[d1] * u(_OMEGA_, sh);
 			}
 		}
 
-		const number diffFluxK =
-			-m_imKinViscosity[ip] *
-			VecDot(gradK, scvf.normal());
-
-		const number diffFluxOmega =
-			-m_imKinViscosity[ip] *
-			VecDot(gradOmega, scvf.normal());
+		const number diffFluxK = -nuEffK * VecDot(gradK, scvf.normal());
+		const number diffFluxOmega = -nuEffOmega * VecDot(gradOmega, scvf.normal());
 
 		d(_K_, scvf.from()) += diffFluxK;
-		d(_K_, scvf.to())   -= diffFluxK;
+		d(_K_, scvf.to()) -= diffFluxK;
 
 		d(_OMEGA_, scvf.from()) += diffFluxOmega;
-		d(_OMEGA_, scvf.to())   -= diffFluxOmega;
+		d(_OMEGA_, scvf.to()) -= diffFluxOmega;
 
 		////////////////////////////////////////////////////////////
 		// Convection
 		////////////////////////////////////////////////////////////
 
-		// Conservative volume flux:
-		//
-		//      u . n
-		//
-		// The FV1 normal already contains the SCVF measure.
-		const number volFlux =
-			VecDot(m_imVelocity[ip], scvf.normal());
+		const number volFlux = VecDot(m_imVelocity[ip], scvf.normal());
 
-		const number kUp =
-			upwind.upwind_value(ip, u, _K_);
+		const number kUp = upwind.upwind_value(ip, u, _K_);
+		const number omegaUp = upwind.upwind_value(ip, u, _OMEGA_);
 
-		const number omegaUp =
-			upwind.upwind_value(ip, u, _OMEGA_);
+		const number fluxK = volFlux * kUp;
+		const number fluxOmega = volFlux * omegaUp;
 
-		const number fluxK =
-			volFlux * kUp;
-
-		const number fluxOmega =
-			volFlux * omegaUp;
-
-		// Conservative FV contribution:
-		// what leaves "from" enters "to".
 		d(_K_, scvf.from()) += fluxK;
-		d(_K_, scvf.to())   -= fluxK;
+		d(_K_, scvf.to()) -= fluxK;
 
 		d(_OMEGA_, scvf.from()) += fluxOmega;
-		d(_OMEGA_, scvf.to())   -= fluxOmega;
+		d(_OMEGA_, scvf.to()) -= fluxOmega;
 	}
 }
 
@@ -435,6 +503,58 @@ turbulent_kinematic_viscosity(
 		std::max(a1 * omegaEff, limiterMag * F2);
 
 	return a1 * kEff / denominator;
+}
+
+template <typename TDomain>
+number RANSTurbulenceFV1<TDomain>::
+blending_function_F1(number k, number omega, number nu, number wallDistance, number CDkw) const
+{
+	const number betaStar = 0.09;
+	const number sigmaOmega2 = 0.856;
+
+	const number kEff = std::max(k, 0.0);
+	const number omegaEff = std::max(omega, 1.0e-12);
+	const number dEff = std::max(wallDistance, 1.0e-12);
+	const number nuEff = std::max(nu, 0.0);
+	const number CDEff = std::max(CDkw, 1.0e-10);
+
+	const number arg1_1 = std::sqrt(kEff) / (betaStar * omegaEff * dEff);
+	const number arg1_2 = 500.0 * nuEff / (dEff * dEff * omegaEff);
+	const number arg1_3 = 4.0 * sigmaOmega2 * kEff / (CDEff * dEff * dEff);
+
+	const number arg1 = std::min(std::max(arg1_1, arg1_2), arg1_3);
+	const number arg1Squared = arg1 * arg1;
+
+	return std::tanh(arg1Squared * arg1Squared);
+}
+
+template <typename TDomain>
+number RANSTurbulenceFV1<TDomain>::
+blending_function_F2(number k, number omega, number nu, number wallDistance) const
+{
+	const number betaStar = 0.09;
+
+	const number kEff = std::max(k, 0.0);
+	const number omegaEff = std::max(omega, 1.0e-12);
+	const number dEff = std::max(wallDistance, 1.0e-12);
+
+	const number arg2_1 = 2.0 * std::sqrt(kEff) / (betaStar * omegaEff * dEff);
+	const number arg2_2 = 500.0 * nu / (dEff * dEff * omegaEff);
+	const number arg2 = std::max(arg2_1, arg2_2);
+
+	return std::tanh(arg2 * arg2);
+}
+
+template <typename TDomain>
+number RANSTurbulenceFV1<TDomain>::
+cross_diffusion_CD(number omega, const MathVector<dim>& gradK, const MathVector<dim>& gradOmega) const
+{
+	const number sigmaOmega2 = 0.856;
+
+	const number omegaEff = std::max(omega, 1.0e-12);
+	const number crossDiffusion = 2.0 * sigmaOmega2 * VecDot(gradK, gradOmega) / omegaEff;
+
+	return std::max(crossDiffusion, 1.0e-10);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -55,9 +55,11 @@ public:
 	
 	/// Set velocity gradient
 	void set_velocity_gradient(SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > data);
+	void set_velocity_gradient(const MathMatrix<dim, dim>& velocityGradient);
 
 	/// Set molecular kinematic viscosity
 	void set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > data);
+	void set_kinematic_viscosity(number viscosity);
 	
 	/// Set upwind method for turbulent transport
 	void set_upwind(SmartPtr<INavierStokesUpwind<dim> > spUpwind)
@@ -145,6 +147,13 @@ protected:
 	number vorticity_magnitude( const MathMatrix<dim, dim>& gradU) const;
 	
 	number turbulent_kinematic_viscosity(number k,number omega,number limiterMag,number F2) const;
+	
+	number blending_function_F1(number k, number omega, number nu, number wallDistance, number CDkw) const;
+	
+	number blending_function_F2(number k, number omega, number nu, number wallDistance) const;
+	
+	number cross_diffusion_CD(number omega, const MathVector<dim>& gradK, const MathVector<dim>& gradOmega) const;
+	
 
 protected:
 	/// Velocity field u
