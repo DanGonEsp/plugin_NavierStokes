@@ -26,9 +26,15 @@ RANSTurbulenceFV1(const char* functions, const char* subsets)
 				 "are required: k and omega.");
 
 	this->register_import(m_imVelocity);
-	this->register_import(m_imVelocityGradient);
-	this->register_import(m_imKinViscosity);
-	this->register_import(m_imWallDistance);
+	this->register_import(m_imVelocityGradientSCVF);
+	this->register_import(m_imVelocityGradientSCV);
+	this->register_import(m_imKinViscositySCVF);
+	this->register_import(m_imKinViscositySCV);
+	this->register_import(m_imWallDistanceSCVF);
+	this->register_import(m_imWallDistanceSCV);
+		  
+		  
+		  
 
 	register_all_funcs(false);
 }
@@ -62,7 +68,8 @@ void RANSTurbulenceFV1<TDomain>::
 set_velocity_gradient(
 	SmartPtr<CplUserData<MathMatrix<dim, dim>, dim> > data)
 {
-	m_imVelocityGradient.set_data(data);
+	m_imVelocityGradientSCVF.set_data(data);
+	m_imVelocityGradientSCV.set_data(data);
 }
 template <typename TDomain>
 void RANSTurbulenceFV1<TDomain>::
@@ -81,7 +88,8 @@ template <typename TDomain>
 void RANSTurbulenceFV1<TDomain>::
 set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > data)
 {
-	m_imKinViscosity.set_data(data);
+	m_imKinViscositySCVF.set_data(data);
+	m_imKinViscositySCV.set_data(data);
 }
 template <typename TDomain>
 void RANSTurbulenceFV1<TDomain>::
@@ -95,7 +103,8 @@ template <typename TDomain>
 void RANSTurbulenceFV1<TDomain>::
 set_wall_distance(SmartPtr<CplUserData<number, dim> > data)
 {
-	m_imWallDistance.set_data(data);
+	m_imWallDistanceSCVF.set_data(data);
+	m_imWallDistanceSCV.set_data(data);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -160,13 +169,13 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 	if(!m_imVelocity.data_given())
 		UG_THROW("RANSTurbulenceFV1: Velocity field has not been set.");
 	
-	if(!m_imVelocityGradient.data_given())
+	if(!m_imVelocityGradientSCVF.data_given())
 		UG_THROW("RANSTurbulenceFV1: Velocity gradient has not been set.");
 
-	if(!m_imKinViscosity.data_given())
+	if(!m_imKinViscositySCVF.data_given())
 		UG_THROW("RANSTurbulenceFV1: Kinematic viscosity has not been set.");
 	
-	if(!m_imWallDistance.data_given())
+	if(!m_imWallDistanceSCVF.data_given())
 		UG_THROW("RANSTurbulenceFV1: Wall distance has not been set.");
 	
 	
@@ -182,9 +191,13 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 		const size_t numSCVip = geo.num_scv_ips();
 		
 		m_imVelocity.template set_local_ips<refDim>(vSCVFip, numSCVFip);
-		m_imVelocityGradient.template set_local_ips<refDim>(vSCVFip, numSCVFip);
-		m_imKinViscosity.template set_local_ips<refDim>(vSCVFip, numSCVFip);
-		m_imWallDistance.template set_local_ips<refDim>(vSCVFip, numSCVFip);
+		m_imVelocityGradientSCVF.template set_local_ips<refDim>(vSCVFip, numSCVFip);
+		m_imKinViscositySCVF.template set_local_ips<refDim>(vSCVFip, numSCVFip);
+		m_imWallDistanceSCVF.template set_local_ips<refDim>(vSCVFip, numSCVFip);
+		
+		m_imVelocityGradientSCV.template set_local_ips<refDim>(vSCVip, numSCVip);
+		m_imKinViscositySCV.template set_local_ips<refDim>(vSCVip, numSCVip);
+		m_imWallDistanceSCV.template set_local_ips<refDim>(vSCVip, numSCVip);
 		
 	}
 
@@ -210,11 +223,17 @@ prep_elem(const LocalVector& u,
 
 	const MathVector<dim>* vSCVFip = geo.scvf_global_ips();
 	const size_t numSCVFip = geo.num_scvf_ips();
+	const MathVector<dim>* vSCVip = geo.scv_global_ips();
+	const size_t numSCVip = geo.num_scv_ips();
 
 	m_imVelocity.set_global_ips(vSCVFip, numSCVFip);
-	m_imVelocityGradient.set_global_ips(geo.scvf_global_ips(),geo.num_scvf_ips());
-	m_imKinViscosity.set_global_ips(vSCVFip, numSCVFip);
-	m_imWallDistance.set_global_ips(geo.scvf_global_ips(),geo.num_scvf_ips());
+	m_imVelocityGradientSCVF.set_global_ips(vSCVFip, numSCVFip);
+	m_imKinViscositySCVF.set_global_ips(vSCVFip, numSCVFip);
+	m_imWallDistanceSCVF.set_global_ips(vSCVFip, numSCVFip);
+	
+	m_imVelocityGradientSCV.set_global_ips(vSCVip, numSCVip);
+	m_imKinViscositySCV.set_global_ips(vSCVip, numSCVip);
+	m_imWallDistanceSCV.set_global_ips(vSCVip, numSCVip);
 }
 
 template <typename TDomain>
@@ -251,35 +270,65 @@ add_jac_A_elem(LocalMatrix& J,
 		const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
 
 		////////////////////////////////////////////////////////////
-		// Turbulent viscosity
+		// Interpolate k and omega at SCVF
 		////////////////////////////////////////////////////////////
-
+		
 		number kIP = 0.0;
 		number omegaIP = 0.0;
-
+		
 		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
 		{
 			kIP += scvf.shape(sh) * u(_K_, sh);
 			omegaIP += scvf.shape(sh) * u(_OMEGA_, sh);
 		}
-		// TODO: The turbulent viscosity nu_t, including its dependence through F2,
-		//       is currently frozen in the Jacobian. Derivatives with respect to
-		//       k and omega are not included yet.
+		////////////////////////////////////////////////////////////
+		// Gradients of k and omega
+		////////////////////////////////////////////////////////////
 		
-		const number strainMag = strain_rate_magnitude(m_imVelocityGradient[ip]);
-		const number F2 = blending_function_F2(kIP, omegaIP, m_imKinViscosity[ip], m_imWallDistance[ip]);
+		MathVector<dim> gradK;
+		MathVector<dim> gradOmega;
+
+		VecSet(gradK, 0.0);
+		VecSet(gradOmega, 0.0);
+
+		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+		{
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				gradK[d1] += scvf.global_grad(sh)[d1] * u(_K_, sh);
+				gradOmega[d1] += scvf.global_grad(sh)[d1] * u(_OMEGA_, sh);
+			}
+		}
+		
+		////////////////////////////////////////////////////////////
+		// SST blending functions and turbulent viscosity
+		////////////////////////////////////////////////////////////
+		
+		const number CDkw = cross_diffusion_CD(omegaIP, gradK, gradOmega);
+		const number F1 = blending_function_F1(kIP, omegaIP, m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip], CDkw);
+		const number F2 = blending_function_F2(kIP, omegaIP, m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip]);
+		
+		const number strainMag = strain_rate_magnitude(m_imVelocityGradientSCVF[ip]);
 		const number nuT = turbulent_kinematic_viscosity(kIP, omegaIP, strainMag, F2);
-
-		const number sigmaK = 0.85;
-		const number sigmaOmega = 0.5;
-
-		const number nuEffK = m_imKinViscosity[ip] + sigmaK * nuT;
-		const number nuEffOmega = m_imKinViscosity[ip] + sigmaOmega * nuT;
+		
+		
+		////////////////////////////////////////////////////////////
+		// SST diffusion coefficients
+		////////////////////////////////////////////////////////////
+		
+		const number sigmaK = blend_sst_coefficient(F1, 0.85, 1.0);
+		const number sigmaOmega = blend_sst_coefficient(F1, 0.5, 0.856);
+		
+		const number nuEffK = m_imKinViscositySCVF[ip] + sigmaK * nuT;
+		const number nuEffOmega = m_imKinViscositySCVF[ip] + sigmaOmega * nuT;
+		
 		const number volFlux = VecDot(m_imVelocity[ip], scvf.normal());
 
 		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
 		{
-			// TODO: Add Jacobian contributions from the dependence of nu_t on k and omega.
+			// TODO: nu_t, F1, F2, sigmaK, and sigmaOmega are currently frozen in the Jacobian.
+			//       Derivatives with respect to k and omega are not included yet.
+			
 			////////////////////////////////////////////////////////
 			// Diffusion
 			////////////////////////////////////////////////////////
@@ -351,27 +400,23 @@ add_def_A_elem(LocalVector& d,
 	{
 		const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
 		
+		
+		////////////////////////////////////////////////////////////
+		// Interpolate k and omega at SCVF
+		////////////////////////////////////////////////////////////
+		
 		number kIP = 0.0;
 		number omegaIP = 0.0;
-		const number sigmaK = 0.85;
-		const number sigmaOmega = 0.5;
-
+		
 		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
 		{
 			kIP += scvf.shape(sh) * u(_K_, sh);
 			omegaIP += scvf.shape(sh) * u(_OMEGA_, sh);
 		}
-		const number strainMag = strain_rate_magnitude(m_imVelocityGradient[ip]);
-		const number F2 = blending_function_F2(kIP, omegaIP, m_imKinViscosity[ip], m_imWallDistance[ip]);
-		const number nuT = turbulent_kinematic_viscosity(kIP, omegaIP, strainMag, F2);
+		////////////////////////////////////////////////////////////
+		// Gradients of k and omega
+		////////////////////////////////////////////////////////////
 		
-		const number nuEffK = m_imKinViscosity[ip] + sigmaK * nuT;
-		const number nuEffOmega = m_imKinViscosity[ip] + sigmaOmega * nuT;
-
-		////////////////////////////////////////////////////////////
-		// Molecular diffusion
-		////////////////////////////////////////////////////////////
-
 		MathVector<dim> gradK;
 		MathVector<dim> gradOmega;
 
@@ -386,6 +431,33 @@ add_def_A_elem(LocalVector& d,
 				gradOmega[d1] += scvf.global_grad(sh)[d1] * u(_OMEGA_, sh);
 			}
 		}
+		
+		////////////////////////////////////////////////////////////
+		// SST blending functions and turbulent viscosity
+		////////////////////////////////////////////////////////////
+		
+		const number CDkw = cross_diffusion_CD(omegaIP, gradK, gradOmega);
+		const number F1 = blending_function_F1(kIP, omegaIP, m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip], CDkw);
+		const number F2 = blending_function_F2(kIP, omegaIP, m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip]);
+		
+		const number strainMag = strain_rate_magnitude(m_imVelocityGradientSCVF[ip]);
+		const number nuT = turbulent_kinematic_viscosity(kIP, omegaIP, strainMag, F2);
+		
+		
+		////////////////////////////////////////////////////////////
+		// SST diffusion coefficients
+		////////////////////////////////////////////////////////////
+		
+		const number sigmaK = blend_sst_coefficient(F1, 0.85, 1.0);
+		const number sigmaOmega = blend_sst_coefficient(F1, 0.5, 0.856);
+		
+		const number nuEffK = m_imKinViscositySCVF[ip] + sigmaK * nuT;
+		const number nuEffOmega = m_imKinViscositySCVF[ip] + sigmaOmega * nuT;
+		
+		////////////////////////////////////////////////////////////
+		// Diffusion
+		////////////////////////////////////////////////////////////
+
 
 		const number diffFluxK = -nuEffK * VecDot(gradK, scvf.normal());
 		const number diffFluxOmega = -nuEffOmega * VecDot(gradOmega, scvf.normal());
@@ -503,6 +575,13 @@ turbulent_kinematic_viscosity(
 		std::max(a1 * omegaEff, limiterMag * F2);
 
 	return a1 * kEff / denominator;
+}
+
+template <typename TDomain>
+number RANSTurbulenceFV1<TDomain>::
+blend_sst_coefficient(number F1, number innerValue, number outerValue) const
+{
+	return F1 * innerValue + (1.0 - F1) * outerValue;
 }
 
 template <typename TDomain>

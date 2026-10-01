@@ -152,6 +152,8 @@ protected:
 	
 	number blending_function_F2(number k, number omega, number nu, number wallDistance) const;
 	
+	number blend_sst_coefficient(number F1, number innerValue, number outerValue) const;
+	
 	number cross_diffusion_CD(number omega, const MathVector<dim>& gradK, const MathVector<dim>& gradOmega) const;
 	
 
@@ -160,16 +162,22 @@ protected:
 	DataImport<MathVector<dim>, dim> m_imVelocity;
 	
 	/// Velocity grad u
-	DataImport<MathMatrix<dim, dim>, dim> m_imVelocityGradient;
+	DataImport<MathMatrix<dim, dim>, dim> m_imVelocityGradientSCVF;
+	DataImport<MathMatrix<dim, dim>, dim> m_imVelocityGradientSCV;
 
 	/// Molecular kinematic viscosity nu
-	DataImport<number, dim> m_imKinViscosity;
+	DataImport<number, dim> m_imKinViscositySCVF;
+	DataImport<number, dim> m_imKinViscositySCV;
 	
 	/// WallDistance
-	DataImport<number, dim> m_imWallDistance;
+	DataImport<number, dim> m_imWallDistanceSCVF;
+	DataImport<number, dim> m_imWallDistanceSCV;
 	
 	/// Upwind method for convection of k and omega
 	SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind;
+	
+	
+
 
 	/// Selected turbulence model
 	TurbulenceModel m_model;
