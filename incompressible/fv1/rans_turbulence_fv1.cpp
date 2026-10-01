@@ -169,14 +169,20 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 	if(!m_imVelocity.data_given())
 		UG_THROW("RANSTurbulenceFV1: Velocity field has not been set.");
 	
-	if(!m_imVelocityGradientSCVF.data_given())
+	if(!m_imVelocityGradientSCVF.data_given() || !m_imVelocityGradientSCV.data_given())
 		UG_THROW("RANSTurbulenceFV1: Velocity gradient has not been set.");
 
-	if(!m_imKinViscositySCVF.data_given())
+	if(!m_imKinViscositySCVF.data_given() || !m_imKinViscositySCV.data_given())
 		UG_THROW("RANSTurbulenceFV1: Kinematic viscosity has not been set.");
 	
-	if(!m_imWallDistanceSCVF.data_given())
+	if(!m_imWallDistanceSCVF.data_given() || !m_imWallDistanceSCV.data_given())
 		UG_THROW("RANSTurbulenceFV1: Wall distance has not been set.");
+	
+	
+
+	
+
+	
 	
 	
 	//	set local positions for imports
@@ -355,6 +361,68 @@ add_jac_A_elem(LocalMatrix& J,
 			J(_OMEGA_, scvf.to(), _OMEGA_, sh) -= convFluxShape;
 		}
 	}
+	
+	////////////////////////////////////////////////////////////
+	// k- and omega-equation source Jacobian
+	////////////////////////////////////////////////////////////
+
+	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+	{
+		const typename TFVGeom::SCV& scv = geo.scv(ip);
+
+		const size_t co = scv.node_id();
+		const number volume = scv.volume();
+
+		const number betaStar = 0.09;
+
+		const number k = std::max(u(_K_, co), 0.0);
+		const number omega = std::max(u(_OMEGA_, co), 1.0e-12);
+
+		////////////////////////////////////////////////////////////
+		// Gradients of k and omega at SCV
+		////////////////////////////////////////////////////////////
+
+		MathVector<dim> gradK;
+		MathVector<dim> gradOmega;
+
+		VecSet(gradK, 0.0);
+		VecSet(gradOmega, 0.0);
+
+		for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+		{
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				gradK[d1] += scv.global_grad(sh)[d1] * u(_K_, sh);
+				gradOmega[d1] += scv.global_grad(sh)[d1] * u(_OMEGA_, sh);
+			}
+		}
+
+		////////////////////////////////////////////////////////////
+		// SST blending coefficient beta
+		////////////////////////////////////////////////////////////
+
+		const number CDkw = cross_diffusion_CD(omega, gradK, gradOmega);
+		const number F1 = blending_function_F1(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip], CDkw);
+
+		const number beta = blend_sst_coefficient(F1, 0.075, 0.0828);
+
+		////////////////////////////////////////////////////////////
+		// k-equation destruction Jacobian
+		////////////////////////////////////////////////////////////
+
+		J(_K_, co, _K_, co) += betaStar * omega * volume;
+		J(_K_, co, _OMEGA_, co) += betaStar * k * volume;
+
+		////////////////////////////////////////////////////////////
+		// omega-equation destruction Jacobian
+		////////////////////////////////////////////////////////////
+
+		J(_OMEGA_, co, _OMEGA_, co) += 2.0 * beta * omega * volume;
+
+		// TODO: SST production terms and blending functions are currently
+		//       frozen in the source Jacobian. Derivatives of limitedProduction,
+		//       nu_t, F1, F2, beta, and gamma are not included yet.
+	}
 }
 
 template <typename TDomain>
@@ -485,6 +553,82 @@ add_def_A_elem(LocalVector& d,
 
 		d(_OMEGA_, scvf.from()) += fluxOmega;
 		d(_OMEGA_, scvf.to()) -= fluxOmega;
+	}
+	
+	////////////////////////////////////////////////////////////
+	// k- and omega-equation production and destruction
+	////////////////////////////////////////////////////////////
+
+	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+	{
+		const typename TFVGeom::SCV& scv = geo.scv(ip);
+
+		const size_t co = scv.node_id();
+		const number volume = scv.volume();
+
+		const number betaStar = 0.09;
+
+		const number k = std::max(u(_K_, co), 0.0);
+		const number omega = std::max(u(_OMEGA_, co), 1.0e-12);
+
+		////////////////////////////////////////////////////////////
+		// Gradients of k and omega at SCV
+		////////////////////////////////////////////////////////////
+
+		MathVector<dim> gradK;
+		MathVector<dim> gradOmega;
+
+		VecSet(gradK, 0.0);
+		VecSet(gradOmega, 0.0);
+
+		for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+		{
+			for(int d1 = 0; d1 < dim; ++d1)
+			{
+				gradK[d1] += scv.global_grad(sh)[d1] * u(_K_, sh);
+				gradOmega[d1] += scv.global_grad(sh)[d1] * u(_OMEGA_, sh);
+			}
+		}
+
+		////////////////////////////////////////////////////////////
+		// SST blending functions and turbulent viscosity
+		////////////////////////////////////////////////////////////
+
+		const number CDkw = cross_diffusion_CD(omega, gradK, gradOmega);
+		const number F1 = blending_function_F1(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip], CDkw);
+		const number F2 = blending_function_F2(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip]);
+
+		const number strainMag = strain_rate_magnitude(m_imVelocityGradientSCV[ip]);
+		const number nuT = turbulent_kinematic_viscosity(k, omega, strainMag, F2);
+
+		////////////////////////////////////////////////////////////
+		// SST coefficients
+		////////////////////////////////////////////////////////////
+
+		const number beta = blend_sst_coefficient(F1, 0.075, 0.0828);
+		const number gamma = blend_sst_coefficient(F1, 5.0 / 9.0, 0.44);
+
+		////////////////////////////////////////////////////////////
+		// k-equation production and destruction
+		////////////////////////////////////////////////////////////
+
+		const number production = nuT * strainMag * strainMag;
+		const number productionLimit = 10.0 * betaStar * k * omega;
+		const number limitedProduction = std::min(production, productionLimit);
+
+		const number destructionK = betaStar * k * omega;
+
+		d(_K_, co) += (destructionK - limitedProduction) * volume;
+
+		////////////////////////////////////////////////////////////
+		// omega-equation production and destruction
+		////////////////////////////////////////////////////////////
+
+		const number nuTEff = std::max(nuT, 1.0e-12);
+		const number productionOmega = gamma * limitedProduction / nuTEff;
+		const number destructionOmega = beta * omega * omega;
+		
+		d(_OMEGA_, co) += (destructionOmega - productionOmega) * volume;
 	}
 }
 
