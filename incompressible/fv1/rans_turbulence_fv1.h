@@ -156,6 +156,8 @@ protected:
 	
 	number cross_diffusion_CD(number omega, const MathVector<dim>& gradK, const MathVector<dim>& gradOmega) const;
 	
+	number cross_diffusion_omega(number F1, number omega, const MathVector<dim>& gradK, const MathVector<dim>& gradOmega) const;
+	
 
 protected:
 	/// Velocity field u

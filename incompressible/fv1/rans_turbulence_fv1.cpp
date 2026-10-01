@@ -368,6 +368,10 @@ add_jac_A_elem(LocalMatrix& J,
 
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
 	{
+		// TODO: SST production and cross-diffusion terms and blending functions are
+		//       currently frozen in the source Jacobian. Derivatives of limitedProduction,
+		//       crossDiffusionOmega, nu_t, F1, F2, beta, and gamma are not included yet.
+		
 		const typename TFVGeom::SCV& scv = geo.scv(ip);
 
 		const size_t co = scv.node_id();
@@ -621,14 +625,15 @@ add_def_A_elem(LocalVector& d,
 		d(_K_, co) += (destructionK - limitedProduction) * volume;
 
 		////////////////////////////////////////////////////////////
-		// omega-equation production and destruction
+		// omega-equation production, destruction and cross-diffusion
 		////////////////////////////////////////////////////////////
 
 		const number nuTEff = std::max(nuT, 1.0e-12);
 		const number productionOmega = gamma * limitedProduction / nuTEff;
 		const number destructionOmega = beta * omega * omega;
+		const number crossDiffusionOmega = cross_diffusion_omega(F1, omega, gradK, gradOmega);
 		
-		d(_OMEGA_, co) += (destructionOmega - productionOmega) * volume;
+		d(_OMEGA_, co) += (destructionOmega - productionOmega - crossDiffusionOmega) * volume;
 	}
 }
 
@@ -778,6 +783,16 @@ cross_diffusion_CD(number omega, const MathVector<dim>& gradK, const MathVector<
 	const number crossDiffusion = 2.0 * sigmaOmega2 * VecDot(gradK, gradOmega) / omegaEff;
 
 	return std::max(crossDiffusion, 1.0e-10);
+}
+
+template <typename TDomain>
+number RANSTurbulenceFV1<TDomain>::
+cross_diffusion_omega(number F1, number omega, const MathVector<dim>& gradK, const MathVector<dim>& gradOmega) const
+{
+	const number sigmaOmega2 = 0.856;
+	const number omegaEff = std::max(omega, 1.0e-12);
+
+	return 2.0 * (1.0 - F1) * sigmaOmega2 * VecDot(gradK, gradOmega) / omegaEff;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
