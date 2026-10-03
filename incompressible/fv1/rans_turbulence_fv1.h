@@ -46,6 +46,8 @@ public:
 	/// Constructor
 	RANSTurbulenceFV1(const char* functions, const char* subsets);
 	
+	RANSTurbulenceFV1(const std::vector<std::string>& vFct, const std::vector<std::string>& vSubset);
+	
 	/// Wall distance
 	void set_wall_distance(SmartPtr<CplUserData<number, dim> > data);
 
@@ -78,6 +80,12 @@ public:
 
 	/// Return selected turbulence model
 	TurbulenceModel model() const {return m_model;}
+	
+	/// Return turbulent kinetic energy
+	SmartPtr<CplUserData<number, dim> > turbulent_kinetic_energy() {return m_exK;}
+
+	/// Return specific dissipation rate
+	SmartPtr<CplUserData<number, dim> > specific_dissipation_rate() {return m_exOmega;}
 
 	/// Check finite-element setting
 	virtual void prepare_setting(const std::vector<LFEID>& vLfeID,
@@ -135,8 +143,26 @@ public:
 	void add_rhs_elem(LocalVector& d,
 					  GridObject* elem,
 					  const MathVector<dim> vCornerCoords[]);
+	
+	template <typename TElem, typename TFVGeom>
+	void ex_turbulent_kinematic_viscosity(number vValue[], const MathVector<dim> vGlobIP[], number time, int si, const LocalVector& u,
+		GridObject* elem, const MathVector<dim> vCornerCoords[], const MathVector<TFVGeom::dim> vLocIP[], const size_t nip, bool bDeriv, std::vector<std::vector<number> > vvvDeriv[]);
+	
+	template <typename TElem, typename TFVGeom>
+	void ex_turbulent_kinetic_energy(number vValue[], const MathVector<dim> vGlobIP[], number time, int si, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[], const MathVector<TFVGeom::dim> vLocIP[], const size_t nip, bool bDeriv, std::vector<std::vector<number> > vvvDeriv[]);
+
+	template <typename TElem, typename TFVGeom>
+	void ex_specific_dissipation_rate(number vValue[], const MathVector<dim> vGlobIP[], number time, int si, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[], const MathVector<TFVGeom::dim> vLocIP[], const size_t nip, bool bDeriv, std::vector<std::vector<number> > vvvDeriv[]);
+	
+	number evaluate_turbulent_kinematic_viscosity(number k, number omega, const MathMatrix<dim, dim>& gradU, number nu, number wallDistance) const;
+	
+	/// Return turbulent kinematic viscosity
+	SmartPtr<CplUserData<number, dim> > turbulent_kinematic_viscosity() {return m_exTurbulentKinViscosity;}
 
 protected:
+	
+	void init(const std::string& functions);
+	
 	void register_all_funcs(bool bHang);
 
 	template <typename TElem, typename TFVGeom>
@@ -160,6 +186,18 @@ protected:
 	
 
 protected:
+	
+	
+	/// Export for turbulent kinematic viscosity
+	SmartPtr<DataExport<number, dim> > m_exTurbulentKinViscosity;
+
+	/// Export of k
+	SmartPtr<DataExport<number, dim> > m_exK;
+
+	/// Export of omega
+	SmartPtr<DataExport<number, dim> > m_exOmega;
+	
+	
 	/// Velocity field u
 	DataImport<MathVector<dim>, dim> m_imVelocity;
 	
@@ -178,11 +216,10 @@ protected:
 	/// Upwind method for convection of k and omega
 	SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind;
 	
-	
-
-
 	/// Selected turbulence model
 	TurbulenceModel m_model;
+	
+	
 
 private:
 	/// Local function index of k

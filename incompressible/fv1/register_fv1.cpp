@@ -421,6 +421,7 @@ static void Domain(Registry& reg, string grp)
 
 		reg.add_class_<T, TBase>(name, grp)
 			.template add_constructor<void (*)(const char*, const char*)>("Functions#Subset(s)")
+			.template add_constructor<void (*)(const std::vector<std::string>&, const std::vector<std::string>&)>("Functions#Subset(s)")
 			.add_method("set_velocity",
 				static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_velocity),"", "Velocity")
 			.add_method("set_velocity",static_cast<void (T::*)(const std::vector<number>&)>(&T::set_velocity),"", "Velocity")
@@ -430,6 +431,9 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_kinematic_viscosity",static_cast<void (T::*)(number)>(&T::set_kinematic_viscosity),"", "KinematicViscosity")
 			.add_method("set_wall_distance",static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_wall_distance),"", "WallDistance")
 			.add_method("set_upwind",static_cast<void (T::*)(const std::string&)>(&T::set_upwind),"", "Upwind")
+			.add_method("turbulent_kinetic_energy",static_cast<SmartPtr<CplUserData<number, dim> > (T::*)()>(&T::turbulent_kinetic_energy))
+			.add_method("specific_dissipation_rate",static_cast<SmartPtr<CplUserData<number, dim> > (T::*)()>(&T::specific_dissipation_rate))
+			.add_method("turbulent_kinematic_viscosity", static_cast<SmartPtr<CplUserData<number, dim> > (T::*)()>(&T::turbulent_kinematic_viscosity))
 			.set_construct_as_smart_pointer(true);
 
 		reg.add_class_to_group(name, "RANSTurbulenceFV1", tag);

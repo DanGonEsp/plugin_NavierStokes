@@ -17,13 +17,44 @@ namespace NavierStokes{
 
 template <typename TDomain>
 RANSTurbulenceFV1<TDomain>::
-RANSTurbulenceFV1(const char* functions, const char* subsets)
-	: IElemDisc<TDomain>(functions, subsets),
-	  m_model(K_OMEGA_SST)
+RANSTurbulenceFV1(const std::vector<std::string>& vFct, const std::vector<std::string>& vSubset)
+	: IElemDisc<TDomain>(vFct, vSubset)
 {
+	std::string functions;
+
+	for(size_t i = 0; i < vFct.size(); ++i)
+	{
+		if(i > 0) functions.append(",");
+		functions.append(vFct[i]);
+	}
+
+	init(functions);
+}
+template <typename TDomain>
+RANSTurbulenceFV1<TDomain>::
+RANSTurbulenceFV1(const char* functions, const char* subsets)
+	: IElemDisc<TDomain>(functions, subsets)
+{
+	init(functions);
+}
+
+template <typename TDomain>
+void RANSTurbulenceFV1<TDomain>::
+init(const std::string& functions)
+{
+	m_model = K_OMEGA_SST;
+
 	if(this->num_fct() != 2)
-		UG_THROW("RANSTurbulenceFV1: Exactly two symbolic functions "
-				 "are required: k and omega.");
+		UG_THROW("RANSTurbulenceFV1: Exactly two symbolic functions are required: k and omega.");
+
+	m_exTurbulentKinViscosity = make_sp(new DataExport<number, dim>(functions.c_str()));
+	m_exK = make_sp(new DataExport<number, dim>(functions.c_str()));
+	m_exOmega = make_sp(new DataExport<number, dim>(functions.c_str()));
+	
+	
+	m_imVelocity.set_comp_lin_defect(false);
+	m_imVelocityGradientSCVF.set_comp_lin_defect(false);
+	m_imVelocityGradientSCV.set_comp_lin_defect(false);
 
 	this->register_import(m_imVelocity);
 	this->register_import(m_imVelocityGradientSCVF);
@@ -32,13 +63,9 @@ RANSTurbulenceFV1(const char* functions, const char* subsets)
 	this->register_import(m_imKinViscositySCV);
 	this->register_import(m_imWallDistanceSCVF);
 	this->register_import(m_imWallDistanceSCV);
-		  
-		  
-		  
 
 	register_all_funcs(false);
 }
-
 ////////////////////////////////////////////////////////////////////////////////
 // Input data
 ////////////////////////////////////////////////////////////////////////////////
@@ -70,6 +97,8 @@ set_velocity_gradient(
 {
 	m_imVelocityGradientSCVF.set_data(data);
 	m_imVelocityGradientSCV.set_data(data);
+	
+	m_exTurbulentKinViscosity->add_needed_data(data);
 }
 template <typename TDomain>
 void RANSTurbulenceFV1<TDomain>::
@@ -90,6 +119,8 @@ set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > data)
 {
 	m_imKinViscositySCVF.set_data(data);
 	m_imKinViscositySCV.set_data(data);
+	
+	m_exTurbulentKinViscosity->add_needed_data(data);
 }
 template <typename TDomain>
 void RANSTurbulenceFV1<TDomain>::
@@ -105,6 +136,8 @@ set_wall_distance(SmartPtr<CplUserData<number, dim> > data)
 {
 	m_imWallDistanceSCVF.set_data(data);
 	m_imWallDistanceSCV.set_data(data);
+	
+	m_exTurbulentKinViscosity->add_needed_data(data);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -368,9 +401,8 @@ add_jac_A_elem(LocalMatrix& J,
 
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
 	{
-		// TODO: SST production and cross-diffusion terms and blending functions are
-		//       currently frozen in the source Jacobian. Derivatives of limitedProduction,
-		//       crossDiffusionOmega, nu_t, F1, F2, beta, and gamma are not included yet.
+		// SST production and cross-diffusion are lagged in the source linearization.
+		// Destruction terms are treated implicitly using coefficients from the current iterate.
 		
 		const typename TFVGeom::SCV& scv = geo.scv(ip);
 
@@ -407,11 +439,11 @@ add_jac_A_elem(LocalMatrix& J,
 
 		const number CDkw = cross_diffusion_CD(omega, gradK, gradOmega);
 		const number F1 = blending_function_F1(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip], CDkw);
-
 		const number beta = blend_sst_coefficient(F1, 0.075, 0.0828);
 
+
 		////////////////////////////////////////////////////////////
-		// k-equation destruction Jacobian
+		// k-equation implicit destruction
 		////////////////////////////////////////////////////////////
 
 		J(_K_, co, _K_, co) += betaStar * omega * volume;
@@ -422,10 +454,17 @@ add_jac_A_elem(LocalMatrix& J,
 		////////////////////////////////////////////////////////////
 
 		J(_OMEGA_, co, _OMEGA_, co) += 2.0 * beta * omega * volume;
+		
+		////////////////////////////////////////////////////////////
+		// omega-equation semi-implicit cross diffusion
+		////////////////////////////////////////////////////////////
 
-		// TODO: SST production terms and blending functions are currently
-		//       frozen in the source Jacobian. Derivatives of limitedProduction,
-		//       nu_t, F1, F2, beta, and gamma are not included yet.
+		const number crossDiffusionOmega = cross_diffusion_omega(F1, omega, gradK, gradOmega);
+		const number crossCoeff = crossDiffusionOmega / omega;
+
+		if(crossCoeff < 0.0)
+			J(_OMEGA_, co, _OMEGA_, co) += (-crossCoeff) * volume;
+
 	}
 }
 
@@ -794,6 +833,201 @@ cross_diffusion_omega(number F1, number omega, const MathVector<dim>& gradK, con
 
 	return 2.0 * (1.0 - F1) * sigmaOmega2 * VecDot(gradK, gradOmega) / omegaEff;
 }
+template <typename TDomain>
+number RANSTurbulenceFV1<TDomain>::
+evaluate_turbulent_kinematic_viscosity(number k, number omega, const MathMatrix<dim, dim>& gradU, number nu, number wallDistance) const
+{
+	const number kEff = std::max(k, 0.0);
+	const number omegaEff = std::max(omega, 1.0e-12);
+	const number nuEff = std::max(nu, 0.0);
+	const number wallDistanceEff = std::max(wallDistance, 1.0e-12);
+
+	const number strainMag = strain_rate_magnitude(gradU);
+	const number F2 = blending_function_F2(kEff, omegaEff, nuEff, wallDistanceEff);
+
+	return turbulent_kinematic_viscosity(kEff, omegaEff, strainMag, F2);
+}
+
+template <typename TDomain>
+template <typename TElem, typename TFVGeom>
+void RANSTurbulenceFV1<TDomain>::
+ex_turbulent_kinematic_viscosity(number vValue[],
+		const MathVector<dim> vGlobIP[],
+		number time, int si,
+		const LocalVector& u,
+		GridObject* elem,
+		const MathVector<dim> vCornerCoords[],
+		const MathVector<TFVGeom::dim> vLocIP[],
+		const size_t nip,
+		bool bDeriv,
+		std::vector<std::vector<number> > vvvDeriv[])
+{
+	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+
+	const bool atSCVF = (vLocIP == geo.scvf_local_ips());
+	const bool atSCV = (vLocIP == geo.scv_local_ips());
+
+	
+
+	for(size_t ip = 0; ip < nip; ++ip)
+	{
+		number k = 0.0;
+		number omega = 0.0;
+
+		if(atSCVF)
+		{
+			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+
+			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
+			{
+				k += u(_K_, sh) * scvf.shape(sh);
+				omega += u(_OMEGA_, sh) * scvf.shape(sh);
+			}
+
+			vValue[ip] = evaluate_turbulent_kinematic_viscosity(k, omega, m_imVelocityGradientSCVF[ip], m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip]);
+		}
+		else if(atSCV)
+		{
+			const typename TFVGeom::SCV& scv = geo.scv(ip);
+			const size_t co = scv.node_id();
+
+			k = u(_K_, co);
+			omega = u(_OMEGA_, co);
+
+			vValue[ip] = evaluate_turbulent_kinematic_viscosity(k, omega, m_imVelocityGradientSCV[ip], m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip]);
+		}
+		else
+		{
+			typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
+			static const size_t numSH = ref_elem_type::numCorners;
+
+			LagrangeP1<ref_elem_type>& trialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+
+			number vShape[numSH];
+
+			std::vector<number> vK(nip);
+			std::vector<number> vOmega(nip);
+			std::vector<MathMatrix<dim, dim> > vVelocityGradient(nip);
+			std::vector<number> vKinViscosity(nip);
+			std::vector<number> vWallDistance(nip);
+
+			for(size_t ip = 0; ip < nip; ++ip)
+			{
+				trialSpace.shapes(vShape, vLocIP[ip]);
+
+				vK[ip] = 0.0;
+				vOmega[ip] = 0.0;
+
+				for(size_t sh = 0; sh < numSH; ++sh)
+				{
+					vK[ip] += u(_K_, sh) * vShape[sh];
+					vOmega[ip] += u(_OMEGA_, sh) * vShape[sh];
+				}
+			}
+
+			LocalVector* uAux = const_cast<LocalVector*>(&u);
+
+			(*(m_imVelocityGradientSCVF.user_data()))(&vVelocityGradient[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uAux, NULL);
+			(*(m_imKinViscositySCVF.user_data()))(&vKinViscosity[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uAux, NULL);
+			(*(m_imWallDistanceSCVF.user_data()))(&vWallDistance[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uAux, NULL);
+
+			for(size_t ip = 0; ip < nip; ++ip)
+				vValue[ip] = evaluate_turbulent_kinematic_viscosity(vK[ip], vOmega[ip], vVelocityGradient[ip], vKinViscosity[ip], vWallDistance[ip]);
+		}
+	}
+
+	if(bDeriv)
+	{
+		for(size_t ip = 0; ip < nip; ++ip)
+		{
+			for(size_t fct = 0; fct < vvvDeriv[ip].size(); ++fct)
+			{
+				for(size_t sh = 0; sh < vvvDeriv[ip][fct].size(); ++sh)
+					vvvDeriv[ip][fct][sh] = 0.0;
+			}
+		}
+	}
+}
+template <typename TDomain>
+template <typename TElem, typename TFVGeom>
+void RANSTurbulenceFV1<TDomain>::
+ex_turbulent_kinetic_energy(number vValue[],
+							const MathVector<dim> vGlobIP[],
+							number time, int si,
+							const LocalVector& u,
+							GridObject* elem,
+							const MathVector<dim> vCornerCoords[],
+							const MathVector<TFVGeom::dim> vLocIP[],
+							const size_t nip,
+							bool bDeriv,
+							std::vector<std::vector<number> > vvvDeriv[])
+{
+	typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
+	static const size_t numSH = ref_elem_type::numCorners;
+
+	LagrangeP1<ref_elem_type>& trialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+
+	number vShape[numSH];
+
+	for(size_t ip = 0; ip < nip; ++ip)
+	{
+		trialSpace.shapes(vShape, vLocIP[ip]);
+
+		vValue[ip] = 0.0;
+
+		for(size_t sh = 0; sh < numSH; ++sh)
+			vValue[ip] += u(_K_, sh) * vShape[sh];
+
+		if(bDeriv)
+		{
+			for(size_t sh = 0; sh < numSH; ++sh)
+				vvvDeriv[ip][_K_][sh] = vShape[sh];
+
+			for(size_t sh = 0; sh < vvvDeriv[ip][_OMEGA_].size(); ++sh)
+				vvvDeriv[ip][_OMEGA_][sh] = 0.0;
+		}
+	}
+}
+template <typename TDomain>
+template <typename TElem, typename TFVGeom>
+void RANSTurbulenceFV1<TDomain>::
+ex_specific_dissipation_rate(number vValue[],
+							 const MathVector<dim> vGlobIP[],
+							 number time, int si,
+							 const LocalVector& u,
+							 GridObject* elem,
+							 const MathVector<dim> vCornerCoords[],
+							 const MathVector<TFVGeom::dim> vLocIP[],
+							 const size_t nip,
+							 bool bDeriv,
+							 std::vector<std::vector<number> > vvvDeriv[])
+{
+	typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
+	static const size_t numSH = ref_elem_type::numCorners;
+
+	LagrangeP1<ref_elem_type>& trialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+
+	number vShape[numSH];
+
+	for(size_t ip = 0; ip < nip; ++ip)
+	{
+		trialSpace.shapes(vShape, vLocIP[ip]);
+
+		vValue[ip] = 0.0;
+
+		for(size_t sh = 0; sh < numSH; ++sh)
+			vValue[ip] += u(_OMEGA_, sh) * vShape[sh];
+
+		if(bDeriv)
+		{
+			for(size_t sh = 0; sh < vvvDeriv[ip][_K_].size(); ++sh)
+				vvvDeriv[ip][_K_][sh] = 0.0;
+
+			for(size_t sh = 0; sh < numSH; ++sh)
+				vvvDeriv[ip][_OMEGA_][sh] = vShape[sh];
+		}
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Register assemble functions
@@ -858,32 +1092,23 @@ register_func()
 {
 	ReferenceObjectID id = geometry_traits<TElem>::REFERENCE_OBJECT_ID;
 	typedef this_type T;
+	
+	static const int refDim = reference_element_traits<TElem>::dim;
 
 	this->clear_add_fct(id);
 
-	this->set_prep_elem_loop_fct(
-		id, &T::template prep_elem_loop<TElem, TFVGeom>);
-
-	this->set_prep_elem_fct(
-		id, &T::template prep_elem<TElem, TFVGeom>);
-
-	this->set_fsh_elem_loop_fct(
-		id, &T::template fsh_elem_loop<TElem, TFVGeom>);
-
-	this->set_add_jac_A_elem_fct(
-		id, &T::template add_jac_A_elem<TElem, TFVGeom>);
-
-	this->set_add_jac_M_elem_fct(
-		id, &T::template add_jac_M_elem<TElem, TFVGeom>);
-
-	this->set_add_def_A_elem_fct(
-		id, &T::template add_def_A_elem<TElem, TFVGeom>);
-
-	this->set_add_def_M_elem_fct(
-		id, &T::template add_def_M_elem<TElem, TFVGeom>);
-
-	this->set_add_rhs_elem_fct(
-		id, &T::template add_rhs_elem<TElem, TFVGeom>);
+	this->set_prep_elem_loop_fct(id, &T::template prep_elem_loop<TElem, TFVGeom>);
+	this->set_prep_elem_fct(id, &T::template prep_elem<TElem, TFVGeom>);
+	this->set_fsh_elem_loop_fct(id, &T::template fsh_elem_loop<TElem, TFVGeom>);
+	this->set_add_jac_A_elem_fct(id, &T::template add_jac_A_elem<TElem, TFVGeom>);
+	this->set_add_jac_M_elem_fct(id, &T::template add_jac_M_elem<TElem, TFVGeom>);
+	this->set_add_def_A_elem_fct(id, &T::template add_def_A_elem<TElem, TFVGeom>);
+	this->set_add_def_M_elem_fct(id, &T::template add_def_M_elem<TElem, TFVGeom>);
+	this->set_add_rhs_elem_fct(id, &T::template add_rhs_elem<TElem, TFVGeom>);
+	
+	m_exTurbulentKinViscosity->template set_fct<T, refDim>(id, this, &T::template ex_turbulent_kinematic_viscosity<TElem, TFVGeom>);
+	m_exK->template set_fct<T, refDim>(id, this, &T::template ex_turbulent_kinetic_energy<TElem, TFVGeom>);
+	m_exOmega->template set_fct<T, refDim>(id, this, &T::template ex_specific_dissipation_rate<TElem, TFVGeom>);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
