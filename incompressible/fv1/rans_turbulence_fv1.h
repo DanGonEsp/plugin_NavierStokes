@@ -184,6 +184,15 @@ protected:
 	
 	number cross_diffusion_omega(number F1, number omega, const MathVector<dim>& gradK, const MathVector<dim>& gradOmega) const;
 	
+	
+	template <typename TElem, typename TFVGeom>
+	void lin_def_velocity_convection(const LocalVector& u, std::vector<std::vector<MathVector<dim> > > vvvLinDef[], const size_t nip);
+	
+	template <typename TElem, typename TFVGeom>
+	void lin_def_velocity_gradient_scv(const LocalVector& u,
+									   std::vector<std::vector<MathMatrix<dim, dim> > > vvvLinDef[],
+									   const size_t nip);
+	
 
 protected:
 	
@@ -217,14 +226,26 @@ protected:
 	SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind;
 	
 	/// Selected turbulence model
-	TurbulenceModel m_model;
+	TurbulenceModel m_model = K_OMEGA_SST;
+	
+	/// SST model coefficients
+	number m_a1 = 0.31;
+	number m_betaStar = 0.09;
+	number m_sigmaK1 = 0.85;
+	number m_sigmaK2 = 1.0;
+	number m_sigmaOmega1 = 0.5;
+	number m_sigmaOmega2 = 0.856;
+	number m_beta1 = 0.075;
+	number m_beta2 = 0.0828;
+	number m_gamma1 = 5.0 / 9.0;
+	number m_gamma2 = 0.44;
+	number m_productionLimiter = 10.0;
 	
 	
 
 private:
 	/// Local function index of k
 	static const size_t _K_ = 0;
-
 	/// Local function index of omega
 	static const size_t _OMEGA_ = 1;
 };
@@ -232,4 +253,4 @@ private:
 } // namespace NavierStokes
 } // namespace ug
 
-#endif
+#endif // __H__UG__PLUGINS__NAVIER_STOKES__INCOMPRESSIBLE__FV1__RANS_TURBULENCE_FV1__
