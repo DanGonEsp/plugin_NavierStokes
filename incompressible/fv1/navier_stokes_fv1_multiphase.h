@@ -624,14 +624,11 @@ class NavierStokesFV1M
         inline void std_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, MathVector<dim>* StdVel_ip, MathVector<dim>* StdMomentum, const DataImport<number, dim>& densitySCVF, const DataImport<number, dim>& densitySCV, const DataImport<number, dim>&  KinViscositySCV, number* Rho_up, number* Rho_do, number* ConvRatio);
     
         template <typename TFVGeom>
-        inline void std_rel_vel(const LocalVector& u, const TFVGeom& geo, MathVector<dim>* Vel_ip, MathVector<dim>* StdCharacteristicVel, MathVector<dim>* Flux,  const DataImport<MathVector<dim>, dim>& RelVelSCV, const DataImport<MathVector<dim>, dim>& SlipVelSCV, int* ShockCase);
-    
-        template <typename TFVGeom>
         inline void vel_grad(const LocalVector& u, const TFVGeom& geo, number* Gamma);
 
 	
 		template<typename TFVGeom,size_t NumSCVF, size_t NumSH>
-		inline void vol_flux( const LocalVector& u, const TFVGeom& geo, number* conv_flux_vol, MathVector<dim>* conv_flux_mom, MathVector<dim>* conv_flux_grad, number* conv_flux_div, number (&FluxVol_ip_jacV)[NumSCVF][NumSH], number (&FluxVol_ip_jacW)[NumSCVF][NumSH], MathVector<dim>* FluxJacVip, const MathVector<dim> TransportingVel_ip[], const bool jac);
+		inline void vol_flux( const LocalVector& u, const TFVGeom& geo, number* conv_flux_vol, MathVector<dim>* conv_flux_mom, MathVector<dim>* conv_flux_grad, number* conv_flux_div, number (&FluxVol_ip_jacV)[NumSCVF][NumSH], number (&FluxVol_ip_jacW)[NumSCVF][NumSH], MathVector<dim>* FluxJacVip, const bool jac);
 	
 		template<typename TFVGeom>
 		inline void vol_flux_grad( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* conv_flux_grad);
