@@ -454,13 +454,13 @@ class Interface
 			
 				
 			switch (upwind_vol_method) {
-				case 1:
+				case 0:
 					Godunov_flux(Flux,DiffFlux,UL,UR,wSL,wSR,wFL,wFR, WL,WR,Vn,Wn);
 					break;
-				case 2:
+				case 1:
 					Rusanov_flux(Flux,DiffFlux, UL,UR,wSL,wSR,wFL,wFR,Vn,Wn);
 					break;
-				case 3:
+				case 2:
 					Roe_flux(Flux, DiffFlux, UL,UR,wSL,wSR,wFL,wFR, WL,WR,Vn,Wn);
 					break;
 				default:
@@ -507,13 +507,13 @@ class Interface
 			
 				
 			switch (upwind_vol_method) {
-				case 1:
+				case 0:
 					Godunov_jac(JacVL,JacVR, JacWL,JacWR, JacVn,  UL, UR, wSL, wSR, wFL, wFR,  WL, WR,  Vn);
 					break;
-				case 2:
+				case 1:
 					Rusanov_jac(JacVL,JacVR,JacWL,JacWR, JacVn, UL, UR,  wSL,  wSR,  wFL,  wFR,  Vn);
 					break;
-				case 3:
+				case 2:
 					Roe_jac(JacVL,JacVR,JacWL,JacWR, JacVn, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
 					break;
 				default:
