@@ -73,6 +73,19 @@ public:
 	{
 		this->set_num_input(2);
 	}
+	struct SaltationData
+	{
+		number sN;
+		number sDelta;
+		number deltaGamma;
+		number nDn;
+		number tauMag;
+		number uStar;
+		MathVector<dim> normal;
+		MathVector<dim> Dn;
+		MathVector<dim> tau;
+		MathMatrix<dim,dim> D;
+	};
 
 
 private:
@@ -87,114 +100,21 @@ private:
 
 		if(!Inter) UG_THROW("SaltationFluxLinker: Interface pointer is null.");
 
-		const number rho_a = Inter->Density_a();
-		const number mu_a = Inter->Viscosity_a();
 		const number grav = std::fabs(Inter->gravity());
 
-		if(rho_a <= 0.0) UG_THROW("SaltationFluxLinker: air density must be positive.");
-		if(mu_a < 0.0) UG_THROW("SaltationFluxLinker: air viscosity must be non-negative.");
 		if(grav <= 0.0) UG_THROW("SaltationFluxLinker: gravity magnitude must be positive.");
 
-		////////////////////////////////////////////////////////////////////////////
-		// Diffuse-interface geometry
-		////////////////////////////////////////////////////////////////////////////
+		SaltationData data;
+		compute_saltation_data(data, gradC, gradU);
 
-		number gradC2 = 0.0;
-		for(size_t d = 0; d < dim; ++d) gradC2 += gradC[d]*gradC[d];
+		if(data.deltaGamma <= 0.0) return;
+		if(data.uStar <= m_uStarThreshold) return;
 
-		const number sN = std::sqrt(gradC2 + m_epsNormal*m_epsNormal);
-		const number sDelta = std::sqrt(gradC2 + m_epsDelta*m_epsDelta);
-		const number deltaGamma = sDelta - m_epsDelta;
+		const number excess = data.uStar - m_uStarThreshold;
+		const number factor = data.deltaGamma*(m_C/grav)*excess;
 
-		if(deltaGamma <= 0.0) return;
-
-		MathVector<dim> n;
-		for(size_t d = 0; d < dim; ++d) n[d] = -gradC[d]/sN;
-
-		////////////////////////////////////////////////////////////////////////////
-		// Air strain-rate tensor
-		//
-		// D = 1/2 (grad(u) + grad(u)^T)
-		////////////////////////////////////////////////////////////////////////////
-
-		MathMatrix<dim,dim> D;
-
-		for(size_t i = 0; i < dim; ++i)
-		{
-			for(size_t j = 0; j < dim; ++j) D(i,j) = 0.5*(gradU(i,j) + gradU(j,i));
-		}
-
-		////////////////////////////////////////////////////////////////////////////
-		// D n
-		////////////////////////////////////////////////////////////////////////////
-
-		MathVector<dim> Dn;
-		VecSet(Dn, 0.0);
-
-		for(size_t i = 0; i < dim; ++i)
-		{
-			for(size_t j = 0; j < dim; ++j) Dn[i] += D(i,j)*n[j];
-		}
-
-		////////////////////////////////////////////////////////////////////////////
-		// Tangential projection
-		//
-		// P D n = D n - n (n . D n)
-		////////////////////////////////////////////////////////////////////////////
-
-		number nDn = 0.0;
-		for(size_t d = 0; d < dim; ++d) nDn += n[d]*Dn[d];
-
-		////////////////////////////////////////////////////////////////////////////
-		// Aerodynamic tangential traction
-		//
-		// tau_Gamma = 2 mu_a P D n
-		////////////////////////////////////////////////////////////////////////////
-
-		MathVector<dim> tau;
-
-		for(size_t d = 0; d < dim; ++d) tau[d] = 2.0*mu_a*(Dn[d] - n[d]*nDn);
-
-		////////////////////////////////////////////////////////////////////////////
-		// Magnitude of tangential traction
-		////////////////////////////////////////////////////////////////////////////
-
-		number tau2 = 0.0;
-		for(size_t d = 0; d < dim; ++d) tau2 += tau[d]*tau[d];
-
-		const number tauMag = std::sqrt(tau2);
-
-		if(tauMag <= 0.0) return;
-
-		////////////////////////////////////////////////////////////////////////////
-		// Friction velocity
-		//
-		// u_* = sqrt(|tau_Gamma|/rho_a)
-		////////////////////////////////////////////////////////////////////////////
-
-		const number uStar = std::sqrt(tauMag/rho_a);
-
-		////////////////////////////////////////////////////////////////////////////
-		// Threshold condition
-		////////////////////////////////////////////////////////////////////////////
-
-		if(uStar <= m_uStarThreshold) return;
-
-		const number excess = uStar - m_uStarThreshold;
-
-		////////////////////////////////////////////////////////////////////////////
-		// Saturated saltation surface flux
-		//
-		// q_s = (C/g) (u_* - u_*t) tau_Gamma
-		//
-		// Diffuse volumetric flux
-		//
-		// J_salt = delta_Gamma q_s
-		////////////////////////////////////////////////////////////////////////////
-
-		const number factor = deltaGamma*(m_C/grav)*excess;
-
-		for(size_t d = 0; d < dim; ++d) flux[d] = factor*tau[d];
+		for(size_t d = 0; d < dim; ++d)
+			flux[d] = factor*data.tau[d];
 	}
 
 
@@ -206,171 +126,152 @@ private:
 	{
 		VecSet(dFlux, 0.0);
 
-		if(!Inter) UG_THROW("SaltationFluxLinker: Interface pointer is null.");
+		if(!Inter)
+			UG_THROW("SaltationFluxLinker: Interface pointer is null.");
 
 		const number rho_a = Inter->Density_a();
 		const number mu_a = Inter->Viscosity_a();
 		const number grav = std::fabs(Inter->gravity());
 
-		if(rho_a <= 0.0) UG_THROW("SaltationFluxLinker: air density must be positive.");
-		if(mu_a < 0.0) UG_THROW("SaltationFluxLinker: air viscosity must be non-negative.");
-		if(grav <= 0.0) UG_THROW("SaltationFluxLinker: gravity magnitude must be positive.");
+		if(rho_a <= 0.0)
+			UG_THROW("SaltationFluxLinker: air density must be positive.");
 
-		////////////////////////////////////////////////////////////////////////////
-		// grad(c)
-		////////////////////////////////////////////////////////////////////////////
+		if(mu_a < 0.0)
+			UG_THROW("SaltationFluxLinker: air viscosity must be non-negative.");
 
-		number gradC2 = 0.0;
-		for(size_t d = 0; d < dim; ++d) gradC2 += gradC[d]*gradC[d];
+		if(grav <= 0.0)
+			UG_THROW("SaltationFluxLinker: gravity magnitude must be positive.");
 
-		const number sN = std::sqrt(gradC2 + m_epsNormal*m_epsNormal);
-		const number sDelta = std::sqrt(gradC2 + m_epsDelta*m_epsDelta);
-		const number deltaGamma = sDelta - m_epsDelta;
+		SaltationData data;
+		compute_saltation_data(data, gradC, gradU);
 
-		if(deltaGamma <= 0.0) return;
+		if(data.deltaGamma <= 0.0)
+			return;
 
-		////////////////////////////////////////////////////////////////////////////
-		// Interface normal
-		////////////////////////////////////////////////////////////////////////////
+		if(data.tauMag <= 0.0)
+			return;
 
-		MathVector<dim> n;
-		for(size_t d = 0; d < dim; ++d) n[d] = -gradC[d]/sN;
-
-		////////////////////////////////////////////////////////////////////////////
-		// Derivative of interface normal
-		//
-		// dn = -[I/sN - grad(c) tensor grad(c)/sN^3] dgrad(c)
-		////////////////////////////////////////////////////////////////////////////
+		if(data.uStar <= m_uStarThreshold)
+			return;
 
 		number gradCDotDGradC = 0.0;
-		for(size_t d = 0; d < dim; ++d) gradCDotDGradC += gradC[d]*dGradC[d];
 
-		const number sN3 = sN*sN*sN;
+		for(size_t d = 0; d < dim; ++d)
+			gradCDotDGradC += gradC[d]*dGradC[d];
+
+		const number sN3 = data.sN*data.sN*data.sN;
 
 		MathVector<dim> dn;
-		for(size_t d = 0; d < dim; ++d) dn[d] = -dGradC[d]/sN + gradC[d]*gradCDotDGradC/sN3;
 
-		////////////////////////////////////////////////////////////////////////////
-		// Derivative of diffuse-interface delta
-		////////////////////////////////////////////////////////////////////////////
+		for(size_t d = 0; d < dim; ++d)
+			dn[d] = -dGradC[d]/data.sN + gradC[d]*gradCDotDGradC/sN3;
 
-		const number dDeltaGamma = gradCDotDGradC/sDelta;
+		const number dDeltaGamma = gradCDotDGradC/data.sDelta;
 
-		////////////////////////////////////////////////////////////////////////////
-		// D and dD
-		////////////////////////////////////////////////////////////////////////////
-
-		MathMatrix<dim,dim> D;
 		MathMatrix<dim,dim> dD;
 
 		for(size_t i = 0; i < dim; ++i)
 		{
 			for(size_t j = 0; j < dim; ++j)
-			{
-				D(i,j) = 0.5*(gradU(i,j) + gradU(j,i));
 				dD(i,j) = 0.5*(dGradU(i,j) + dGradU(j,i));
-			}
 		}
 
-		////////////////////////////////////////////////////////////////////////////
-		// Dn and derivative
-		//
-		// d(Dn) = dD n + D dn
-		////////////////////////////////////////////////////////////////////////////
-
-		MathVector<dim> Dn;
 		MathVector<dim> dDn;
-
-		VecSet(Dn, 0.0);
 		VecSet(dDn, 0.0);
 
 		for(size_t i = 0; i < dim; ++i)
 		{
 			for(size_t j = 0; j < dim; ++j)
-			{
-				Dn[i] += D(i,j)*n[j];
-				dDn[i] += dD(i,j)*n[j] + D(i,j)*dn[j];
-			}
+				dDn[i] += dD(i,j)*data.normal[j] + data.D(i,j)*dn[j];
 		}
 
-		////////////////////////////////////////////////////////////////////////////
-		// n . Dn and derivative
-		////////////////////////////////////////////////////////////////////////////
-
-		number nDn = 0.0;
 		number dNDn = 0.0;
 
 		for(size_t d = 0; d < dim; ++d)
-		{
-			nDn += n[d]*Dn[d];
-			dNDn += dn[d]*Dn[d] + n[d]*dDn[d];
-		}
+			dNDn += dn[d]*data.Dn[d] + data.normal[d]*dDn[d];
 
-		////////////////////////////////////////////////////////////////////////////
-		// Tangential traction and derivative
-		//
-		// tau  = 2 mu_a (Dn - n(n.Dn))
-		//
-		// dtau = 2 mu_a [dDn - dn(n.Dn) - n d(n.Dn)]
-		////////////////////////////////////////////////////////////////////////////
-
-		MathVector<dim> tau;
 		MathVector<dim> dTau;
 
 		for(size_t d = 0; d < dim; ++d)
-		{
-			tau[d] = 2.0*mu_a*(Dn[d] - n[d]*nDn);
-			dTau[d] = 2.0*mu_a*(dDn[d] - dn[d]*nDn - n[d]*dNDn);
-		}
-
-		////////////////////////////////////////////////////////////////////////////
-		// Magnitude of traction
-		////////////////////////////////////////////////////////////////////////////
-
-		number tau2 = 0.0;
-		for(size_t d = 0; d < dim; ++d) tau2 += tau[d]*tau[d];
-
-		const number tauMag = std::sqrt(tau2);
-
-		if(tauMag <= 0.0) return;
-
-		////////////////////////////////////////////////////////////////////////////
-		// Friction velocity
-		////////////////////////////////////////////////////////////////////////////
-
-		const number uStar = std::sqrt(tauMag/rho_a);
-
-		if(uStar <= m_uStarThreshold) return;
-
-		////////////////////////////////////////////////////////////////////////////
-		// Derivative of friction velocity
-		//
-		// d|tau| = tau . dtau / |tau|
-		//
-		// du_* = (tau . dtau)/(2 rho_a u_* |tau|)
-		////////////////////////////////////////////////////////////////////////////
+			dTau[d] = 2.0*mu_a*(dDn[d] - dn[d]*data.nDn - data.normal[d]*dNDn);
 
 		number tauDotDTau = 0.0;
-		for(size_t d = 0; d < dim; ++d) tauDotDTau += tau[d]*dTau[d];
 
-		const number dUStar = tauDotDTau/(2.0*rho_a*uStar*tauMag);
+		for(size_t d = 0; d < dim; ++d)
+			tauDotDTau += data.tau[d]*dTau[d];
 
-		////////////////////////////////////////////////////////////////////////////
-		// Derivative of saltation flux
-		//
-		// J = delta (C/g) (u_* - u_*t) tau
-		//
-		// dJ = (C/g) [
-		//          ddelta (u_* - u_*t) tau
-		//        + delta du_* tau
-		//        + delta (u_* - u_*t) dtau
-		//      ]
-		////////////////////////////////////////////////////////////////////////////
-
-		const number excess = uStar - m_uStarThreshold;
+		const number dUStar = tauDotDTau/(2.0*rho_a*data.uStar*data.tauMag);
+		const number excess = data.uStar - m_uStarThreshold;
 		const number Cg = m_C/grav;
 
-		for(size_t d = 0; d < dim; ++d) dFlux[d] = Cg*(dDeltaGamma*excess*tau[d] + deltaGamma*dUStar*tau[d] + deltaGamma*excess*dTau[d]);
+		for(size_t d = 0; d < dim; ++d)
+			dFlux[d] = Cg*(dDeltaGamma*excess*data.tau[d] + data.deltaGamma*dUStar*data.tau[d] + data.deltaGamma*excess*dTau[d]);
+	}
+	
+	void compute_saltation_data(SaltationData& data, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU) const
+	{
+		data.sN = 0.0;
+		data.sDelta = 0.0;
+		data.deltaGamma = 0.0;
+		data.nDn = 0.0;
+		data.tauMag = 0.0;
+		data.uStar = 0.0;
+
+		VecSet(data.normal, 0.0);
+		VecSet(data.Dn, 0.0);
+		VecSet(data.tau, 0.0);
+
+		if(!Inter)
+			UG_THROW("SaltationFluxLinker: Interface pointer is null.");
+
+		const number rho_a = Inter->Density_a();
+		const number mu_a = Inter->Viscosity_a();
+
+		if(rho_a <= 0.0)
+			UG_THROW("SaltationFluxLinker: air density must be positive.");
+
+		if(mu_a < 0.0)
+			UG_THROW("SaltationFluxLinker: air viscosity must be non-negative.");
+
+		number gradC2 = 0.0;
+
+		for(size_t d = 0; d < dim; ++d)
+			gradC2 += gradC[d]*gradC[d];
+
+		data.sN = std::sqrt(gradC2 + m_epsNormal*m_epsNormal);
+		data.sDelta = std::sqrt(gradC2 + m_epsDelta*m_epsDelta);
+		data.deltaGamma = data.sDelta - m_epsDelta;
+
+		for(size_t d = 0; d < dim; ++d)
+			data.normal[d] = -gradC[d]/data.sN;
+
+		for(size_t i = 0; i < dim; ++i)
+		{
+			for(size_t j = 0; j < dim; ++j)
+				data.D(i,j) = 0.5*(gradU(i,j) + gradU(j,i));
+		}
+
+		for(size_t i = 0; i < dim; ++i)
+		{
+			for(size_t j = 0; j < dim; ++j)
+				data.Dn[i] += data.D(i,j)*data.normal[j];
+		}
+
+		for(size_t d = 0; d < dim; ++d)
+			data.nDn += data.normal[d]*data.Dn[d];
+
+		for(size_t d = 0; d < dim; ++d)
+			data.tau[d] = 2.0*mu_a*(data.Dn[d] - data.normal[d]*data.nDn);
+
+		number tau2 = 0.0;
+
+		for(size_t d = 0; d < dim; ++d)
+			tau2 += data.tau[d]*data.tau[d];
+
+		data.tauMag = std::sqrt(tau2);
+
+		if(data.tauMag > 0.0)
+			data.uStar = std::sqrt(data.tauMag/rho_a);
 	}
 
 
