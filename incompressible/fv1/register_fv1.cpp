@@ -430,6 +430,11 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_kinematic_viscosity",static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_kinematic_viscosity),"", "KinematicViscosity")
 			.add_method("set_kinematic_viscosity",static_cast<void (T::*)(number)>(&T::set_kinematic_viscosity),"", "KinematicViscosity")
 			.add_method("set_wall_distance",static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_wall_distance),"", "WallDistance")
+			#ifdef UG_FOR_LUA
+			.add_method("set_wall_distance",
+				static_cast<void (T::*)(const char*)>(&T::set_wall_distance),
+				"", "WallDistance")
+			#endif
 			.add_method("set_upwind",static_cast<void (T::*)(const std::string&)>(&T::set_upwind),"", "Upwind")
 			.add_method("set_linearize_turbulent_viscosity", &T::set_linearize_turbulent_viscosity)
 			.add_method("set_linearize_f2", &T::set_linearize_f2)

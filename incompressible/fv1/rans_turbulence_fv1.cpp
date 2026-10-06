@@ -153,6 +153,13 @@ set_wall_distance(SmartPtr<CplUserData<number, dim> > data)
 	
 	m_exTurbulentKinViscosity->add_needed_data(data);
 }
+#ifdef UG_FOR_LUA
+template <typename TDomain>
+void RANSTurbulenceFV1<TDomain>::set_wall_distance(const char* luaFctName)
+{
+	set_wall_distance(make_sp(new LuaUserData<number, dim>(luaFctName)));
+}
+#endif
 
 
 
@@ -486,6 +493,12 @@ add_jac_A_elem(LocalMatrix& J,
 		if(m_crossDiffusionLinearization == 0)
 		{
 			J(_OMEGA_, co, _OMEGA_, co) += std::max(-crossCoeff, 0.0) * volume;
+			const number crossFactor = 2.0 * (1.0 - F1) * m_sigmaOmega2;
+
+			for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+			{
+				J(_OMEGA_, co, _K_, sh) -= crossFactor * VecDot(scv.global_grad(sh), gradOmega) * volume / omega;
+			}
 		}
 		else if(m_crossDiffusionLinearization == 1)
 		{

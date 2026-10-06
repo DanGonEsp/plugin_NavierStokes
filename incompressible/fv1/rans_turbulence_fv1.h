@@ -50,6 +50,9 @@ public:
 	
 	/// Wall distance
 	void set_wall_distance(SmartPtr<CplUserData<number, dim> > data);
+	#ifdef UG_FOR_LUA
+	void set_wall_distance(const char* luaFctName);
+	#endif
 
 	/// Set velocity field
 	void set_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data);
