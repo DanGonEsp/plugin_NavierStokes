@@ -77,6 +77,13 @@ public:
 
 	/// Select turbulence model
 	void set_model(TurbulenceModel model);
+	
+	void set_linearize_turbulent_viscosity(bool enabled) {m_linearizeTurbulentViscosity = enabled;}
+	void set_linearize_f2(bool enabled) {m_linearizeF2InTurbulentViscosity = enabled;}
+	void set_linearize_destruction_coupling(bool enabled) {m_linearizeDestructionCoupling = enabled;}
+	void set_cross_diffusion_linearization(int mode) {if(mode < 0 || mode > 2) UG_THROW("RANSTurbulenceFV1: Cross-diffusion mode must be 0, 1, or 2."); m_crossDiffusionLinearization = mode;}
+	void set_linearize_exported_viscosity(bool enabled) {m_linearizeExportedViscosity = enabled;}
+	
 
 	/// Return selected turbulence model
 	TurbulenceModel model() const {return m_model;}
@@ -184,6 +191,9 @@ protected:
 	
 	number cross_diffusion_omega(number F1, number omega, const MathVector<dim>& gradK, const MathVector<dim>& gradOmega) const;
 	
+	void turbulent_viscosity_derivatives( number& dNuT_dK,number& dNuT_dOmega,number k,number omega,number strainMag,number F2,
+		number nu,number wallDist) const;
+	
 	
 	template <typename TElem, typename TFVGeom>
 	void lin_def_velocity_convection(const LocalVector& u, std::vector<std::vector<MathVector<dim> > > vvvLinDef[], const size_t nip);
@@ -240,6 +250,12 @@ protected:
 	number m_gamma1 = 5.0 / 9.0;
 	number m_gamma2 = 0.44;
 	number m_productionLimiter = 10.0;
+	
+	bool m_linearizeTurbulentViscosity = false;
+	bool m_linearizeF2InTurbulentViscosity = false;
+	bool m_linearizeExportedViscosity = false;
+	bool m_linearizeDestructionCoupling = false;
+	int m_crossDiffusionLinearization = 0; // 0: sink split; 1: positive denominator derivative; 2: frozen-F1 derivative
 	
 	
 

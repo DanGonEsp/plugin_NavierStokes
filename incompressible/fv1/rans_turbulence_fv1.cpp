@@ -54,6 +54,10 @@ init(const std::string& functions)
 	m_imVelocity.set_comp_lin_defect(true);
 	m_imVelocityGradientSCVF.set_comp_lin_defect(false);
 	m_imVelocityGradientSCV.set_comp_lin_defect(false);
+	m_imKinViscositySCVF.set_comp_lin_defect(false);
+	m_imKinViscositySCV.set_comp_lin_defect(false);
+	m_imWallDistanceSCVF.set_comp_lin_defect(false);
+	m_imWallDistanceSCV.set_comp_lin_defect(false);
 
 	this->register_import(m_imVelocity);
 	this->register_import(m_imVelocityGradientSCVF);
@@ -64,6 +68,17 @@ init(const std::string& functions)
 	this->register_import(m_imWallDistanceSCV);
 
 	register_all_funcs(false);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Turbulence model
+////////////////////////////////////////////////////////////////////////////////
+
+template <typename TDomain>
+void RANSTurbulenceFV1<TDomain>::set_model(TurbulenceModel model)
+{
+	if(model != K_OMEGA_SST) UG_THROW("RANSTurbulenceFV1: Only SST-2003 is implemented.");
+	m_model = model;
 }
 ////////////////////////////////////////////////////////////////////////////////
 // Input data
@@ -139,16 +154,6 @@ set_wall_distance(SmartPtr<CplUserData<number, dim> > data)
 	m_exTurbulentKinViscosity->add_needed_data(data);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Turbulence model
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TDomain>
-void RANSTurbulenceFV1<TDomain>::
-set_model(TurbulenceModel model)
-{
-	m_model = model;
-}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -349,13 +354,7 @@ add_jac_A_elem(LocalMatrix& J,
 		const number strainMag = strain_rate_magnitude(m_imVelocityGradientSCVF[ip]);
 		const number nuT = turbulent_kinematic_viscosity(kIP, omegaIP, strainMag, F2);
 		
-		
-		const number omegaEffIP = std::max(omegaIP, 1.0e-12);
-		const number nuTDenominator = std::max(m_a1 * omegaEffIP, strainMag * F2);
-		const number dNuT_dKIP = (kIP > 0.0) ? m_a1 / nuTDenominator : 0.0;
-		const number dNuT_dOmegaIP = (kIP > 0.0 && omegaIP > 1.0e-12 && m_a1 * omegaEffIP > strainMag * F2) ? -m_a1 * m_a1 * kIP / (nuTDenominator * nuTDenominator) : 0.0;
-		
-		
+	
 		////////////////////////////////////////////////////////////
 		// SST diffusion coefficients
 		////////////////////////////////////////////////////////////
@@ -366,12 +365,23 @@ add_jac_A_elem(LocalMatrix& J,
 		const number nuEffK = m_imKinViscositySCVF[ip] + sigmaK * nuT;
 		const number nuEffOmega = m_imKinViscositySCVF[ip] + sigmaOmega * nuT;
 		
+		number dNuT_dKIP = 0.0;
+		number dNuT_dOmegaIP = 0.0;
+
+		if(m_linearizeTurbulentViscosity) turbulent_viscosity_derivatives(dNuT_dKIP, dNuT_dOmegaIP, kIP, omegaIP, strainMag, F2, m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip]);
+		
+		
+		////////////////////////////////////////////////////////////
+		// Convective volume flux
+		////////////////////////////////////////////////////////////
+		
 		const number volFlux = VecDot(m_imVelocity[ip], scvf.normal());
 
 		for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
 		{
-			// TODO: F1, F2, sigmaK, and sigmaOmega are currently frozen in the Jacobian.
-			//       Direct k- and omega-dependence of nu_t is included with the active limiter branch frozen.
+			// F1, sigmaK, and sigmaOmega are currently frozen in the Jacobian.
+			// The F2 contribution to d(nu_t)/d(k,omega) can optionally be linearized.
+			// All max() branches are frozen during the linearization.
 			
 			////////////////////////////////////////////////////////
 			// Diffusion
@@ -382,21 +392,48 @@ add_jac_A_elem(LocalMatrix& J,
 
 			J(_K_, scvf.from(), _K_, sh) += diffFluxShapeK;
 			J(_K_, scvf.to(), _K_, sh) -= diffFluxShapeK;
-
+			
 			J(_OMEGA_, scvf.from(), _OMEGA_, sh) += diffFluxShapeOmega;
 			J(_OMEGA_, scvf.to(), _OMEGA_, sh) -= diffFluxShapeOmega;
 			
-			const number dNuEffOmega_dK = sigmaOmega * dNuT_dKIP * scvf.shape(sh);
-			const number diffFluxOmegaK = -dNuEffOmega_dK * VecDot(gradOmega, scvf.normal());
-
-			J(_OMEGA_, scvf.from(), _K_, sh) += diffFluxOmegaK;
-			J(_OMEGA_, scvf.to(), _K_, sh) -= diffFluxOmegaK;
 			
-			const number dNuEffOmega_dOmega = sigmaOmega * dNuT_dOmegaIP * scvf.shape(sh);
-			const number diffFluxOmegaOmegaCoeff = -dNuEffOmega_dOmega * VecDot(gradOmega, scvf.normal());
+			
+			////////////////////////////////////////////////////////
+			// Optional linearization of turbulent viscosity
+			////////////////////////////////////////////////////////
+			
+			
+			if(m_linearizeTurbulentViscosity)
+			{
+				const number dNuEffK_dK = sigmaK * dNuT_dKIP * scvf.shape(sh);
+				const number diffFluxKK = -dNuEffK_dK * VecDot(gradK, scvf.normal());
 
-			J(_OMEGA_, scvf.from(), _OMEGA_, sh) += diffFluxOmegaOmegaCoeff;
-			J(_OMEGA_, scvf.to(), _OMEGA_, sh) -= diffFluxOmegaOmegaCoeff;
+				J(_K_, scvf.from(), _K_, sh) += diffFluxKK;
+				J(_K_, scvf.to(), _K_, sh) -= diffFluxKK;
+
+
+				const number dNuEffK_dOmega = sigmaK * dNuT_dOmegaIP * scvf.shape(sh);
+				const number diffFluxKOmega = -dNuEffK_dOmega * VecDot(gradK, scvf.normal());
+
+				J(_K_, scvf.from(), _OMEGA_, sh) += diffFluxKOmega;
+				J(_K_, scvf.to(), _OMEGA_, sh) -= diffFluxKOmega;
+
+
+				const number dNuEffOmega_dK = sigmaOmega * dNuT_dKIP * scvf.shape(sh);
+				const number diffFluxOmegaK = -dNuEffOmega_dK * VecDot(gradOmega, scvf.normal());
+
+				J(_OMEGA_, scvf.from(), _K_, sh) += diffFluxOmegaK;
+				J(_OMEGA_, scvf.to(), _K_, sh) -= diffFluxOmegaK;
+
+
+				const number dNuEffOmega_dOmega = sigmaOmega * dNuT_dOmegaIP * scvf.shape(sh);
+				const number diffFluxOmegaOmegaCoeff = -dNuEffOmega_dOmega * VecDot(gradOmega, scvf.normal());
+
+				J(_OMEGA_, scvf.from(), _OMEGA_, sh) += diffFluxOmegaOmegaCoeff;
+				J(_OMEGA_, scvf.to(), _OMEGA_, sh) -= diffFluxOmegaOmegaCoeff;
+			}
+			
+
 
 			////////////////////////////////////////////////////////
 			// Convection
@@ -418,28 +455,18 @@ add_jac_A_elem(LocalMatrix& J,
 
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
 	{
-		// SST production is currently lagged.
-		// Cross diffusion is linearized with F1 frozen.
-		// Destruction terms are treated implicitly using coefficients from the current iterate.
-		
 		const typename TFVGeom::SCV& scv = geo.scv(ip);
-
 		const size_t co = scv.node_id();
 		const number volume = scv.volume();
-
-		const number k = std::max(u(_K_, co), 0.0);
-		const number omega = std::max(u(_OMEGA_, co), 1.0e-12);
-
-		////////////////////////////////////////////////////////////
-		// Gradients of k and omega at SCV
-		////////////////////////////////////////////////////////////
-
+		const number kRaw = u(_K_, co);
+		const number omegaRaw = u(_OMEGA_, co);
+		const number k = std::max(kRaw, 0.0);
+		const number omega = std::max(omegaRaw, 1.0e-12);
+		const bool omegaActive = omegaRaw > 1.0e-12;
 		MathVector<dim> gradK;
 		MathVector<dim> gradOmega;
-
 		VecSet(gradK, 0.0);
 		VecSet(gradOmega, 0.0);
-
 		for(size_t sh = 0; sh < scv.num_sh(); ++sh)
 		{
 			for(int d1 = 0; d1 < dim; ++d1)
@@ -448,58 +475,32 @@ add_jac_A_elem(LocalMatrix& J,
 				gradOmega[d1] += scv.global_grad(sh)[d1] * u(_OMEGA_, sh);
 			}
 		}
-
-		////////////////////////////////////////////////////////////
-		// SST blending coefficient beta
-		////////////////////////////////////////////////////////////
-
 		const number CDkw = cross_diffusion_CD(omega, gradK, gradOmega);
 		const number F1 = blending_function_F1(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip], CDkw);
 		const number beta = blend_sst_coefficient(F1, m_beta1, m_beta2);
-		
-		
-		const number omegaEff = std::max(omega, 1.0e-12);
-		const number crossFactor = 2.0 * (1.0 - F1) * m_sigmaOmega2;
-		const number gradKDotGradOmega = VecDot(gradK, gradOmega);
-
-		for(size_t sh = 0; sh < scv.num_sh(); ++sh)
-		{
-			const number dCross_dK = -crossFactor * VecDot(scv.global_grad(sh), gradOmega) / omegaEff * volume;
-			J(_OMEGA_, co, _K_, sh) += dCross_dK;
-
-			const number dCross_dOmegaGrad = -crossFactor * VecDot(gradK, scv.global_grad(sh)) / omegaEff * volume;
-			J(_OMEGA_, co, _OMEGA_, sh) += dCross_dOmegaGrad;
-		}
-
-		if(u(_OMEGA_, co) > 1.0e-12)
-			J(_OMEGA_, co, _OMEGA_, co) += crossFactor * gradKDotGradOmega / (omegaEff * omegaEff) * volume;
-
-
-		////////////////////////////////////////////////////////////
-		// k-equation implicit destruction
-		////////////////////////////////////////////////////////////
-
 		J(_K_, co, _K_, co) += m_betaStar * omega * volume;
-		J(_K_, co, _OMEGA_, co) += m_betaStar * k * volume;
-
-		////////////////////////////////////////////////////////////
-		// omega-equation destruction Jacobian
-		////////////////////////////////////////////////////////////
-
-		J(_OMEGA_, co, _OMEGA_, co) += 2.0 * beta * omega * volume;
-		
-		////////////////////////////////////////////////////////////
-		// omega-equation semi-implicit cross diffusion
-		////////////////////////////////////////////////////////////
-		/*
+		if(m_linearizeDestructionCoupling && omegaActive) J(_K_, co, _OMEGA_, co) += m_betaStar * kRaw * volume;
+		J(_OMEGA_, co, _OMEGA_, co) += beta * (omega + (omegaActive ? omegaRaw : 0.0)) * volume;
 		const number crossDiffusionOmega = cross_diffusion_omega(F1, omega, gradK, gradOmega);
 		const number crossCoeff = crossDiffusionOmega / omega;
-
-		if(crossCoeff < 0.0)
-			J(_OMEGA_, co, _OMEGA_, co) += (-crossCoeff) * volume;
-		
-		*/
-
+		if(m_crossDiffusionLinearization == 0)
+		{
+			J(_OMEGA_, co, _OMEGA_, co) += std::max(-crossCoeff, 0.0) * volume;
+		}
+		else if(m_crossDiffusionLinearization == 1)
+		{
+			if(omegaActive) J(_OMEGA_, co, _OMEGA_, co) += std::max(crossCoeff, 0.0) * volume;
+		}
+		else
+		{
+			const number crossFactor = 2.0 * (1.0 - F1) * m_sigmaOmega2;
+			for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+			{
+				J(_OMEGA_, co, _K_, sh) -= crossFactor * VecDot(scv.global_grad(sh), gradOmega) * volume / omega;
+				J(_OMEGA_, co, _OMEGA_, sh) -= crossFactor * VecDot(gradK, scv.global_grad(sh)) * volume / omega;
+			}
+			if(omegaActive) J(_OMEGA_, co, _OMEGA_, co) += crossCoeff * volume;
+		}
 	}
 }
 
@@ -692,7 +693,7 @@ add_def_A_elem(LocalVector& d,
 		const number productionLimit = m_productionLimiter * m_betaStar * k * omega;
 		const number limitedProduction = std::min(production, productionLimit);
 
-		const number destructionK = m_betaStar * k * omega;
+		const number destructionK = m_betaStar * u(_K_, co) * omega;
 
 		d(_K_, co) += (destructionK - limitedProduction) * volume;
 
@@ -700,16 +701,11 @@ add_def_A_elem(LocalVector& d,
 		// omega-equation production, destruction and cross-diffusion
 		////////////////////////////////////////////////////////////
 
-		const number nuTEff = std::max(nuT, 1.0e-12);
-		const number destructionOmega = beta * omega * omega;
+		const number destructionOmega = beta * omega * u(_OMEGA_, co);
 		const number crossDiffusionOmega = cross_diffusion_omega(F1, omega, gradK, gradOmega);
 		
-		number productionOmega;
-
-		if(production <= productionLimit)
-			productionOmega = gamma * strainMag * strainMag;
-		else
-			productionOmega = gamma * productionLimit / nuTEff;
+		const number nuTDenominator = std::max(m_a1 * omega, strainMag * F2);
+		const number productionOmega = gamma * std::min(strainMag * strainMag, (m_productionLimiter * m_betaStar / m_a1) * omega * nuTDenominator);
 		
 		d(_OMEGA_, co) += (destructionOmega - productionOmega - crossDiffusionOmega) * volume;
 	}
@@ -814,6 +810,7 @@ template <typename TDomain>
 number RANSTurbulenceFV1<TDomain>::
 blending_function_F1(number k, number omega, number nu, number wallDistance, number CDkw) const
 {
+	if(!std::isfinite(k) || !std::isfinite(omega) || !std::isfinite(nu) || !std::isfinite(wallDistance) || nu < 0.0 || wallDistance < 0.0) UG_THROW("RANSTurbulenceFV1: Non-finite SST input or negative molecular viscosity/wall distance.");
 
 	const number kEff = std::max(k, 0.0);
 	const number omegaEff = std::max(omega, 1.0e-12);
@@ -825,7 +822,7 @@ blending_function_F1(number k, number omega, number nu, number wallDistance, num
 	const number arg1_2 = 500.0 * nuEff / (dEff * dEff * omegaEff);
 	const number arg1_3 = 4.0 * m_sigmaOmega2 * kEff / (CDEff * dEff * dEff);
 
-	const number arg1 = std::min(std::max(arg1_1, arg1_2), arg1_3);
+	const number arg1 = std::min(std::min(std::max(arg1_1, arg1_2), arg1_3), 10.0);
 	const number arg1Squared = arg1 * arg1;
 
 	return std::tanh(arg1Squared * arg1Squared);
@@ -835,14 +832,16 @@ template <typename TDomain>
 number RANSTurbulenceFV1<TDomain>::
 blending_function_F2(number k, number omega, number nu, number wallDistance) const
 {
+	if(!std::isfinite(k) || !std::isfinite(omega) || !std::isfinite(nu) || !std::isfinite(wallDistance) || nu < 0.0 || wallDistance < 0.0) UG_THROW("RANSTurbulenceFV1: Non-finite SST input or negative molecular viscosity/wall distance.");
 
 	const number kEff = std::max(k, 0.0);
 	const number omegaEff = std::max(omega, 1.0e-12);
 	const number dEff = std::max(wallDistance, 1.0e-12);
 
+	const number nuEff = std::max(nu, 0.0);
 	const number arg2_1 = 2.0 * std::sqrt(kEff) / (m_betaStar * omegaEff * dEff);
-	const number arg2_2 = 500.0 * nu / (dEff * dEff * omegaEff);
-	const number arg2 = std::max(arg2_1, arg2_2);
+	const number arg2_2 = 500.0 * nuEff / (dEff * dEff * omegaEff);
+	const number arg2 = std::min(std::max(arg2_1, arg2_2), 100.0);
 
 	return std::tanh(arg2 * arg2);
 }
@@ -866,6 +865,113 @@ cross_diffusion_omega(number F1, number omega, const MathVector<dim>& gradK, con
 
 	return 2.0 * (1.0 - F1) * m_sigmaOmega2 * VecDot(gradK, gradOmega) / omegaEff;
 }
+
+template<typename TDomain>
+void RANSTurbulenceFV1<TDomain>::turbulent_viscosity_derivatives(number& dNuT_dK,number& dNuT_dOmega,number k,number omega,number strainMag,
+	number F2,number nu,number wallDist) const
+{
+	dNuT_dK = 0.0;
+	dNuT_dOmega = 0.0;
+
+	////////////////////////////////////////////////////////////
+	// Regularized values
+	////////////////////////////////////////////////////////////
+
+	const number kEff = std::max(k, 0.0);
+	const number omegaEff = std::max(omega, 1.0e-12);
+	const number dEff = std::max(wallDist, 1.0e-12);
+	const number nuEff = std::max(nu, 0.0);
+
+	////////////////////////////////////////////////////////////
+	// Active denominator branch of nu_t
+	//
+	// nu_t = a1*k / max(a1*omega, S*F2)
+	////////////////////////////////////////////////////////////
+
+	const number omegaBranch = m_a1 * omegaEff;
+	const number strainBranch = strainMag * F2;
+	const number denominator = std::max(omegaBranch, strainBranch);
+
+	if(k <= 0.0)
+		return;
+
+	////////////////////////////////////////////////////////////
+	// Basic derivatives
+	//
+	// F2 is frozen.
+	////////////////////////////////////////////////////////////
+
+	dNuT_dK = m_a1 / denominator;
+
+	if(omega > 1.0e-12 && omegaBranch >= strainBranch)
+	{
+		dNuT_dOmega =
+			-m_a1 * m_a1 * kEff /
+			(denominator * denominator);
+	}
+
+	////////////////////////////////////////////////////////////
+	// Optional F2 contribution
+	//
+	// Only contributes when the active nu_t denominator is S*F2.
+	////////////////////////////////////////////////////////////
+
+	if(!m_linearizeF2InTurbulentViscosity || strainBranch <= omegaBranch)
+		return;
+
+	////////////////////////////////////////////////////////////
+	// F2 = tanh(arg2^2)
+	//
+	// arg2 = max(
+	//     2*sqrt(k)/(betaStar*omega*d),
+	//     500*nu/(d^2*omega)
+	// )
+	////////////////////////////////////////////////////////////
+
+	const number arg2K = 2.0 * std::sqrt(kEff) / (m_betaStar * omegaEff * dEff);
+	const number arg2Nu = 500.0 * nuEff / (dEff * dEff * omegaEff);
+	const number arg2 = std::max(arg2K, arg2Nu);
+	
+	if(arg2 >= 100.0 || F2 >= 1.0) return;
+
+	number dArg2_dK = 0.0;
+	number dArg2_dOmega = 0.0;
+
+	////////////////////////////////////////////////////////////
+	// Freeze active max() branch of arg2
+	////////////////////////////////////////////////////////////
+
+	if(arg2K >= arg2Nu)
+	{
+		dArg2_dK = 1.0 / (m_betaStar * omegaEff * dEff * std::sqrt(kEff));
+		if(omega > 1.0e-12)
+			dArg2_dOmega = -arg2K / omegaEff;
+	}
+	else
+	{
+		if(omega > 1.0e-12)
+			dArg2_dOmega = -arg2Nu / omegaEff;
+	}
+
+	////////////////////////////////////////////////////////////
+	// Derivatives of F2
+	////////////////////////////////////////////////////////////
+
+	const number dF2_dArg2 = 2.0 * arg2 * (1.0 - F2 * F2);
+	const number dF2_dK = dF2_dArg2 * dArg2_dK;
+	const number dF2_dOmega = dF2_dArg2 * dArg2_dOmega;
+
+	////////////////////////////////////////////////////////////
+	// Include derivative of F2 in
+	//
+	// nu_t = a1*k / (S*F2)
+	////////////////////////////////////////////////////////////
+
+	const number denominatorSquared = denominator * denominator;
+	dNuT_dK = m_a1 / denominator - m_a1 * kEff * strainMag * dF2_dK / denominatorSquared;
+	dNuT_dOmega = -m_a1 * kEff * strainMag * dF2_dOmega / denominatorSquared;
+}
+
 template <typename TDomain>
 number RANSTurbulenceFV1<TDomain>::
 evaluate_turbulent_kinematic_viscosity(number k, number omega, const MathMatrix<dim, dim>& gradU, number nu, number wallDistance) const
@@ -883,101 +989,85 @@ evaluate_turbulent_kinematic_viscosity(number k, number omega, const MathMatrix<
 
 template <typename TDomain>
 template <typename TElem, typename TFVGeom>
-void RANSTurbulenceFV1<TDomain>::
-ex_turbulent_kinematic_viscosity(number vValue[],
-		const MathVector<dim> vGlobIP[],
-		number time, int si,
-		const LocalVector& u,
-		GridObject* elem,
-		const MathVector<dim> vCornerCoords[],
-		const MathVector<TFVGeom::dim> vLocIP[],
-		const size_t nip,
-		bool bDeriv,
-		std::vector<std::vector<number> > vvvDeriv[])
+void RANSTurbulenceFV1<TDomain>::ex_turbulent_kinematic_viscosity(number vValue[], const MathVector<dim> vGlobIP[], number time, int si, const LocalVector& u, GridObject* elem, const MathVector<dim> vCornerCoords[], const MathVector<TFVGeom::dim> vLocIP[], const size_t nip, bool bDeriv, std::vector<std::vector<number> > vvvDeriv[])
 {
+	if(nip == 0) return;
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
-
-	const bool atSCVF = (vLocIP == geo.scvf_local_ips());
-	const bool atSCV = (vLocIP == geo.scv_local_ips());
-
-	
-
+	typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
+	static const size_t numSH = ref_elem_type::numCorners;
+	const bool atSCVF = vLocIP == geo.scvf_local_ips();
+	const bool atSCV = vLocIP == geo.scv_local_ips();
+	UG_ASSERT(!atSCVF || nip == geo.num_scvf(), "SCVF export integration-point mismatch.");
+	UG_ASSERT(!atSCV || nip == geo.num_scv(), "SCV export integration-point mismatch.");
+	LocalVector* uAux = const_cast<LocalVector*>(&u);
+	const FunctionIndexMapping& turbulenceMap = m_exTurbulentKinViscosity->map();
+	struct MappingRestore
+	{
+		LocalVector& vector;
+		const FunctionIndexMapping& map;
+		MappingRestore(LocalVector& v, const FunctionIndexMapping& m) : vector(v), map(m) {}
+		~MappingRestore() {vector.access_by_map(map);}
+	} restore(*uAux, turbulenceMap);
+	uAux->access_by_map(turbulenceMap);
+	LagrangeP1<ref_elem_type>& trialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+	std::vector<number> vK(nip, 0.0);
+	std::vector<number> vOmega(nip, 0.0);
+	std::vector<number> vNu(nip);
+	std::vector<number> vWallDistance(nip);
+	std::vector<MathMatrix<dim, dim> > vGradU(nip);
+	std::vector<std::vector<number> > vShapes(nip, std::vector<number>(numSH, 0.0));
 	for(size_t ip = 0; ip < nip; ++ip)
 	{
-		number k = 0.0;
-		number omega = 0.0;
-
 		if(atSCVF)
 		{
 			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-
-			for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-			{
-				k += u(_K_, sh) * scvf.shape(sh);
-				omega += u(_OMEGA_, sh) * scvf.shape(sh);
-			}
-
-			vValue[ip] = evaluate_turbulent_kinematic_viscosity(k, omega, m_imVelocityGradientSCVF[ip], m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip]);
+			for(size_t sh = 0; sh < numSH; ++sh) vShapes[ip][sh] = scvf.shape(sh);
+			vGradU[ip] = m_imVelocityGradientSCVF[ip];
+			vNu[ip] = m_imKinViscositySCVF[ip];
+			vWallDistance[ip] = m_imWallDistanceSCVF[ip];
 		}
 		else if(atSCV)
 		{
-			const typename TFVGeom::SCV& scv = geo.scv(ip);
-			const size_t co = scv.node_id();
-
-			k = u(_K_, co);
-			omega = u(_OMEGA_, co);
-
-			vValue[ip] = evaluate_turbulent_kinematic_viscosity(k, omega, m_imVelocityGradientSCV[ip], m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip]);
+			const size_t co = geo.scv(ip).node_id();
+			vShapes[ip][co] = 1.0;
+			vGradU[ip] = m_imVelocityGradientSCV[ip];
+			vNu[ip] = m_imKinViscositySCV[ip];
+			vWallDistance[ip] = m_imWallDistanceSCV[ip];
 		}
-		else
+		else trialSpace.shapes(&vShapes[ip][0], vLocIP[ip]);
+		for(size_t sh = 0; sh < numSH; ++sh)
 		{
-			typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
-			static const size_t numSH = ref_elem_type::numCorners;
-
-			LagrangeP1<ref_elem_type>& trialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
-
-			number vShape[numSH];
-
-			std::vector<number> vK(nip);
-			std::vector<number> vOmega(nip);
-			std::vector<MathMatrix<dim, dim> > vVelocityGradient(nip);
-			std::vector<number> vKinViscosity(nip);
-			std::vector<number> vWallDistance(nip);
-
-			for(size_t ip = 0; ip < nip; ++ip)
-			{
-				trialSpace.shapes(vShape, vLocIP[ip]);
-
-				vK[ip] = 0.0;
-				vOmega[ip] = 0.0;
-
-				for(size_t sh = 0; sh < numSH; ++sh)
-				{
-					vK[ip] += u(_K_, sh) * vShape[sh];
-					vOmega[ip] += u(_OMEGA_, sh) * vShape[sh];
-				}
-			}
-
-			LocalVector* uAux = const_cast<LocalVector*>(&u);
-
-			(*(m_imVelocityGradientSCVF.user_data()))(&vVelocityGradient[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uAux, NULL);
-			(*(m_imKinViscositySCVF.user_data()))(&vKinViscosity[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uAux, NULL);
-			(*(m_imWallDistanceSCVF.user_data()))(&vWallDistance[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uAux, NULL);
-
-			for(size_t ip = 0; ip < nip; ++ip)
-				vValue[ip] = evaluate_turbulent_kinematic_viscosity(vK[ip], vOmega[ip], vVelocityGradient[ip], vKinViscosity[ip], vWallDistance[ip]);
+			vK[ip] += u(_K_, sh) * vShapes[ip][sh];
+			vOmega[ip] += u(_OMEGA_, sh) * vShapes[ip][sh];
 		}
 	}
-
-	if(bDeriv)
+	if(!atSCVF && !atSCV)
 	{
-		for(size_t ip = 0; ip < nip; ++ip)
+		(*(m_imVelocityGradientSCVF.user_data()))(&vGradU[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uAux, NULL);
+		uAux->access_by_map(turbulenceMap);
+		(*(m_imKinViscositySCVF.user_data()))(&vNu[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uAux, NULL);
+		uAux->access_by_map(turbulenceMap);
+		(*(m_imWallDistanceSCVF.user_data()))(&vWallDistance[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, uAux, NULL);
+		uAux->access_by_map(turbulenceMap);
+	}
+	for(size_t ip = 0; ip < nip; ++ip)
+	{
+		vValue[ip] = evaluate_turbulent_kinematic_viscosity(vK[ip], vOmega[ip], vGradU[ip], vNu[ip], vWallDistance[ip]);
+		if(!bDeriv) continue;
+		for(size_t fct = 0; fct < vvvDeriv[ip].size(); ++fct)
 		{
-			for(size_t fct = 0; fct < vvvDeriv[ip].size(); ++fct)
-			{
-				for(size_t sh = 0; sh < vvvDeriv[ip][fct].size(); ++sh)
-					vvvDeriv[ip][fct][sh] = 0.0;
-			}
+			for(size_t sh = 0; sh < vvvDeriv[ip][fct].size(); ++sh) vvvDeriv[ip][fct][sh] = 0.0;
+		}
+		if(!m_linearizeExportedViscosity) continue;
+		const number strainMag = strain_rate_magnitude(vGradU[ip]);
+		const number F2 = blending_function_F2(vK[ip], vOmega[ip], vNu[ip], vWallDistance[ip]);
+		number dNuT_dK = 0.0;
+		number dNuT_dOmega = 0.0;
+		turbulent_viscosity_derivatives(dNuT_dK, dNuT_dOmega, vK[ip], vOmega[ip], strainMag, F2, vNu[ip], vWallDistance[ip]);
+		for(size_t sh = 0; sh < numSH; ++sh)
+		{
+			vvvDeriv[ip][_K_][sh] = dNuT_dK * vShapes[ip][sh];
+			vvvDeriv[ip][_OMEGA_][sh] = dNuT_dOmega * vShapes[ip][sh];
 		}
 	}
 }
@@ -1106,147 +1196,60 @@ lin_def_velocity_convection(const LocalVector& u,
 
 template <typename TDomain>
 template <typename TElem, typename TFVGeom>
-void RANSTurbulenceFV1<TDomain>::
-lin_def_velocity_gradient_scv(
-	const LocalVector& u,
-	std::vector<std::vector<MathMatrix<dim, dim> > > vvvLinDef[],
-	const size_t nip)
+void RANSTurbulenceFV1<TDomain>::lin_def_velocity_gradient_scv(const LocalVector& u, std::vector<std::vector<MathMatrix<dim, dim> > > vvvLinDef[], const size_t nip)
 {
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
-
-	UG_ASSERT(nip == geo.num_scv(), "Number of SCV integration points does not match.");
-
-
-	////////////////////////////////////////////////////////////
-	// Initialize linearized defect
-	////////////////////////////////////////////////////////////
-
+	UG_ASSERT(nip == geo.num_scv(), "SCV integration-point mismatch.");
 	for(size_t ip = 0; ip < nip; ++ip)
 	{
 		const typename TFVGeom::SCV& scv = geo.scv(ip);
-
-		for(size_t fct = 0; fct < this->num_fct(); ++fct)
-		{
-			for(size_t sh = 0; sh < scv.num_sh(); ++sh)
-			{
-				MatSet(vvvLinDef[ip][fct][sh], 0.0);
-			}
-		}
-	}
-
-	////////////////////////////////////////////////////////////
-	// Derivative of omega production w.r.t. velocity gradient
-	////////////////////////////////////////////////////////////
-
-	for(size_t ip = 0; ip < nip; ++ip)
-	{
-		const typename TFVGeom::SCV& scv = geo.scv(ip);
-
 		const size_t co = scv.node_id();
 		const number volume = scv.volume();
-
+		for(size_t fct = 0; fct < this->num_fct(); ++fct)
+		{
+			for(size_t sh = 0; sh < scv.num_sh(); ++sh) MatSet(vvvLinDef[ip][fct][sh], 0.0);
+		}
 		const number k = std::max(u(_K_, co), 0.0);
 		const number omega = std::max(u(_OMEGA_, co), 1.0e-12);
-
-		////////////////////////////////////////////////////////
-		// Gradients of k and omega
-		////////////////////////////////////////////////////////
-
 		MathVector<dim> gradK;
 		MathVector<dim> gradOmega;
-
 		VecSet(gradK, 0.0);
 		VecSet(gradOmega, 0.0);
-
 		for(size_t sh = 0; sh < scv.num_sh(); ++sh)
 		{
-			for(int d = 0; d < dim; ++d)
+			for(int d1 = 0; d1 < dim; ++d1)
 			{
-				gradK[d] += scv.global_grad(sh)[d] * u(_K_, sh);
-				gradOmega[d] += scv.global_grad(sh)[d] * u(_OMEGA_, sh);
+				gradK[d1] += scv.global_grad(sh)[d1] * u(_K_, sh);
+				gradOmega[d1] += scv.global_grad(sh)[d1] * u(_OMEGA_, sh);
 			}
 		}
-
-		////////////////////////////////////////////////////////
-		// SST quantities
-		////////////////////////////////////////////////////////
-
 		const number CDkw = cross_diffusion_CD(omega, gradK, gradOmega);
 		const number F1 = blending_function_F1(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip], CDkw);
 		const number F2 = blending_function_F2(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip]);
-
 		const number gamma = blend_sst_coefficient(F1, m_gamma1, m_gamma2);
-
 		const MathMatrix<dim, dim>& gradU = m_imVelocityGradientSCV[ip];
 		const number strainMag = strain_rate_magnitude(gradU);
+		const number strainSquared = strainMag * strainMag;
+		const bool strainBranch = strainMag * F2 > m_a1 * omega;
+		const number denominator = std::max(m_a1 * omega, strainMag * F2);
 		const number nuT = turbulent_kinematic_viscosity(k, omega, strainMag, F2);
-
-		const number production = nuT * strainMag * strainMag;
-		const number productionLimit = m_productionLimiter * m_betaStar * k * omega;
-
-		////////////////////////////////////////////////////////
-		// Strain tensor
-		////////////////////////////////////////////////////////
-
-		MathMatrix<dim, dim> strainTensor;
-
+		const number productionK = nuT * strainSquared;
+		const number limitK = m_productionLimiter * m_betaStar * k * omega;
+		const number limitOmega = (m_productionLimiter * m_betaStar / m_a1) * omega * denominator;
+		number coeffK = 0.0;
+		number coeffOmega = 0.0;
+		if(k > 0.0 && productionK <= limitK) coeffK = -(strainBranch ? 2.0 : 4.0) * nuT * volume;
+		if(strainSquared <= limitOmega) coeffOmega = -4.0 * gamma * volume;
+		else if(strainBranch && strainMag > 0.0) coeffOmega = -2.0 * gamma * (m_productionLimiter * m_betaStar / m_a1) * omega * F2 * volume / strainMag;
 		for(int i = 0; i < dim; ++i)
 		{
 			for(int j = 0; j < dim; ++j)
 			{
-				strainTensor(i,j) = 0.5 * (gradU(i,j) + gradU(j,i));
+				const number Sij = 0.5 * (gradU(i,j) + gradU(j,i));
+				vvvLinDef[ip][_K_][co](i,j) = coeffK * Sij;
+				vvvLinDef[ip][_OMEGA_][co](i,j) = coeffOmega * Sij;
 			}
 		}
-
-		////////////////////////////////////////////////////////
-		// d R_omega / d (grad U)
-		////////////////////////////////////////////////////////
-
-		MathMatrix<dim, dim> dRdGradU;
-		MatSet(dRdGradU, 0.0);
-
-		if(nuT > 1.0e-12)
-		{
-			if(production <= productionLimit)
-			{
-				// P_omega = gamma * S^2
-				// d(S^2)/d(grad U_ij) = 4 S_ij
-
-				for(int i = 0; i < dim; ++i)
-				{
-					for(int j = 0; j < dim; ++j)
-					{
-						dRdGradU(i,j) = -4.0 * gamma * strainTensor(i,j) * volume;
-					}
-				}
-			}
-			else
-			{
-				const number omegaBranch = m_a1 * omega;
-				const number strainBranch = strainMag * F2;
-
-				if(strainBranch > omegaBranch && strainMag > 1.0e-12 && k > 1.0e-12)
-				{
-					const number coeff =
-						-2.0 * gamma * productionLimit * F2 /
-						(m_a1 * k * strainMag);
-
-					for(int i = 0; i < dim; ++i)
-					{
-						for(int j = 0; j < dim; ++j)
-						{
-							dRdGradU(i,j) = coeff * strainTensor(i,j) * volume;
-						}
-					}
-				}
-			}
-		}
-
-		////////////////////////////////////////////////////////
-		// Source contribution belongs to omega equation at co
-		////////////////////////////////////////////////////////
-
-		vvvLinDef[ip][_OMEGA_][co] = dRdGradU;
 	}
 }
 
