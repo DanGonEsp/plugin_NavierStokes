@@ -309,6 +309,10 @@ add_jac_A_elem(LocalMatrix& J,
 			   const MathVector<dim> vCornerCoords[])
 {
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+	
+	////////////////////////////////////////////////////////////////////////////////
+	// Jacobian assembly: stationary operator A
+	////////////////////////////////////////////////////////////////////////////////
 
 	// Compute the same upwind interpolation weights used in the defect.
 	m_spConvUpwind->update(&geo, m_imVelocity.values());
@@ -332,7 +336,7 @@ add_jac_A_elem(LocalMatrix& J,
 			omegaIP += scvf.shape(sh) * u(_OMEGA_, sh);
 		}
 		////////////////////////////////////////////////////////////
-		// Gradients of k and omega
+		// Compute gradients of k and omega at SCVF
 		////////////////////////////////////////////////////////////
 		
 		MathVector<dim> gradK;
@@ -351,19 +355,23 @@ add_jac_A_elem(LocalMatrix& J,
 		}
 		
 		////////////////////////////////////////////////////////////
-		// SST blending functions and turbulent viscosity
+		// Evaluate SST blending functions
 		////////////////////////////////////////////////////////////
 		
 		const number CDkw = cross_diffusion_CD(omegaIP, gradK, gradOmega);
 		const number F1 = blending_function_F1(kIP, omegaIP, m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip], CDkw);
 		const number F2 = blending_function_F2(kIP, omegaIP, m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip]);
 		
+		////////////////////////////////////////////////////////////
+		// Evaluate turbulent viscosity
+		////////////////////////////////////////////////////////////
+		
 		const number strainMag = strain_rate_magnitude(m_imVelocityGradientSCVF[ip]);
 		const number nuT = turbulent_kinematic_viscosity(kIP, omegaIP, strainMag, F2);
 		
 	
 		////////////////////////////////////////////////////////////
-		// SST diffusion coefficients
+		// Evaluate effective diffusion coefficients
 		////////////////////////////////////////////////////////////
 		
 		const number sigmaK = blend_sst_coefficient(F1, m_sigmaK1, m_sigmaK2);
@@ -379,7 +387,7 @@ add_jac_A_elem(LocalMatrix& J,
 		
 		
 		////////////////////////////////////////////////////////////
-		// Convective volume flux
+		// Compute convective volume flux
 		////////////////////////////////////////////////////////////
 		
 		const number volFlux = VecDot(m_imVelocity[ip], scvf.normal());
@@ -391,7 +399,7 @@ add_jac_A_elem(LocalMatrix& J,
 			// All max() branches are frozen during the linearization.
 			
 			////////////////////////////////////////////////////////
-			// Diffusion
+			// Diffusion Jacobian
 			////////////////////////////////////////////////////////
 
 			const number diffFluxShapeK = -nuEffK * VecDot(scvf.global_grad(sh), scvf.normal());
@@ -406,7 +414,7 @@ add_jac_A_elem(LocalMatrix& J,
 			
 			
 			////////////////////////////////////////////////////////
-			// Optional linearization of turbulent viscosity
+			// Turbulent-viscosity Jacobian contributions
 			////////////////////////////////////////////////////////
 			
 			
@@ -443,7 +451,7 @@ add_jac_A_elem(LocalMatrix& J,
 
 
 			////////////////////////////////////////////////////////
-			// Convection
+			// Convection Jacobian
 			////////////////////////////////////////////////////////
 
 			const number convFluxShape = volFlux * upwind.upwind_shape_sh(ip, sh);
@@ -457,7 +465,7 @@ add_jac_A_elem(LocalMatrix& J,
 	}
 	
 	////////////////////////////////////////////////////////////
-	// k- and omega-equation source Jacobian
+	// SCV contributions: k- and omega-equation source Jacobian
 	////////////////////////////////////////////////////////////
 
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -470,6 +478,11 @@ add_jac_A_elem(LocalMatrix& J,
 		const number k = std::max(kRaw, 0.0);
 		const number omega = std::max(omegaRaw, 1.0e-12);
 		const bool omegaActive = omegaRaw > 1.0e-12;
+		
+		////////////////////////////////////////////////////////////
+		// Compute gradients of k and omega at SCV
+		////////////////////////////////////////////////////////////
+		
 		MathVector<dim> gradK;
 		MathVector<dim> gradOmega;
 		VecSet(gradK, 0.0);
@@ -482,12 +495,35 @@ add_jac_A_elem(LocalMatrix& J,
 				gradOmega[d1] += scv.global_grad(sh)[d1] * u(_OMEGA_, sh);
 			}
 		}
+		
+		////////////////////////////////////////////////////////////
+		// Evaluate SST blending functions and coefficients
+		////////////////////////////////////////////////////////////
+	
+		
 		const number CDkw = cross_diffusion_CD(omega, gradK, gradOmega);
 		const number F1 = blending_function_F1(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip], CDkw);
 		const number beta = blend_sst_coefficient(F1, m_beta1, m_beta2);
+		
+		////////////////////////////////////////////////////////////
+		// k-equation destruction Jacobian
+		////////////////////////////////////////////////////////////
+		///
 		J(_K_, co, _K_, co) += m_betaStar * omega * volume;
-		if(m_linearizeDestructionCoupling && omegaActive) J(_K_, co, _OMEGA_, co) += m_betaStar * kRaw * volume;
+		
+		if(m_linearizeDestructionCoupling && omegaActive)
+			J(_K_, co, _OMEGA_, co) += m_betaStar * kRaw * volume;
+		
+		////////////////////////////////////////////////////////////
+		// omega-equation destruction Jacobian
+		////////////////////////////////////////////////////////////
 		J(_OMEGA_, co, _OMEGA_, co) += beta * (omega + (omegaActive ? omegaRaw : 0.0)) * volume;
+		
+		
+		////////////////////////////////////////////////////////////
+		// omega-equation cross-diffusion Jacobian
+		////////////////////////////////////////////////////////////
+		
 		const number crossDiffusionOmega = cross_diffusion_omega(F1, omega, gradK, gradOmega);
 		const number crossCoeff = crossDiffusionOmega / omega;
 		if(m_crossDiffusionLinearization == 0)
@@ -526,6 +562,14 @@ add_jac_M_elem(LocalMatrix& J,
 			   const MathVector<dim> vCornerCoords[])
 {
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+	
+	////////////////////////////////////////////////////////////////////////////////
+	// Jacobian assembly: mass operator M
+	////////////////////////////////////////////////////////////////////////////////
+
+	////////////////////////////////////////////////////////////
+	// k- and omega-equation mass Jacobian
+	////////////////////////////////////////////////////////////
 
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
 	{
@@ -548,12 +592,20 @@ add_def_A_elem(LocalVector& d,
 			   const MathVector<dim> vCornerCoords[])
 {
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+	
+	////////////////////////////////////////////////////////////////////////////////
+	// Defect assembly: stationary operator A
+	////////////////////////////////////////////////////////////////////////////////
 
 	// Compute upwind interpolation weights using the prescribed
 	// velocity evaluated at the SCVFs.
 	m_spConvUpwind->update(&geo, m_imVelocity.values());
 
 	const INavierStokesUpwind<dim>& upwind = *m_spConvUpwind;
+	
+	////////////////////////////////////////////////////////////
+	// SCVF contributions: convection and diffusion
+	////////////////////////////////////////////////////////////
 
 	// Loop over sub-control-volume faces.
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
@@ -574,7 +626,7 @@ add_def_A_elem(LocalVector& d,
 			omegaIP += scvf.shape(sh) * u(_OMEGA_, sh);
 		}
 		////////////////////////////////////////////////////////////
-		// Gradients of k and omega
+		// Compute gradients of k and omega at SCVF
 		////////////////////////////////////////////////////////////
 		
 		MathVector<dim> gradK;
@@ -593,19 +645,23 @@ add_def_A_elem(LocalVector& d,
 		}
 		
 		////////////////////////////////////////////////////////////
-		// SST blending functions and turbulent viscosity
+		// Evaluate SST blending functions
 		////////////////////////////////////////////////////////////
 		
 		const number CDkw = cross_diffusion_CD(omegaIP, gradK, gradOmega);
 		const number F1 = blending_function_F1(kIP, omegaIP, m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip], CDkw);
 		const number F2 = blending_function_F2(kIP, omegaIP, m_imKinViscositySCVF[ip], m_imWallDistanceSCVF[ip]);
 		
+		////////////////////////////////////////////////////////////
+		// Evaluate turbulent viscosity
+		////////////////////////////////////////////////////////////
+		
 		const number strainMag = strain_rate_magnitude(m_imVelocityGradientSCVF[ip]);
 		const number nuT = turbulent_kinematic_viscosity(kIP, omegaIP, strainMag, F2);
 		
 		
 		////////////////////////////////////////////////////////////
-		// SST diffusion coefficients
+		// Evaluate effective diffusion coefficients
 		////////////////////////////////////////////////////////////
 		
 		const number sigmaK = blend_sst_coefficient(F1, m_sigmaK1, m_sigmaK2);
@@ -615,7 +671,7 @@ add_def_A_elem(LocalVector& d,
 		const number nuEffOmega = m_imKinViscositySCVF[ip] + sigmaOmega * nuT;
 		
 		////////////////////////////////////////////////////////////
-		// Diffusion
+		// Diffusion defect
 		////////////////////////////////////////////////////////////
 
 
@@ -629,7 +685,7 @@ add_def_A_elem(LocalVector& d,
 		d(_OMEGA_, scvf.to()) -= diffFluxOmega;
 
 		////////////////////////////////////////////////////////////
-		// Convection
+		// Convection defect
 		////////////////////////////////////////////////////////////
 
 		const number volFlux = VecDot(m_imVelocity[ip], scvf.normal());
@@ -648,7 +704,7 @@ add_def_A_elem(LocalVector& d,
 	}
 	
 	////////////////////////////////////////////////////////////
-	// k- and omega-equation production and destruction
+	// SCV contributions: k- and omega-equation source defect
 	////////////////////////////////////////////////////////////
 
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
@@ -662,7 +718,7 @@ add_def_A_elem(LocalVector& d,
 		const number omega = std::max(u(_OMEGA_, co), 1.0e-12);
 
 		////////////////////////////////////////////////////////////
-		// Gradients of k and omega at SCV
+		// Compute gradients of k and omega at SCV
 		////////////////////////////////////////////////////////////
 
 		MathVector<dim> gradK;
@@ -681,18 +737,22 @@ add_def_A_elem(LocalVector& d,
 		}
 
 		////////////////////////////////////////////////////////////
-		// SST blending functions and turbulent viscosity
+		// Evaluate SST blending functions
 		////////////////////////////////////////////////////////////
 
 		const number CDkw = cross_diffusion_CD(omega, gradK, gradOmega);
 		const number F1 = blending_function_F1(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip], CDkw);
 		const number F2 = blending_function_F2(k, omega, m_imKinViscositySCV[ip], m_imWallDistanceSCV[ip]);
+		
+		////////////////////////////////////////////////////////////
+		// Evaluate turbulent viscosity
+		////////////////////////////////////////////////////////////
 
 		const number strainMag = strain_rate_magnitude(m_imVelocityGradientSCV[ip]);
 		const number nuT = turbulent_kinematic_viscosity(k, omega, strainMag, F2);
 
 		////////////////////////////////////////////////////////////
-		// SST coefficients
+		// Evaluate SST model coefficients
 		////////////////////////////////////////////////////////////
 
 		const number beta = blend_sst_coefficient(F1, m_beta1, m_beta2);
@@ -711,14 +771,27 @@ add_def_A_elem(LocalVector& d,
 		d(_K_, co) += (destructionK - limitedProduction) * volume;
 
 		////////////////////////////////////////////////////////////
-		// omega-equation production, destruction and cross-diffusion
+		// omega-equation destruction
 		////////////////////////////////////////////////////////////
 
 		const number destructionOmega = beta * omega * u(_OMEGA_, co);
+		
+		////////////////////////////////////////////////////////////
+		// omega-equation cross diffusion
+		////////////////////////////////////////////////////////////
+		
 		const number crossDiffusionOmega = cross_diffusion_omega(F1, omega, gradK, gradOmega);
+		
+		////////////////////////////////////////////////////////////
+		// omega-equation production
+		////////////////////////////////////////////////////////////
 		
 		const number nuTDenominator = std::max(m_a1 * omega, strainMag * F2);
 		const number productionOmega = gamma * std::min(strainMag * strainMag, (m_productionLimiter * m_betaStar / m_a1) * omega * nuTDenominator);
+		
+		////////////////////////////////////////////////////////////
+		// Assemble omega-equation source defect
+		////////////////////////////////////////////////////////////
 		
 		d(_OMEGA_, co) += (destructionOmega - productionOmega - crossDiffusionOmega) * volume;
 	}
@@ -733,6 +806,14 @@ add_def_M_elem(LocalVector& d,
 			   const MathVector<dim> vCornerCoords[])
 {
 	static const TFVGeom& geo = GeomProvider<TFVGeom>::get();
+	
+	////////////////////////////////////////////////////////////////////////////////
+	// Defect assembly: mass operator M
+	////////////////////////////////////////////////////////////////////////////////
+
+	////////////////////////////////////////////////////////////
+	// k- and omega-equation mass defect
+	////////////////////////////////////////////////////////////
 
 	for(size_t ip = 0; ip < geo.num_scv(); ++ip)
 	{
