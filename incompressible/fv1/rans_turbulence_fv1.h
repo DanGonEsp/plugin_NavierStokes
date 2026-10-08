@@ -254,12 +254,11 @@ protected:
 	number m_gamma2 = 0.44;
 	number m_productionLimiter = 10.0;
 	
-	bool m_linearizeTurbulentViscosity = false;
-	bool m_linearizeF2InTurbulentViscosity = false;
-	bool m_linearizeExportedViscosity = false;
-	bool m_linearizeDestructionCoupling = false;
+	bool m_linearizeTurbulentViscosity = true;
+	bool m_linearizeDestructionCoupling = true;
+	bool m_linearizeF2InTurbulentViscosity = true;
 	int m_crossDiffusionLinearization = 0; // 0: sink split; 1: positive denominator derivative; 2: frozen-F1 derivative
-	
+	bool m_linearizeExportedViscosity = false;
 	
 
 private:
