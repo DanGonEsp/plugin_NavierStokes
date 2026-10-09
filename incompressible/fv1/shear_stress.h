@@ -193,8 +193,9 @@ class ShearStressFV1
     /// constructor
     ShearStressFV1(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
         
-		if (spGridFct->num_fct() != dim+2)
-			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		const size_t numFct = spGridFct->num_fct();
+		if (numFct != dim+1 && numFct != dim+2 && numFct != dim+4)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+1<<", "<<dim+2<<" or "<<dim+4<<" functions");
 		for (int d=0;d<dim+2;d++){
 			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
 				UG_THROW("Component " << d << " in approximation space must be of Lagrange P1 type.");
@@ -549,8 +550,9 @@ class ParticlePressureFV1
 	/// constructor
 	ParticlePressureFV1(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
 		
-		if (spGridFct->num_fct() != dim+2)
-			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		const size_t numFct = spGridFct->num_fct();
+		if (numFct != dim+1 && numFct != dim+2 && numFct != dim+4)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+1<<", "<<dim+2<<" or "<<dim+4<<" functions");
 		for (int d=0;d<dim+2;d++)
 		{
 			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
@@ -879,8 +881,9 @@ public:
 	/// constructor
 	PressureGradientMean(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
 		
-		if (spGridFct->num_fct() != dim+2)
-			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		const size_t numFct = spGridFct->num_fct();
+		if (numFct != dim+1 && numFct != dim+2 && numFct != dim+4)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+1<<", "<<dim+2<<" or "<<dim+4<<" functions");
 		for (int d=0;d<dim+2;d++)
 		{
 			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
@@ -1249,8 +1252,9 @@ public:
 	/// constructor
 	DuneNormal(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
 		
-		if (spGridFct->num_fct() != dim+2)
-			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		const size_t numFct = spGridFct->num_fct();
+		if (numFct != dim+1 && numFct != dim+2 && numFct != dim+4)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+1<<", "<<dim+2<<" or "<<dim+4<<" functions");
 		for (int d=0;d<dim+2;d++)
 		{
 			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
@@ -1784,8 +1788,9 @@ public:
 	/// constructor
 	SlipVelocity(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
 		
-		if (spGridFct->num_fct() != dim+2)
-			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		const size_t numFct = spGridFct->num_fct();
+		if (numFct != dim+1 && numFct != dim+2 && numFct != dim+4)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+1<<", "<<dim+2<<" or "<<dim+4<<" functions");
 		for (int d=0;d<dim+2;d++)
 		{
 			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
@@ -2299,8 +2304,9 @@ public:
 	/// constructor
 	SlipDiffusion(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
 		
-		if (spGridFct->num_fct() != dim+2)
-			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		const size_t numFct = spGridFct->num_fct();
+		if (numFct != dim+1 && numFct != dim+2 && numFct != dim+4)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+1<<", "<<dim+2<<" or "<<dim+4<<" functions");
 		for (int d=0;d<dim+2;d++)
 		{
 			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
@@ -2755,8 +2761,9 @@ public:
 	/// constructor
 	RelativeVelocity(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct){
 		
-		if (spGridFct->num_fct() != dim+2)
-			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		const size_t numFct = spGridFct->num_fct();
+		if (numFct != dim+1 && numFct != dim+2 && numFct != dim+4)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+1<<", "<<dim+2<<" or "<<dim+4<<" functions");
 		for (int d=0;d<dim+2;d++)
 		{
 			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
@@ -3110,8 +3117,9 @@ public:
 	RelaxedParticleViscosity(SmartPtr<ApproximationSpace<domain_type> > approxSpace,SmartPtr<TGridFunction> spGridFct)
 	{
 		
-		if (spGridFct->num_fct() != dim+2)
-			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+2<<" functions");
+		const size_t numFct = spGridFct->num_fct();
+		if (numFct != dim+1 && numFct != dim+2 && numFct != dim+4)
+			UG_THROW("NavierStokesMultiphase: Need exactly "<<dim+1<<", "<<dim+2<<" or "<<dim+4<<" functions");
 		for (int d=0;d<dim+2;d++)
 		{
 			if (spGridFct->local_finite_element_id(d) != LFEID(LFEID::LAGRANGE, dim, 1)){
