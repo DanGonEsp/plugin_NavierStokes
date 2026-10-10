@@ -1282,19 +1282,10 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 					J(_C_, scvf.from(), _C_, sh) += FluxVol_ip_jacV[ip][sh];
 					J(_C_, scvf.to(), _C_, sh) -= FluxVol_ip_jacV[ip][sh];
 
-					if(m_transport_jac)
-					{
-						J(_C_, scvf.from(), _C_, sh) += FluxVol_ip_jacW[ip][sh];
-						J(_C_, scvf.to(), _C_, sh) -= FluxVol_ip_jacW[ip][sh];
-					}
-					else
-					{
-						if(sh == scvf.from())
-							J(_C_, scvf.from(), _C_, sh) += FluxVol_ip_jacW[ip][sh];
+					
+					J(_C_, scvf.from(), _C_, sh) += FluxVol_ip_jacW[ip][sh];
+					J(_C_, scvf.to(), _C_, sh) -= FluxVol_ip_jacW[ip][sh];
 
-						if(sh == scvf.to())
-							J(_C_, scvf.to(), _C_, sh) -= FluxVol_ip_jacW[ip][sh];
-					}
 				}
 			}
 

@@ -276,10 +276,6 @@ class NavierStokesFV1M
 		{
 			m_transporting_vel_stab = user;
 		}
-		void set_transport_jac(const bool user)
-		{
-			m_transport_jac = user;
-		}
 		void set_limex_correction(const bool user)
 		{
 			m_limex_correction = user;
@@ -842,7 +838,6 @@ class NavierStokesFV1M
 		using base_type::m_div_correction;
 		bool m_pressure_jump = false;
 		bool m_transporting_vel_stab = false;
-		bool m_transport_jac = false;
 		bool m_limex_correction = false;
 		bool m_mass_term = false;
 		bool m_mass_mean = false;
