@@ -4041,7 +4041,15 @@ ex_velocity_grad(MathMatrix<dim, dim> vValue[],
     bool m_scv=false;
 	
 	for(size_t ip = 0; ip < nip; ++ip)
+	{
 		MatSet(vValue[ip], 0.0);
+		if(bDeriv)
+		{
+			for(size_t c = 0; c < vvvDeriv[ip].size(); ++c)
+				for(size_t sh = 0; sh < vvvDeriv[ip][c].size(); ++sh)
+					MatSet(vvvDeriv[ip][c][sh], 0.0);
+		}
+	}
 
     if ( nip==0 || !(vGlobIP!=NULL && vLocIP!=NULL && vCornerCoords!=NULL))
 	{
@@ -4893,9 +4901,13 @@ ex_nodal_mix_viscosity(number vValue[],
 	
 	//Inter->cut_element(cut_elem,inside,  u_aux, _C_);
 	
-	
-	const bool HarmonicMs = false;//( cut_elem || inside )? true: false;
-	const bool constantMs = true;
+	bool HarmonicMs = false;//( cut_elem || inside )? true: false;
+	bool constantMs = true;
+	if(m_saltation_transport)
+	{
+		const bool HarmonicMs = true;//( cut_elem || inside )? true: false;
+		const bool constantMs = false;
+	}
 
 	number Volume = 0.0;
 	number Gamma[numSH];
