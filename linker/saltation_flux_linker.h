@@ -78,6 +78,7 @@ public:
 		number sN;
 		number sDelta;
 		number deltaGamma;
+		number normal2;
 		number nDn;
 		number tauMag;
 		number uStar;
@@ -122,7 +123,7 @@ private:
 	// Analytical directional derivative
 	////////////////////////////////////////////////////////////////////////////
 
-	void compute_flux_derivative(MathVector<dim>& dFlux, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT, const MathVector<dim>& dGradC, const MathMatrix<dim,dim>& dGradU) const
+	void compute_flux_derivative(MathVector<dim>& dFlux, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT, const MathVector<dim>& dGradC, const MathMatrix<dim,dim>& dGradU, number dNuT = 0.0) const
 	{
 		VecSet(dFlux, 0.0);
 
@@ -167,6 +168,11 @@ private:
 
 		for(size_t d = 0; d < dim; ++d)
 			dn[d] = -dGradC[d]/data.sN + gradC[d]*gradCDotDGradC/sN3;
+		
+		number dNormal2 = 0.0;
+
+		for(size_t d = 0; d < dim; ++d)
+			dNormal2 += 2.0*data.normal[d]*dn[d];
 
 		const number dDeltaGamma = gradCDotDGradC/data.sDelta;
 
@@ -193,9 +199,14 @@ private:
 			dNDn += dn[d]*data.Dn[d] + data.normal[d]*dDn[d];
 
 		MathVector<dim> dTau;
+		const number dMuEff = rho_a*dNuT;
 
 		for(size_t d = 0; d < dim; ++d)
-			dTau[d] = 2.0*mu_eff*(dDn[d] - dn[d]*data.nDn - data.normal[d]*dNDn);
+		{
+			const number tangent = data.normal2*data.Dn[d] - data.normal[d]*data.nDn;
+			const number dTangent = dNormal2*data.Dn[d] + data.normal2*dDn[d] - dn[d]*data.nDn - data.normal[d]*dNDn;
+			dTau[d] = 2.0*dMuEff*tangent + 2.0*mu_eff*dTangent;
+		}
 
 		number tauDotDTau = 0.0;
 
@@ -215,6 +226,7 @@ private:
 		data.sN = 0.0;
 		data.sDelta = 0.0;
 		data.deltaGamma = 0.0;
+		data.normal2 = 0.0;
 		data.nDn = 0.0;
 		data.tauMag = 0.0;
 		data.uStar = 0.0;
@@ -251,6 +263,9 @@ private:
 		for(size_t d = 0; d < dim; ++d)
 			data.normal[d] = -gradC[d]/data.sN;
 
+		for(size_t d = 0; d < dim; ++d)
+			data.normal2 += data.normal[d]*data.normal[d];
+
 		for(size_t i = 0; i < dim; ++i)
 		{
 			for(size_t j = 0; j < dim; ++j)
@@ -267,7 +282,7 @@ private:
 			data.nDn += data.normal[d]*data.Dn[d];
 
 		for(size_t d = 0; d < dim; ++d)
-			data.tau[d] = 2.0*mu_eff*(data.Dn[d] - data.normal[d]*data.nDn);
+			data.tau[d] = 2.0*mu_eff*(data.normal2*data.Dn[d] - data.normal[d]*data.nDn);
 
 		number tau2 = 0.0;
 
@@ -393,6 +408,30 @@ public:
 
 						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], zeroGradC, vDVelocityGrad[sh]);
 
+						vvvDeriv[ip][commonFct][sh] += dFlux;
+					}
+				}
+			}
+		}
+		// Derivatives through the turbulent kinematic viscosity input.
+		if(m_spDTurbulentKinViscosity.valid() && !m_spDTurbulentKinViscosity->zero_derivative())
+		{
+			MathVector<dim> zeroGradC;
+			MathMatrix<dim,dim> zeroGradU;
+			VecSet(zeroGradC, 0.0);
+			MatSet(zeroGradU, 0.0);
+
+			for(size_t ip = 0; ip < nip; ++ip)
+			{
+				for(size_t fct = 0; fct < m_spDTurbulentKinViscosity->num_fct(); ++fct)
+				{
+					const number* vDNuT = m_spDTurbulentKinViscosity->deriv(s_DNUT_, ip, fct);
+					const size_t commonFct = this->input_common_fct(_DNUT_, fct);
+
+					for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
+					{
+						MathVector<dim> dFlux;
+						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], zeroGradC, zeroGradU, vDNuT[sh]);
 						vvvDeriv[ip][commonFct][sh] += dFlux;
 					}
 				}
