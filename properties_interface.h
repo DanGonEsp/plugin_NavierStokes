@@ -913,7 +913,7 @@ class Interface
 
 			//const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
 			const number epsAbs = 1e-8;
-			const number epsMax = 1e-8;
+			const number epsMax = 1e-4;
 			const number absSL = SmoothAbs(wSL, epsAbs);
 			const number absSR = SmoothAbs(wSR, epsAbs);
 			const number S = SmoothMax(absSL, absSR, epsMax);
@@ -930,7 +930,7 @@ class Interface
 		void Rusanov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
 			const number epsAbs = 1e-8;
-			const number epsMax = 1e-8;
+			const number epsMax = 1e-4;
 
 			const number absSL = SmoothAbs(wSL, epsAbs);
 			const number absSR = SmoothAbs(wSR, epsAbs);
