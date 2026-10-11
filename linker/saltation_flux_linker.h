@@ -69,9 +69,9 @@ class SaltationFluxLinker : public StdDataLinker<SaltationFluxLinker<dim>, MathV
 
 public:
 
-	SaltationFluxLinker() : m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL), m_spVelocityGrad(NULL), m_spDVelocityGrad(NULL), m_spTurbulentKinViscosity(NULL), m_spDTurbulentKinViscosity(NULL), Inter(NULL), m_C(5.5), m_uStarThreshold(0.22), m_epsNormal(1e-8), m_epsDelta(1e-8)
+	SaltationFluxLinker() : m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL), m_spVelocityGrad(NULL), m_spDVelocityGrad(NULL), m_spTurbulentKinViscosity(NULL), m_spDTurbulentKinViscosity(NULL), m_spVelocity(NULL), m_spDVelocity(NULL), Inter(NULL), m_C(5.5), m_uStarThreshold(0.22), m_epsNormal(1e-8), m_epsDelta(1e-8), m_epsVelocity(1e-4)
 	{
-		this->set_num_input(3);
+		this->set_num_input(4);
 	}
 	struct SaltationData
 	{
@@ -86,6 +86,7 @@ public:
 		MathVector<dim> Dn;
 		MathVector<dim> tau;
 		MathMatrix<dim,dim> D;
+		number tauSign;
 	};
 
 
@@ -95,7 +96,7 @@ private:
 	// Flux evaluation
 	////////////////////////////////////////////////////////////////////////////
 
-	void compute_flux(MathVector<dim>& flux, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT) const
+	void compute_flux(MathVector<dim>& flux, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT, const MathVector<dim>& velocity) const
 	{
 		VecSet(flux, 0.0);
 
@@ -106,13 +107,13 @@ private:
 		if(grav <= 0.0) UG_THROW("SaltationFluxLinker: gravity magnitude must be positive.");
 
 		SaltationData data;
-		compute_saltation_data(data, gradC, gradU, nuT);
+		compute_saltation_data(data, gradC, gradU, nuT, velocity);
 
 		if(data.deltaGamma <= 0.0) return;
 		if(data.uStar <= m_uStarThreshold) return;
 
 		const number excess = data.uStar - m_uStarThreshold;
-		const number factor = data.deltaGamma*(m_C/grav)*excess;
+		const number factor = data.tauSign*data.deltaGamma*(m_C/grav)*excess;
 
 		for(size_t d = 0; d < dim; ++d)
 			flux[d] = factor*data.tau[d];
@@ -123,7 +124,7 @@ private:
 	// Analytical directional derivative
 	////////////////////////////////////////////////////////////////////////////
 
-	void compute_flux_derivative(MathVector<dim>& dFlux, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT, const MathVector<dim>& dGradC, const MathMatrix<dim,dim>& dGradU, number dNuT = 0.0) const
+	void compute_flux_derivative(MathVector<dim>& dFlux, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT, const MathVector<dim>& velocity, const MathVector<dim>& dGradC, const MathMatrix<dim,dim>& dGradU, number dNuT = 0.0) const
 	{
 		VecSet(dFlux, 0.0);
 
@@ -146,7 +147,7 @@ private:
 			UG_THROW("SaltationFluxLinker: gravity magnitude must be positive.");
 
 		SaltationData data;
-		compute_saltation_data(data, gradC, gradU, nuT);
+		compute_saltation_data(data, gradC, gradU, nuT, velocity);
 
 		if(data.deltaGamma <= 0.0)
 			return;
@@ -215,13 +216,13 @@ private:
 
 		const number dUStar = tauDotDTau/(2.0*rho_a*data.uStar*data.tauMag);
 		const number excess = data.uStar - m_uStarThreshold;
-		const number Cg = m_C/grav;
+		const number Cg = data.tauSign*m_C/grav;
 
 		for(size_t d = 0; d < dim; ++d)
 			dFlux[d] = Cg*(dDeltaGamma*excess*data.tau[d] + data.deltaGamma*dUStar*data.tau[d] + data.deltaGamma*excess*dTau[d]);
 	}
 	
-	void compute_saltation_data(SaltationData& data, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT) const
+	void compute_saltation_data(SaltationData& data, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT, const MathVector<dim>& velocity) const
 	{
 		data.sN = 0.0;
 		data.sDelta = 0.0;
@@ -284,6 +285,12 @@ private:
 		for(size_t d = 0; d < dim; ++d)
 			data.tau[d] = 2.0*mu_eff*(data.normal2*data.Dn[d] - data.normal[d]*data.nDn);
 
+		number tauDotVelocity = 0.0;
+
+		for(size_t d = 0; d < dim; ++d)
+			tauDotVelocity += data.tau[d]*velocity[d];
+
+		data.tauSign = tauDotVelocity < 0.0 ? -1.0 : 1.0;
 		number tau2 = 0.0;
 
 		for(size_t d = 0; d < dim; ++d)
@@ -307,12 +314,14 @@ public:
 		MathVector<dim> gradC;
 		MathMatrix<dim,dim> gradU;
 		number nuT;
+		MathVector<dim> velocity;
 		
 		(*m_spTurbulentKinViscosity)(nuT, globIP, time, si);
 		(*m_spVolumeGrad)(gradC, globIP, time, si);
 		(*m_spVelocityGrad)(gradU, globIP, time, si);
+		(*m_spVelocity)(velocity, globIP, time, si);
 
-		compute_flux(value, gradC, gradU, nuT);
+		compute_flux(value, gradC, gradU, nuT, velocity);
 	}
 
 
@@ -326,13 +335,16 @@ public:
 		std::vector<MathVector<dim> > vVolumeGrad(nip);
 		std::vector<MathMatrix<dim,dim> > vVelocityGrad(nip);
 		std::vector<number> vNuT(nip);
+		std::vector<MathVector<dim> > vVelocity(nip);
+		
 		
 		(*m_spTurbulentKinViscosity)(&vNuT[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 		(*m_spVolumeGrad)(&vVolumeGrad[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 		(*m_spVelocityGrad)(&vVelocityGrad[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
+		(*m_spVelocity)(&vVelocity[0], vGlobIP, time, si, elem, vCornerCoords, vLocIP, nip, u, vJT);
 
 		for(size_t ip = 0; ip < nip; ++ip)
-			compute_flux(vValue[ip], vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip]);
+			compute_flux(vValue[ip], vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip]);
 	}
 
 
@@ -346,13 +358,15 @@ public:
 		const int s_DC_ = base_type::series_id(_DC_, s);
 		const int s_DU_ = base_type::series_id(_DU_, s);
 		const int s_DNUT_ = base_type::series_id(_DNUT_, s);
+		const int s_VEL_ = base_type::series_id(_VEL_, s);
 
 		const MathVector<dim>* vVolumeGrad = m_spVolumeGrad->values(s_DC_);
 		const MathMatrix<dim,dim>* vVelocityGrad = m_spVelocityGrad->values(s_DU_);
 		const number* vNuT = m_spTurbulentKinViscosity->values(s_DNUT_);
+		const MathVector<dim>* vVelocity = m_spVelocity->values(s_VEL_);
 
 		for(size_t ip = 0; ip < nip; ++ip)
-			compute_flux(vValue[ip], vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip]);
+			compute_flux(vValue[ip], vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip]);
 
 		if(!bDeriv || this->zero_derivative()) return;
 
@@ -378,7 +392,7 @@ public:
 
 						MatSet(zeroGradU, 0.0);
 
-						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vDVolumeGrad[sh], zeroGradU);
+						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], vDVolumeGrad[sh], zeroGradU);
 
 						vvvDeriv[ip][commonFct][sh] += dFlux;
 					}
@@ -406,7 +420,7 @@ public:
 
 						VecSet(zeroGradC, 0.0);
 
-						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], zeroGradC, vDVelocityGrad[sh]);
+						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], zeroGradC, vDVelocityGrad[sh]);
 
 						vvvDeriv[ip][commonFct][sh] += dFlux;
 					}
@@ -431,7 +445,7 @@ public:
 					for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
 					{
 						MathVector<dim> dFlux;
-						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], zeroGradC, zeroGradU, vDNuT[sh]);
+						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], zeroGradC, zeroGradU, vDNuT[sh]);
 						vvvDeriv[ip][commonFct][sh] += dFlux;
 					}
 				}
@@ -466,6 +480,22 @@ public:
 		m_spTurbulentKinViscosity = data;
 		m_spDTurbulentKinViscosity = data.template cast_dynamic<DependentUserData<number,dim> >();
 		base_type::set_input(_DNUT_, data, data);
+	}
+	void set_velocity(SmartPtr<CplUserData<MathVector<dim>, dim> > data)
+	{
+		if(!data.valid()) UG_THROW("SaltationFluxLinker: velocity input is null.");
+
+		m_spVelocity = data;
+		m_spDVelocity = data.template cast_dynamic<DependentUserData<MathVector<dim>, dim> >();
+		base_type::set_input(_VEL_, data, data);
+	}
+
+	void set_velocity_epsilon(number eps)
+	{
+		if(!(eps > 0.0) || !std::isfinite(eps))
+			UG_THROW("SaltationFluxLinker: velocity epsilon must be finite and positive.");
+
+		m_epsVelocity = eps;
 	}
 
 
@@ -504,6 +534,7 @@ protected:
 	static const size_t _DC_ = 0;
 	static const size_t _DU_ = 1;
 	static const size_t _DNUT_ = 2;
+	static const size_t _VEL_ = 3;
 
 
 	////////////////////////////////////////////////////////////////////////////
@@ -527,6 +558,13 @@ protected:
 	
 	SmartPtr<CplUserData<number,dim> > m_spTurbulentKinViscosity;
 	SmartPtr<DependentUserData<number,dim> > m_spDTurbulentKinViscosity;
+	
+	////////////////////////////////////////////////////////////////////////////
+	// Vel u
+	////////////////////////////////////////////////////////////////////////////
+	
+	SmartPtr<CplUserData<MathVector<dim>, dim> > m_spVelocity;
+	SmartPtr<DependentUserData<MathVector<dim>, dim> > m_spDVelocity;
 
 
 	////////////////////////////////////////////////////////////////////////////
@@ -544,6 +582,7 @@ protected:
 	number m_uStarThreshold;
 	number m_epsNormal;
 	number m_epsDelta;
+	number m_epsVelocity;
 };
 
 
