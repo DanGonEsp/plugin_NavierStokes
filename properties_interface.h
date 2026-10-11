@@ -511,7 +511,7 @@ class Interface
 					Godunov_jac(JacVL,JacVR, JacWL,JacWR, JacVn,  UL, UR, wSL, wSR, wFL, wFR,  WL, WR,  Vn);
 					break;
 				case 1:
-					Rusanov_jac(JacVL,JacVR,JacWL,JacWR, JacVn, UL, UR,  wSL,  wSR,  wFL,  wFR,  Vn);
+					Rusanov_jac(JacVL, JacVR, JacWL, JacWR, JacVn, UL, UR, wSL, wSR, wFL, wFR, WL, WR, Vn);
 					break;
 				case 2:
 					Roe_jac(JacVL,JacVR,JacWL,JacWR, JacVn, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
@@ -912,7 +912,11 @@ class Interface
 		{
 
 			//const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
-			const number S=SmoothMax(fabs(wSL),fabs(wSR), 1e-015);
+			const number epsAbs = 1e-8;
+			const number epsMax = 1e-8;
+			const number absSL = SmoothAbs(wSL, epsAbs);
+			const number absSR = SmoothAbs(wSR, epsAbs);
+			const number S = SmoothMax(absSL, absSR, epsMax);
 			
 			//Flux = 0.5*(UL+UR)*Vn;
 			Flux = (Vn > 0)? UL*Vn:UR*Vn;
@@ -923,25 +927,39 @@ class Interface
 			
 			
 		}
-		void Rusanov_jac(number& JacVL,number& JacVR,number& JacWL,number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
+		void Rusanov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
+			const number epsAbs = 1e-8;
+			const number epsMax = 1e-8;
 
-			//const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
-			const number S=SmoothMax(fabs(wSL),fabs(wSR), 1e-015);
-			
-			JacWL = 0.5*(wSL) + 0.5*S;
-			JacWR = 0.5*(wSR) - 0.5*S;
-			
-			//JacVL = 0.5 * Vn;
-			//JacVR = 0.5 * Vn;
-			
-			JacVL = (Vn > 0)?  Vn : 0.0;
-			JacVR = (Vn > 0)? 0.0 : Vn;
-			
-			//JacVn = 0.5 * (UL + UR);
-			JacVn = (Vn > 0)?  UL : UR;
-			
-			
+			const number absSL = SmoothAbs(wSL, epsAbs);
+			const number absSR = SmoothAbs(wSR, epsAbs);
+
+			const number diff = absSL - absSR;
+			const number root = sqrt(diff*diff + epsMax*epsMax);
+			const number S = 0.5*(absSL + absSR + root);
+
+			const number dS_dAbsSL = 0.5*(1.0 + diff/root);
+			const number dS_dAbsSR = 0.5*(1.0 - diff/root);
+
+			const number dAbsSL_dWSL = wSL/absSL;
+			const number dAbsSR_dWSR = wSR/absSR;
+
+			const number dWSL_dUL = -2.0*WL;
+			const number dWSR_dUR = -2.0*WR;
+
+			const number dS_dUL = dS_dAbsSL*dAbsSL_dWSL*dWSL_dUL;
+			const number dS_dUR = dS_dAbsSR*dAbsSR_dWSR*dWSR_dUR;
+
+			const number jump = UR - UL;
+
+			JacWL = 0.5*wSL + 0.5*S - 0.5*jump*dS_dUL;
+			JacWR = 0.5*wSR - 0.5*S - 0.5*jump*dS_dUR;
+
+			JacVL = (Vn > 0.0) ? Vn : 0.0;
+			JacVR = (Vn > 0.0) ? 0.0 : Vn;
+
+			JacVn = (Vn > 0.0) ? UL : UR;
 		}
 		void Roe_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn, const number Wn)
 		{
@@ -1343,14 +1361,17 @@ class Interface
 
 			cut_scv=cut;
 		}*/
-		
+		inline number SmoothAbs(const number x, const number eps)
+		{
+			return sqrt(x*x + eps*eps);
+		}
 		// Helper functions for smooth splitting to ensure continuous derivatives
 		inline number SmoothMax(const number a, const number b, const number eps = 1e-06) {
-			return 0.5 * (a + b + sqrt((a - b) * (a - b) + eps));
+			return 0.5 * (a + b + sqrt((a - b) * (a - b) + eps*eps));
 		}
 
 		inline number SmoothMin(const number a, const number b, const number eps = 1e-06) {
-			return 0.5 * (a + b - sqrt((a - b) * (a - b) + eps));
+			return 0.5 * (a + b - sqrt((a - b) * (a - b) + eps*eps));
 		}
 		inline number one_side_reg(number x, number eps) const
 		{
