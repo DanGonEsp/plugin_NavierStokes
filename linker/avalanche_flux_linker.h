@@ -44,9 +44,12 @@
  *
  *   J_av = delta_Gamma q_av.
  *
- * The output is a diffuse mass flux [kg/(m^2 s)] if nu_av is [m^2/s].
- * The surface DPSM volumetric flux is multiplied by rho_bed and delta_Gamma,
- * so the c-equation uses J_av/rho_bed, exactly as for SaltationFluxLinker.
+ * The output is the diffuse avalanche flux entering the dimensionless
+ * concentration equation:
+ *
+ *   J_av = delta_Gamma q_av.
+ *
+ * With nu_av in [m^2/s] and delta_Gamma in [1/m], the output has units [m/s].
  *
  * Analytical derivatives are provided with respect to grad(c).
  */
@@ -114,8 +117,7 @@ private:
 		if(data.excessSlope <= 0.0) return;
 		if(data.horizontalNormalMag <= 0.0) return;
 
-		const number rho_bed = Inter->Density_s()*Inter->packing_factor();
-		const number factor = rho_bed*m_nuAv*data.deltaGamma*data.mobility;
+		const number factor = m_nuAv*data.deltaGamma*data.mobility;
 
 		for(size_t d = 0; d < dim; ++d)
 			flux[d] = factor*data.downhillDirection[d];
@@ -185,11 +187,9 @@ private:
 		for(size_t d = 0; d < dim-1; ++d)
 			dDownhillDirection[d] = dHorizontalNormal[d]/data.horizontalNormalMag - data.horizontalNormal[d]*dHorizontalNormalMag/horizontalMag2;
 
-		const number rho_bed = Inter->Density_s()*Inter->packing_factor();
-
 		for(size_t d = 0; d < dim; ++d)
 		{
-			dFlux[d] = rho_bed*m_nuAv*(dDeltaGamma*data.mobility*data.downhillDirection[d] + data.deltaGamma*dMobility*data.downhillDirection[d] + data.deltaGamma*data.mobility*dDownhillDirection[d]);
+			dFlux[d] = m_nuAv*(dDeltaGamma*data.mobility*data.downhillDirection[d] + data.deltaGamma*dMobility*data.downhillDirection[d] + data.deltaGamma*data.mobility*dDownhillDirection[d]);
 		}
 	}
 

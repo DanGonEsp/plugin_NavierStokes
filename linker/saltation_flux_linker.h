@@ -69,7 +69,7 @@ class SaltationFluxLinker : public StdDataLinker<SaltationFluxLinker<dim>, MathV
 
 public:
 
-	SaltationFluxLinker() : m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL), m_spVelocityGrad(NULL), m_spDVelocityGrad(NULL), m_spTurbulentKinViscosity(NULL), m_spDTurbulentKinViscosity(NULL), m_spVelocity(NULL), m_spDVelocity(NULL), Inter(NULL), m_C(5.5), m_uStarThreshold(0.22), m_epsNormal(1e-8), m_epsDelta(1e-8), m_epsVelocity(1e-4)
+	SaltationFluxLinker() : m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL), m_spVelocityGrad(NULL), m_spDVelocityGrad(NULL), m_spTurbulentKinViscosity(NULL), m_spDTurbulentKinViscosity(NULL), m_spVelocity(NULL), m_spDVelocity(NULL), Inter(NULL), m_C(5.5), m_uStarThreshold(0.22), m_epsNormal(1e-8), m_epsDelta(1e-8), m_epsVelocity(1e-4), m_directionMode(VELOCITY_ALIGNED_SHEAR_DIRECTION)
 	{
 		this->set_num_input(4);
 	}
@@ -87,6 +87,14 @@ public:
 		MathVector<dim> tau;
 		MathMatrix<dim,dim> D;
 		number tauSign;
+		number sVelocity;
+		MathVector<dim> velocityDirection;
+	};
+	enum DirectionMode
+	{
+		SHEAR_DIRECTION = 0,
+		VELOCITY_ALIGNED_SHEAR_DIRECTION = 1,
+		VELOCITY_DIRECTION = 2
 	};
 
 
@@ -113,10 +121,23 @@ private:
 		if(data.uStar <= m_uStarThreshold) return;
 
 		const number excess = data.uStar - m_uStarThreshold;
-		const number factor = data.tauSign*data.deltaGamma*(m_C/grav)*excess;
+		const number factor = data.deltaGamma*(m_C/grav)*excess;
 
-		for(size_t d = 0; d < dim; ++d)
-			flux[d] = factor*data.tau[d];
+		if(m_directionMode == SHEAR_DIRECTION)
+		{
+			for(size_t d = 0; d < dim; ++d)
+				flux[d] = factor*data.tau[d];
+		}
+		else if(m_directionMode == VELOCITY_ALIGNED_SHEAR_DIRECTION)
+		{
+			for(size_t d = 0; d < dim; ++d)
+				flux[d] = factor*data.tauSign*data.tau[d];
+		}
+		else if(m_directionMode == VELOCITY_DIRECTION)
+		{
+			for(size_t d = 0; d < dim; ++d)
+				flux[d] = factor*data.tauMag*data.velocityDirection[d];
+		}
 	}
 
 
@@ -124,7 +145,7 @@ private:
 	// Analytical directional derivative
 	////////////////////////////////////////////////////////////////////////////
 
-	void compute_flux_derivative(MathVector<dim>& dFlux, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT, const MathVector<dim>& velocity, const MathVector<dim>& dGradC, const MathMatrix<dim,dim>& dGradU, number dNuT = 0.0) const
+	void compute_flux_derivative(MathVector<dim>& dFlux, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT, const MathVector<dim>& velocity, const MathVector<dim>& dGradC, const MathMatrix<dim,dim>& dGradU, const MathVector<dim>& dVelocity, number dNuT = 0.0) const
 	{
 		VecSet(dFlux, 0.0);
 
@@ -213,13 +234,47 @@ private:
 
 		for(size_t d = 0; d < dim; ++d)
 			tauDotDTau += data.tau[d]*dTau[d];
-
-		const number dUStar = tauDotDTau/(2.0*rho_a*data.uStar*data.tauMag);
+		
+		const number dTauMag = tauDotDTau/data.tauMag;
+		const number dUStar = dTauMag/(2.0*rho_a*data.uStar);
 		const number excess = data.uStar - m_uStarThreshold;
-		const number Cg = data.tauSign*m_C/grav;
+		const number Cg = m_C/grav;
 
-		for(size_t d = 0; d < dim; ++d)
-			dFlux[d] = Cg*(dDeltaGamma*excess*data.tau[d] + data.deltaGamma*dUStar*data.tau[d] + data.deltaGamma*excess*dTau[d]);
+		
+
+		if(m_directionMode == SHEAR_DIRECTION)
+		{
+			for(size_t d = 0; d < dim; ++d)
+				dFlux[d] = Cg*(dDeltaGamma*excess*data.tau[d] + data.deltaGamma*dUStar*data.tau[d] + data.deltaGamma*excess*dTau[d]);
+		}
+		else if(m_directionMode == VELOCITY_ALIGNED_SHEAR_DIRECTION)
+		{
+			for(size_t d = 0; d < dim; ++d)
+				dFlux[d] = data.tauSign*Cg*(dDeltaGamma*excess*data.tau[d] + data.deltaGamma*dUStar*data.tau[d] + data.deltaGamma*excess*dTau[d]);
+		}
+		else if(m_directionMode == VELOCITY_DIRECTION)
+		{
+			number velocityDotDVelocity = 0.0;
+
+			for(size_t d = 0; d < dim; ++d)
+				velocityDotDVelocity += velocity[d]*dVelocity[d];
+
+			const number sVelocity3 = data.sVelocity*data.sVelocity*data.sVelocity;
+
+			MathVector<dim> dVelocityDirection;
+
+			for(size_t d = 0; d < dim; ++d)
+				dVelocityDirection[d] = dVelocity[d]/data.sVelocity - velocity[d]*velocityDotDVelocity/sVelocity3;
+
+			for(size_t d = 0; d < dim; ++d)
+			{
+				dFlux[d] = Cg*(
+					dDeltaGamma*excess*data.tauMag*data.velocityDirection[d]
+					+ data.deltaGamma*dUStar*data.tauMag*data.velocityDirection[d]
+					+ data.deltaGamma*excess*dTauMag*data.velocityDirection[d]
+					+ data.deltaGamma*excess*data.tauMag*dVelocityDirection[d]);
+			}
+		}
 	}
 	
 	void compute_saltation_data(SaltationData& data, const MathVector<dim>& gradC, const MathMatrix<dim,dim>& gradU, number nuT, const MathVector<dim>& velocity) const
@@ -231,6 +286,8 @@ private:
 		data.nDn = 0.0;
 		data.tauMag = 0.0;
 		data.uStar = 0.0;
+		data.sVelocity = 0.0;
+		VecSet(data.velocityDirection, 0.0);
 
 		VecSet(data.normal, 0.0);
 		VecSet(data.Dn, 0.0);
@@ -291,6 +348,7 @@ private:
 			tauDotVelocity += data.tau[d]*velocity[d];
 
 		data.tauSign = tauDotVelocity < 0.0 ? -1.0 : 1.0;
+		
 		number tau2 = 0.0;
 
 		for(size_t d = 0; d < dim; ++d)
@@ -300,6 +358,16 @@ private:
 
 		if(data.tauMag > 0.0)
 			data.uStar = std::sqrt(data.tauMag/rho_a);
+		
+		number velocity2 = 0.0;
+
+		for(size_t d = 0; d < dim; ++d)
+			velocity2 += velocity[d]*velocity[d];
+
+		data.sVelocity = std::sqrt(velocity2 + m_epsVelocity*m_epsVelocity);
+
+		for(size_t d = 0; d < dim; ++d)
+			data.velocityDirection[d] = velocity[d]/data.sVelocity;
 	}
 
 
@@ -378,6 +446,10 @@ public:
 
 		if(m_spDVolumeGrad.valid() && !m_spDVolumeGrad->zero_derivative())
 		{
+			MathMatrix<dim,dim> zeroGradU;
+			MathVector<dim> zeroVelocity;
+			MathVector<dim> dFlux;
+			
 			for(size_t ip = 0; ip < nip; ++ip)
 			{
 				for(size_t fct = 0; fct < m_spDVolumeGrad->num_fct(); ++fct)
@@ -387,12 +459,11 @@ public:
 
 					for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
 					{
-						MathMatrix<dim,dim> zeroGradU;
-						MathVector<dim> dFlux;
 
 						MatSet(zeroGradU, 0.0);
+						VecSet(zeroVelocity, 0.0);
 
-						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], vDVolumeGrad[sh], zeroGradU);
+						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], vDVolumeGrad[sh], zeroGradU, zeroVelocity);
 
 						vvvDeriv[ip][commonFct][sh] += dFlux;
 					}
@@ -406,6 +477,10 @@ public:
 
 		if(m_spDVelocityGrad.valid() && !m_spDVelocityGrad->zero_derivative())
 		{
+			MathVector<dim> zeroGradC;
+			MathVector<dim> zeroVelocity;
+			MathVector<dim> dFlux;
+			
 			for(size_t ip = 0; ip < nip; ++ip)
 			{
 				for(size_t fct = 0; fct < m_spDVelocityGrad->num_fct(); ++fct)
@@ -415,12 +490,11 @@ public:
 
 					for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
 					{
-						MathVector<dim> zeroGradC;
-						MathVector<dim> dFlux;
 
 						VecSet(zeroGradC, 0.0);
+						VecSet(zeroVelocity, 0.0);
 
-						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], zeroGradC, vDVelocityGrad[sh]);
+						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], zeroGradC, vDVelocityGrad[sh], zeroVelocity);
 
 						vvvDeriv[ip][commonFct][sh] += dFlux;
 					}
@@ -432,8 +506,8 @@ public:
 		{
 			MathVector<dim> zeroGradC;
 			MathMatrix<dim,dim> zeroGradU;
-			VecSet(zeroGradC, 0.0);
-			MatSet(zeroGradU, 0.0);
+			MathVector<dim> zeroVelocity;
+			MathVector<dim> dFlux;
 
 			for(size_t ip = 0; ip < nip; ++ip)
 			{
@@ -444,8 +518,46 @@ public:
 
 					for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
 					{
-						MathVector<dim> dFlux;
-						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], zeroGradC, zeroGradU, vDNuT[sh]);
+
+
+
+						VecSet(zeroGradC, 0.0);
+						VecSet(zeroVelocity, 0.0);
+						MatSet(zeroGradU, 0.0);
+
+						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], zeroGradC, zeroGradU, zeroVelocity, vDNuT[sh]);
+						vvvDeriv[ip][commonFct][sh] += dFlux;
+					}
+				}
+			}
+		}
+		////////////////////////////////////////////////////////////////////////////
+		// Derivatives with respect to velocity
+		////////////////////////////////////////////////////////////////////////////
+
+		if(m_directionMode == VELOCITY_DIRECTION && m_spDVelocity.valid() && !m_spDVelocity->zero_derivative())
+		{
+			MathVector<dim> zeroGradC;
+			MathMatrix<dim,dim> zeroGradU;
+			MathVector<dim> dFlux;
+
+			
+
+			for(size_t ip = 0; ip < nip; ++ip)
+			{
+				for(size_t fct = 0; fct < m_spDVelocity->num_fct(); ++fct)
+				{
+					const MathVector<dim>* vDVelocity = m_spDVelocity->deriv(s_VEL_, ip, fct);
+					const size_t commonFct = this->input_common_fct(_VEL_, fct);
+
+					for(size_t sh = 0; sh < this->num_sh(commonFct); ++sh)
+					{
+						
+						VecSet(zeroGradC, 0.0);
+						MatSet(zeroGradU, 0.0);
+						
+						compute_flux_derivative(dFlux, vVolumeGrad[ip], vVelocityGrad[ip], vNuT[ip], vVelocity[ip], zeroGradC, zeroGradU, vDVelocity[sh]);
+
 						vvvDeriv[ip][commonFct][sh] += dFlux;
 					}
 				}
@@ -490,14 +602,6 @@ public:
 		base_type::set_input(_VEL_, data, data);
 	}
 
-	void set_velocity_epsilon(number eps)
-	{
-		if(!(eps > 0.0) || !std::isfinite(eps))
-			UG_THROW("SaltationFluxLinker: velocity epsilon must be finite and positive.");
-
-		m_epsVelocity = eps;
-	}
-
 
 	////////////////////////////////////////////////////////////////////////////
 	// Physical parameters
@@ -523,6 +627,22 @@ public:
 	void set_normal_epsilon(number eps) {m_epsNormal = eps;}
 
 	void set_delta_epsilon(number eps) {m_epsDelta = eps;}
+	
+	void set_velocity_epsilon(number eps)
+	{
+		if(!(eps > 0.0) || !std::isfinite(eps))
+			UG_THROW("SaltationFluxLinker: velocity epsilon must be finite and positive.");
+
+		m_epsVelocity = eps;
+	}
+	
+	void set_direction_mode(int mode)
+	{
+		if(mode < 0 || mode > 2)
+			UG_THROW("SaltationFluxLinker: direction mode must be 0, 1, or 2.");
+
+		m_directionMode = mode;
+	}
 
 
 protected:
@@ -583,6 +703,7 @@ protected:
 	number m_epsNormal;
 	number m_epsDelta;
 	number m_epsVelocity;
+	int m_directionMode;
 };
 
 

@@ -46,6 +46,7 @@
 #include "linker/scale_linker.h"
 #include "linker/interface_normal_linker.h"
 #include "linker/saltation_flux_linker.h"
+#include "linker/avalanche_flux_linker.h"
 
 
 using namespace std;
@@ -347,10 +348,32 @@ static void Dimension(Registry& reg, string grp)
 			.add_method("set_threshold_friction_velocity", &T::set_threshold_friction_velocity)
 			.add_method("set_normal_epsilon", &T::set_normal_epsilon)
 			.add_method("set_delta_epsilon", &T::set_delta_epsilon)
+			.add_method("set_direction_mode", &T::set_direction_mode)
 			.add_constructor()
 			.set_construct_as_smart_pointer(true);
 
 		reg.add_class_to_group(name, "SaltationFluxLinker", tag);
+	}
+	
+	// AvalancheFluxLinker
+	{
+		typedef AvalancheFluxLinker<dim> T;
+		typedef DependentUserData<MathVector<dim>, dim> TBase;
+		string name = string("AvalancheFluxLinker").append(suffix);
+
+		reg.add_class_<T, TBase>(name, grp)
+			.add_method("set_volume_grad", &T::set_volume_grad)
+			.add_method("set_phase_parameters", &T::set_phase_parameters)
+			.add_method("set_avalanche_coefficient", &T::set_avalanche_coefficient)
+			.add_method("set_angle_of_repose", &T::set_angle_of_repose)
+			.add_method("set_angle_of_repose_degrees", &T::set_angle_of_repose_degrees)
+			.add_method("set_normal_epsilon", &T::set_normal_epsilon)
+			.add_method("set_delta_epsilon", &T::set_delta_epsilon)
+			.add_method("set_vertical_epsilon", &T::set_vertical_epsilon)
+			.add_constructor()
+			.set_construct_as_smart_pointer(true);
+
+		reg.add_class_to_group(name, "AvalancheFluxLinker", tag);
 	}
 
 //    check whether those classes have already been registered
