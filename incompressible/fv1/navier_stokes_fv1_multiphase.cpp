@@ -3014,33 +3014,30 @@ vol_flux_grad( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* conv_f
 		number FluxDiv_ip = 0.0;
 		MathVector<dim> FluxGrad_ip = 0.0;
 		
-		if(m_upwind_vol_method != 0)
-		{
-			if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
-			{
-			
-				if(m_imRelativeVelocitySCV.data_given())
-				{
-					Wrel_L = m_imRelativeVelocitySCV[from];
-					Wrel_R = m_imRelativeVelocitySCV[to];
-				}
-				if(m_imSlipVelocitySCVF.data_given())
-				{
-					VecAdd(Wrel_L, m_imSlipVelocitySCVF[ip], Wrel_L );
-					VecAdd(Wrel_R, m_imSlipVelocitySCVF[ip], Wrel_R );
-				}
-				
-				
-				
-				Inter->Flux_ip(FluxVol_ip, FluxMom_ip, FluxDiv_ip, FluxGrad_ip, u(_C_,from), u(_C_,to), m_imDensitySCV_A[from], m_imDensitySCV_A[to], Wrel_L, Wrel_R,  DumbVariable, scvf.normal() ,m_upwind_vol_method, m_mass_mean);
-				
-			
-			
-				
-			}
 
+		if( m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
+		{
+		
+			if(m_imRelativeVelocitySCV.data_given())
+			{
+				Wrel_L = m_imRelativeVelocitySCV[from];
+				Wrel_R = m_imRelativeVelocitySCV[to];
+			}
+			if(m_imSlipVelocitySCVF.data_given())
+			{
+				VecAdd(Wrel_L, m_imSlipVelocitySCVF[ip], Wrel_L );
+				VecAdd(Wrel_R, m_imSlipVelocitySCVF[ip], Wrel_R );
+			}
+			
+			
+			
+			Inter->Flux_ip(FluxVol_ip, FluxMom_ip, FluxDiv_ip, FluxGrad_ip, u(_C_,from), u(_C_,to), m_imDensitySCV_A[from], m_imDensitySCV_A[to], Wrel_L, Wrel_R,  DumbVariable, scvf.normal() ,m_upwind_vol_method, m_mass_mean);
+			
+		
+		
 			
 		}
+
 		VecScale(conv_flux_grad[ip],FluxGrad_ip,1.0/dist);
 	}
 
@@ -4860,287 +4857,238 @@ ex_nodal_mix_viscosity(number vValue[],
 		 bool bDeriv,
 		 std::vector<std::vector<number> > vvvDeriv[])
 {
-	
 	if(bDeriv)
 	{
 		for(size_t ip = 0; ip < nip; ++ip)
 			for(size_t c = 0; c < vvvDeriv[ip].size(); ++c)
 				for(size_t sh = 0; sh < vvvDeriv[ip][c].size(); ++sh)
 					vvvDeriv[ip][c][sh] = 0.0;
-
 	}
-//  get finite volume geometry
+
 	TFVGeom& geo = GeomProvider<TFVGeom>::get();
-	try{
+
+	try
+	{
 		geo.update(elem, vCornerCoords, &(this->subset_handler()));
 	}
-	UG_CATCH_THROW("NavierStokes::ExportParameter MixViscosity:"
-				   " Cannot update Finite Volume Geometry.");
+	UG_CATCH_THROW("NavierStokes::ExportParameter MixViscosity: Cannot update Finite Volume Geometry.");
 
-//    reference element
-	typedef typename reference_element_traits<TElem>::reference_element_type
-			ref_elem_type;
-//  reference dimension
+	typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
 	static const int refDim = ref_elem_type::dim;
+	static const size_t numSH = ref_elem_type::numCorners;
 
-//    number of shape functions
-	static const size_t numSH =    ref_elem_type::numCorners;
-	
-	bool cut_elem=false;
-	bool inside = false;
-	LocalVector* u_aux = const_cast<LocalVector*>(&u);
-	
-	//Inter->cut_element(cut_elem,inside,  u_aux, _C_);
-	
-	bool HarmonicMs = false;//( cut_elem || inside )? true: false;
-	bool constantMs = true;
-	if(m_saltation_transport)
-	{
-		const bool HarmonicMs = true;//( cut_elem || inside )? true: false;
-		const bool constantMs = false;
-	}
+	const bool BlendedMs = m_saltation_transport;
+	const bool constantMs = !BlendedMs;
+
+	const number cInterface = Inter->interface_value();
+	const number cWidth = 0.10;
 
 	number Volume = 0.0;
 	number Gamma[numSH];
 	number Ms[numSH];
 	number DMs[numSH];
 
-	if( m_imAverageGammaSCV.data_given())
+	LocalVector* u_aux = const_cast<LocalVector*>(&u);
+
+	// Compute shear rate at SCV integration points.
+	if(m_imAverageGammaSCV.data_given())
 	{
 		std::vector<number> GammaAve_aux(numSH);
-		MathVector<refDim> LocalCoord_aux[numSH];
-		
-		for(size_t sh = 0; sh < numSH; ++sh)
-			for(int d = 0; d < refDim; ++d)
-				LocalCoord_aux[sh][d]=geo.scv_local_ips()[sh][d];
+
 		(*(m_imAverageGammaSCV.user_data()))(&GammaAve_aux[0], geo.scv_global_ips(), time, si, elem, vCornerCoords, geo.scv_local_ips(), numSH, u_aux, NULL);
+
 		for(size_t sh = 0; sh < numSH; ++sh)
 			Gamma[sh] = GammaAve_aux[sh];
-		
-		//m_vDependentData[i]->compute(&u, elem, vCornerCoords, bDeriv);
 	}
 	else
 	{
-		vel_grad(  u,  geo,  Gamma);
+		vel_grad(u, geo, Gamma);
 	}
-	
-	if(constantMs || HarmonicMs)
-	{
-		for(size_t sh = 0; sh < numSH; ++sh)
-		{
-			const typename TFVGeom::SCV& scv = geo.scv(sh);
-			Volume += scv.volume();
-		}
-		if(Volume<1e-08) UG_THROW("Volume =: 0	"<<"  NumSh ="<<numSH<<".");
-		
-	}
-	
+
+	// Compute total element volume.
+	for(size_t sh = 0; sh < numSH; ++sh)
+		Volume += geo.scv(sh).volume();
+
+	if(Volume <= 0.0 || !std::isfinite(Volume))
+		UG_THROW("NavierStokesFV1M: Invalid element volume.");
+
+	// Evaluate nodal viscosity and its concentration derivative.
 	for(size_t sh = 0; sh < numSH; ++sh)
 	{
 		number mu_s = 0.0;
 		number Dmu_s = 0.0;
 		number mu_eins = 0.0;
 		number Dmu_eins = 0.0;
-		
-		Inter->MU_I_Viscosity( mu_s, Dmu_s,Gamma[sh], u(_C_,sh), bDeriv);
-		Inter->Einstein_viscosity( mu_eins, Dmu_eins, u(_C_,sh), bDeriv);
-		
+
+		Inter->MU_I_Viscosity(mu_s, Dmu_s, Gamma[sh], u(_C_,sh), bDeriv);
+		Inter->Einstein_viscosity(mu_eins, Dmu_eins, u(_C_,sh), bDeriv);
+
 		Ms[sh] = mu_s + mu_eins;
 		DMs[sh] = Dmu_s + Dmu_eins;
+
+		if(Ms[sh] <= 0.0 || !std::isfinite(Ms[sh]))
+			UG_THROW("NavierStokesFV1M: Invalid nodal viscosity.");
 	}
-	
-	number mu_l,mu_g;
-	int JumpShape[numSH];
-	int count_l = 0; int count_g = 0;
-	if(false && m_pressure_jump )
+
+	// Compute elementwise arithmetic and harmonic viscosity.
+	number ViscosityA = 0.0;
+	number ViscosityInvH = 0.0;
+	number cAverage = 0.0;
+
+	for(size_t sh = 0; sh < numSH; ++sh)
 	{
-		Inter->cut_element(cut_elem,inside,  u_aux, _C_);
-		if(cut_elem)
+		const number weight = geo.scv(sh).volume() / Volume;
+
+		ViscosityA += weight * Ms[sh];
+		ViscosityInvH += weight / Ms[sh];
+		cAverage += weight * u(_C_,sh);
+	}
+
+	const number ViscosityH = 1.0 / ViscosityInvH;
+
+	// Quintic C2-smooth blending parameter.
+	number beta = 1.0;
+	number Dbeta = 0.0;
+
+	if(BlendedMs)
+	{
+		if(cAverage >= cInterface + cWidth)
 		{
-			Inter->Jump_Shape(  u_aux, _C_, numSH, JumpShape);
-			Inter->InterMu( mu_l, mu_g,  Ms, JumpShape,  numSH);
+			beta = 0.0;
 		}
-		
-	}
-	
-//    FV1M SCVF ip
-	if(vLocIP == geo.scvf_local_ips())
-	{
-	//    Loop Sub Control Volume Faces (SCVF)
-		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+		else if(cAverage > cInterface)
 		{
-		//     Get current SCVF
-			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-			size_t to = scvf.to();
-			size_t from = scvf.from();
+			const number t = (cAverage - cInterface) / cWidth;
+			const number t2 = t*t;
+			const number t3 = t2*t;
 
-		//    compute pressure at ip
-			number Viscosity = 0.0;
-			if (false && m_pressure_jump && cut_elem)
-			{
-				if(JumpShape[from]>0 && JumpShape[to]>0)
-					Viscosity = mu_l;
-				else if(JumpShape[from]<0 && JumpShape[to]<0)
-					Viscosity = mu_g;
-				else
-					Viscosity = mu_l;
-			}
-			else
-			{
-
-				if(HarmonicMs)
-				{
-					/*const number scv_to = geo.scv(to).volume();
-					const number scv_from = geo.scv(from).volume();
-					Volume = scv_to + scv_from;
-					Viscosity = (scv_to /  Ms[to]) + (scv_from /  Ms[from]);
-					
-					Viscosity = Volume /Viscosity;*/
-					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-					{
-						const number scv_sh = geo.scv(sh).volume();
-						Viscosity += (scv_sh /  Ms[sh]);
-					}
-					
-					Viscosity = Volume /Viscosity;
-				}
-				else
-				{
-					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-					{
-						if(constantMs)
-						{
-							const typename TFVGeom::SCV& scv = geo.scv(sh);
-							Viscosity += Ms[sh] * scv.volume() / Volume;
-						}
-						else
-							Viscosity += Ms[sh] * scvf.shape(sh);
-					}
-				}
-					
-			}
-				
-			vValue[ip] = Viscosity;
-		//    compute derivative w.r.t. to unknowns iff needed
-			if(bDeriv)
-			{
-				if (  !(m_pressure_jump && cut_elem))
-					for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
-					{
-						if (constantMs || HarmonicMs)
-						{
-							const typename TFVGeom::SCV& scv = geo.scv(sh);
-							if (constantMs)
-							{
-								vvvDeriv[ip][_C_][sh] = DMs[sh] * scv.volume()/Volume;
-							}
-							else
-							{
-								vvvDeriv[ip][_C_][sh] = DMs[sh] * pow(vValue[ip]/Ms[sh], 2.0) * scv.volume()/Volume;
-							}
-						}
-						else
-							vvvDeriv[ip][_C_][sh] = DMs[sh] * scvf.shape(sh);
-					}
-
-			}
+			beta = 1.0 - (6.0*t2*t3 - 15.0*t2*t2 + 10.0*t3);
+			Dbeta = -30.0*t2*(1.0-t)*(1.0-t)/cWidth;
 		}
 	}
-//    FV1M SCV ip
-	else if(vLocIP == geo.scv_local_ips())
-	{
-	//    Loop Sub Control Volumes (SCV)
-		for(size_t ip = 0; ip < geo.num_scv(); ++ip)
-		{
-		//     Get current SCV
-			const typename TFVGeom::SCV& scv = geo.scv(ip);
-
-		//    get corner of SCV
-			const size_t co = scv.node_id();
-
-		//    solution at ip
-			if (false && constantMs)
-			{
-				vValue[ip] = 0.0;
-				for(size_t sh = 0; sh < numSH; ++sh)
-				{
-					const typename TFVGeom::SCV& scv = geo.scv(sh);
-					vValue[ip] += Ms[sh] * scv.volume() / Volume;
-				}
-			}
-			else
-				vValue[ip] = Ms[co];
-		//    set derivatives if needed
-			if(bDeriv)
-			{
-				for(size_t sh = 0; sh < scv.num_sh(); ++sh)
-					if (false && constantMs)
-					{
-						const typename TFVGeom::SCV& scv = geo.scv(sh);
-						vvvDeriv[ip][_C_][sh] =  DMs[sh] * scv.volume() / Volume;
-					}
-					else
-						vvvDeriv[ip][_C_][sh] = (sh==co) ? DMs[sh] : 0.0;
-			}
-		}
-	}
-//     general case
 	else
 	{
-	//    get trial space
-		LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+		beta = 0.0;
+	}
 
-	//    storage for shape function at ip
-		number vShape[numSH];
+	const number ViscosityBlend = (1.0-beta)*ViscosityA + beta*ViscosityH;
 
-	//    loop ips
-		for(size_t ip = 0; ip < nip; ++ip)
+	// FV1M SCVF integration points.
+	if(vLocIP == geo.scvf_local_ips())
+	{
+		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 		{
-		//    evaluate at shapes at ip
-			rTrialSpace.shapes(vShape, vLocIP[ip]);
+			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
 
-		//    compute concentration at ip
-			number Viscosity = 0.0;
-			for(size_t sh = 0; sh < numSH; ++sh)
+			if(BlendedMs)
 			{
-				if ((constantMs || HarmonicMs))
-				{
-					const typename TFVGeom::SCV& scv = geo.scv(sh);
-					if(constantMs)
-						Viscosity += Ms[sh] * scv.volume() / Volume;
-					else
-						Viscosity += scv.volume() / (Volume * Ms[sh]) ;
-				}
-				else
-					Viscosity += Ms[sh] * vShape[sh];
+				vValue[ip] = ViscosityBlend;
 			}
-			if ((constantMs || HarmonicMs) )
+			else if(constantMs)
 			{
-				if(constantMs)
-					vValue[ip] = Viscosity;
-				else
-					vValue[ip] = 1.0/Viscosity;
+				vValue[ip] = ViscosityA;
 			}
 			else
-			vValue[ip] = Viscosity;
-		//    compute derivative w.r.t. to unknowns iff needed
-		//    \todo: maybe store shapes directly in vvvDeriv
-			/*if(bDeriv)
+			{
+				vValue[ip] = 0.0;
+
+				for(size_t sh = 0; sh < numSH; ++sh)
+					vValue[ip] += Ms[sh]*scvf.shape(sh);
+			}
+
+			if(bDeriv)
 			{
 				for(size_t sh = 0; sh < numSH; ++sh)
 				{
-					if (false && (constantMs || HarmonicMs))
-						if (constantMs)
+					const number weight = geo.scv(sh).volume() / Volume;
+
+					if(BlendedMs)
 					{
-						const typename TFVGeom::SCV& scv = geo.scv(sh);
-						vvvDeriv[ip][_C_][sh] = DMs[sh] * scv.volume()/Volume;
+						const number DA = weight*DMs[sh];
+						const number DH = weight*DMs[sh]*(ViscosityH/Ms[sh])*(ViscosityH/Ms[sh]);
+						const number DB = Dbeta*weight*(ViscosityH-ViscosityA);
+
+						vvvDeriv[ip][_C_][sh] = (1.0-beta)*DA + beta*DH + DB;
+					}
+					else if(constantMs)
+					{
+						vvvDeriv[ip][_C_][sh] = weight*DMs[sh];
 					}
 					else
-						vvvDeriv[ip][_C_][sh] = DMs[sh] * vShape[sh];
+					{
+						vvvDeriv[ip][_C_][sh] = DMs[sh]*scvf.shape(sh);
+					}
 				}
+			}
+		}
+	}
+	// FV1M SCV integration points.
+	else if(vLocIP == geo.scv_local_ips())
+	{
+		for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+		{
+			const typename TFVGeom::SCV& scv = geo.scv(ip);
+			const size_t co = scv.node_id();
 
+			vValue[ip] = Ms[co];
 
-			}*/
+			if(bDeriv)
+			{
+				for(size_t sh = 0; sh < numSH; ++sh)
+					vvvDeriv[ip][_C_][sh] = (sh == co) ? DMs[sh] : 0.0;
+			}
+		}
+	}
+	// General integration points.
+	else
+	{
+		LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+		number vShape[numSH];
+
+		for(size_t ip = 0; ip < nip; ++ip)
+		{
+			rTrialSpace.shapes(vShape, vLocIP[ip]);
+
+			if(BlendedMs)
+			{
+				vValue[ip] = ViscosityBlend;
+			}
+			else if(constantMs)
+			{
+				vValue[ip] = ViscosityA;
+			}
+			else
+			{
+				vValue[ip] = 0.0;
+
+				for(size_t sh = 0; sh < numSH; ++sh)
+					vValue[ip] += Ms[sh]*vShape[sh];
+			}
+
+			if(bDeriv)
+			{
+				for(size_t sh = 0; sh < numSH; ++sh)
+				{
+					const number weight = geo.scv(sh).volume() / Volume;
+
+					if(BlendedMs)
+					{
+						const number DA = weight*DMs[sh];
+						const number DH = weight*DMs[sh]*(ViscosityH/Ms[sh])*(ViscosityH/Ms[sh]);
+						const number DB = Dbeta*weight*(ViscosityH-ViscosityA);
+
+						vvvDeriv[ip][_C_][sh] = (1.0-beta)*DA + beta*DH + DB;
+					}
+					else if(constantMs)
+					{
+						vvvDeriv[ip][_C_][sh] = weight*DMs[sh];
+					}
+					else
+					{
+						vvvDeriv[ip][_C_][sh] = DMs[sh]*vShape[sh];
+					}
+				}
+			}
 		}
 	}
 };
