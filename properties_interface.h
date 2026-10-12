@@ -293,102 +293,18 @@ class Interface
 			//UG_LOG("Iterations = "<<iter<<"\n")
 			
 		}
-		void GodunovCharacteristic_ip(MathVector<dim>& vVel, MathVector<dim>& vStdVel, const number RhoL, const number RhoR, const number MuL, const number MuR, const MathVector<dim> vUL, const MathVector<dim> vUR, const MathVector<dim> vNormal)
-		{
-			number power = 1.0;
-			number FL, SL, FR, SR;
-			number area = VecLength(vNormal);
-			MathVector<dim> normal; VecScale(normal,vNormal, 1.0/area);
-			MathVector<dim> vVel_aux = 0.0;
-			MathVector<dim> vStdVel_aux = 0.0;
-			
-			SL=VecProd(vUL,normal);
-			SR=VecProd(vUR,normal);
-			
-			FL = RhoL*SL;
-			FR = RhoR*SR;
-			
-			VecScaleAdd(vStdVel_aux, RhoR/(RhoL + RhoR), vUR, RhoL/(RhoL + RhoR), vUL );
-			VecScaleAdd(vVel_aux, 0.5 , vUR, 0.5, vUL);
-			number dRho = fabs(RhoR- RhoL);
-			number theta = pow( dRho/(1.0+dRho), power);
-			
-			number S_val = 0.0;
-			
-			if(fabs(RhoR-RhoL)< 1e-08)
-			{
-				//vStdVel = vVel_aux;
-				//vVel = vVel_aux;
-			}
-			else
-			{
-				S_val = RankineHugoniot(FR, FL, RhoR,  RhoL);
 
-				if(SL * SR >=0.0)
-				{
-
-					vStdVel = vStdVel_aux;
-					vVel = vStdVel_aux;
-					
-				}else if(SL > 0.0 && SR <0.0)
-				{
-					vStdVel = vStdVel_aux;
-					vVel = vStdVel_aux;
-				}else if(SL < 0.0 && SR > 0.0)
-				{
-					vStdVel = vStdVel_aux;
-					vVel = vStdVel_aux;
-					
-				}else
-				{
-					
-					
-					 UG_LOG("Shock or Rarefaction S_val   = "<< S_val   <<".\n");
-					 UG_LOG("Shock or Rarefaction VL   = " << VecLength(vUL)  <<"  VR   = "<< VecLength(vUR)   <<".\n");
-					 UG_LOG("Shock or Rarefaction SL   = " << SL  <<"  SR   = "<< SR   <<".\n");
-					 UG_LOG("Shock or Rarefaction RhoL = "<< RhoL <<"  RhoR = "<< RhoR <<".\n");
-					 UG_LOG("Shock or Rarefaction FL   = " << FL  <<"  FR   = "<< FR   <<".\n");
-					UG_THROW("Starting point.\n");
-				}
-					
-	
-			
-					
-				
-			}
-			
-			
-			//VecScaleAdd(vStdVel, 0.5, vUR, 0.5, vUL );
-			
-			/*if(SL*SR >= 0 )
-				//S_ip = vStdVel;
-			else
-			{
-				//number power = 1.0;
-				//number theta = 0.0;//pow(fabs(MuR- MuL) /(MuR + MuL), power);
-				//VecScaleAdd(Vel, 0.5 , vUR, 0.5, vUL);
-				
-				//VecScaleAdd(S_ip, 1.0 - theta, vStdVel, theta, Vel);
-				
-				
-			}*/
-			
-			//VecScaleAdd(vVel,   1.0 - theta, vStdVel, theta, vStdVel_aux);
-				
-	
-		}
-	
 	
 
 	
 		number RankineHugoniot(const number wFR, const number wFL, const number UR, const number UL)
 		{
 			return (wFR-wFL)/(UR-UL);
-			UG_THROW("Interface Roe flux : Not implemented with W/rho");
+			
 		}
 		number RankineHugoniotCharac(const number uL, const number uR, const number Vn, const number Wn)
 		{
-			UG_THROW("Interface Roe flux : Not implemented with W/rho");
+
 			return Vn + (1.0-(uL+uR))*Wn;
 		}
 		
@@ -434,6 +350,7 @@ class Interface
 
 		void Flux_ip(number& Flux_ip, MathVector<dim>& Mom_ip, number& Div_ip, MathVector<dim>& Grad_ip, const number UL, const number UR, const number RhoL, const number RhoR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method, const bool m_mass_mean)
 		{
+			if(m_mass_mean) UG_THROW("Transport schemes require the volume-mean formulation.");
 			
 			Flux_ip = 0.0;
 			Mom_ip = 0.0;
@@ -451,7 +368,6 @@ class Interface
 			
 			Flux_function_interface(wFL,wSL, UL, WL, vWL, RhoL, GeoDegL, MagDegL,
 									wFR,wSR, UR, WR, vWR, RhoR, GeoDegR, MagDegR, Vn, vVel_ip, normal, m_mass_mean, true,true);
-			
 				
 			switch (upwind_vol_method) {
 				case 0:
@@ -463,6 +379,21 @@ class Interface
 				case 2:
 					Roe_flux(Flux, DiffFlux, UL,UR,wSL,wSR,wFL,wFR, WL,WR,Vn,Wn);
 					break;
+				case 3:
+				{
+
+					number JacL = 0.0;
+					number JacR = 0.0;
+					number JacWn = 0.0;
+
+					// Wn already uses the average of the left and right slip velocities.
+					EO_flux_jac(Flux, JacL, JacR, JacWn, UL, UR, Wn);
+
+					// This auxiliary quantity is unused in the supported volume-mean branch.
+					DiffFlux = 0.0;
+
+					break;
+				}
 				default:
 					UG_THROW("Wrong model selected for solving riemman problem: PropInterface has options"
 							 " model= 0, 1 , 2, 3");
@@ -472,6 +403,11 @@ class Interface
 			{
 				UG_THROW("Non valid number for FLUX = " <<Flux<<".\n");
 				
+			}
+			if(!(area > 0.0) || !std::isfinite(area)) UG_THROW("Transport flux: invalid face normal.");
+			if(Vn != 0.0)
+			{
+				UG_THROW("EO option 3 handles slip only; mixture advection must be assembled separately.");
 			}
 			
 			
@@ -495,6 +431,10 @@ class Interface
 		}
 		void Flux_Jac_ip(number& JacVL, number& JacVR, number& JacWL, number& JacWR, MathVector<dim>& JacVip, const number UL, const number UR, const number RhoL, const number RhoR, const MathVector<dim> vWL, const MathVector<dim> vWR,  const MathVector<dim> vVel_ip, const MathVector<dim> vNormal, const int upwind_vol_method, const bool m_mass_mean)
 		{
+			if(m_mass_mean)
+			{
+				UG_THROW("EO option 3 requires the volume-mean formulation.");
+			}
 			
 			number wFL, wSL, wFR, wSR, WL, WR, Vn, JacVn, Flux;
 			bool GeoDegL, GeoDegR;
@@ -516,6 +456,25 @@ class Interface
 				case 2:
 					Roe_jac(JacVL,JacVR,JacWL,JacWR, JacVn, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
 					break;
+				case 3:
+				{
+					
+
+					number FluxEO = 0.0;
+					number JacWn = 0.0;
+
+					// Use the SAME shared coefficient as Flux_ip().
+					const number Wn = 0.5*(WL+WR);
+
+					EO_flux_jac(FluxEO, JacWL, JacWR, JacWn, UL, UR, Wn);
+
+					// The slip interface receives zero mixture-advection velocity.
+					JacVL = 0.0;
+					JacVR = 0.0;
+					JacVn = 0.0;
+
+					break;
+				}
 				default:
 					UG_THROW("Wrong model selected for solving riemman problem: PropInterface has options"
 								   " model= 0, 1 , 2")
@@ -528,6 +487,7 @@ class Interface
 				UG_THROW("Non valid number for Jacobian in NonLinearTransportEquation JacWL = " <<JacWL<<"  JacWR = "<< JacWR << "  JacVL = "<< JacVL<<"  JacVR = "<< JacVR <<"  JacVn = "<< JacVn <<".\n");
 				
 			}
+			if(!(area > 0.0) || !std::isfinite(area)) UG_THROW("Transport flux: invalid face normal.");
 			
 			JacWL = area * JacWL;
 			JacWR = area * JacWR;
@@ -557,9 +517,10 @@ class Interface
 				boolSameU = false;
 			}*/
 	
-			
-			Flux_function( uL, wFL,  wSL, WL,  vWL, RhoL, Vel_ip, vDW, normal, m_mass_mean, boolGeomDegL, boolMagDegL, boolFlux, boolFluxDeriv );
-			Flux_function( uR, wFR,  wSR, WR,  vWR, RhoR, Vel_ip, vDW, normal, m_mass_mean, boolGeomDegR, boolMagDegR, boolFlux, boolFluxDeriv );
+			MathVector<dim> vWip;
+			VecScaleAdd(vWip, 0.5, vWL, 0.5, vWR);
+			Flux_function( uL, wFL, wSL, WL, vWip, RhoL, Vel_ip, vDW, normal, m_mass_mean, boolGeomDegL, boolMagDegL, boolFlux, boolFluxDeriv );
+			Flux_function( uR, wFR, wSR, WR, vWip, RhoR, Vel_ip, vDW, normal, m_mass_mean, boolGeomDegR, boolMagDegR, boolFlux, boolFluxDeriv );
 			Vn = VecProd(Vel_ip,normal);
 			
 			
@@ -595,7 +556,7 @@ class Interface
 			
 			if (Smag < epsilon)
 				boolMagDeg = true;
-			if(Flux_prime/Smag < epsilon &&  Smag>epsilon)
+			if(Smag > epsilon && std::fabs(Flux_prime)/Smag < epsilon)
 				boolGeomDeg = true;
 				
 			Wn = VecProd(vW, normal);
@@ -607,7 +568,7 @@ class Interface
 
 		void Godunov_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn, const number Wn)
 		{
-			UG_THROW("Interface Godunov flux Module: Not implemented with W/rho");
+			
 			number fL = Vn*UL + wFL;
 			number fR = Vn*UR + wFR;
 			
@@ -700,7 +661,6 @@ class Interface
 		void Godunov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
 			
-			UG_THROW("Interface Godunov flux Jac : Not implemented with W/rho");
 			const number SL = Vn + wSL;
 			const number SR = Vn + wSR;
 			number Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
@@ -740,8 +700,7 @@ class Interface
 						JacVL = (Sw > 0)?  Vn : 0.0;
 						JacVR = (Sw > 0)? 0.0 : Vn;
 						
-						UG_THROW("JacVn Godunov flux Jac : Not implemented");
-						
+	
 					}
 					
 					
@@ -756,7 +715,7 @@ class Interface
 					JacVL = (Sw > 0)?  Vn : 0.0;
 					JacVR = (Sw > 0)? 0.0 : Vn;
 					
-					UG_THROW("JacVn Godunov flux Jac : Not implemented");
+	
 				}
 			} else {
 				// Shock/Decreasing case: Look for a Maximum
@@ -771,7 +730,7 @@ class Interface
 						JacVL = (Sw > 0)?  Vn : 0.0;
 						JacVR = (Sw > 0)? 0.0 : Vn;
 						
-						UG_THROW("JacVn Godunov flux Jac : Not implemented");
+				
 						
 						
 					}
@@ -788,7 +747,7 @@ class Interface
 					JacVL = (Sw > 0)?  Vn : 0.0;
 					JacVR = (Sw > 0)? 0.0 : Vn;
 					
-					UG_THROW("JacVn Godunov flux Jac : Not implemented");
+
 					
 				}
 			}
@@ -913,7 +872,7 @@ class Interface
 
 			//const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
 			const number epsAbs = 1e-8;
-			const number epsMax = 1e-4;
+			const number epsMax = 1e-8;
 			const number absSL = SmoothAbs(wSL, epsAbs);
 			const number absSR = SmoothAbs(wSR, epsAbs);
 			const number S = SmoothMax(absSL, absSR, epsMax);
@@ -930,7 +889,7 @@ class Interface
 		void Rusanov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
 			const number epsAbs = 1e-8;
-			const number epsMax = 1e-4;
+			const number epsMax = 1e-8;
 
 			const number absSL = SmoothAbs(wSL, epsAbs);
 			const number absSR = SmoothAbs(wSR, epsAbs);
@@ -959,86 +918,64 @@ class Interface
 			JacVL = (Vn > 0.0) ? Vn : 0.0;
 			JacVR = (Vn > 0.0) ? 0.0 : Vn;
 
-			JacVn = (Vn > 0.0) ? UL : UR;
+			JacVn = 0.0;
 		}
 		void Roe_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn, const number Wn)
 		{
-			UG_THROW("Interface Roe flux : Not implemented with W/rho");
-			number S;
-			const number SR =Vn + wSR;
-			const number SL =Vn + wSL;
-			
-			
-			S = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
-			//Entropy fixing Harten-Hyman
-			number S_abs = Harten_Hyman( S, SL, SR);
-			
-			
-			//Flux = (Vn > 0)? UL*Vn:UR*Vn;
-			
-			
-			Flux = 0.5 * (UL + UR)*Vn;
-			Flux +=   0.5 * (wFL + wFR) - 0.5*S_abs*(UR-UL);
+			if(Vn != 0.0) UG_THROW("Roe: this implementation handles slip only.");
+
+			DiffFlux = 0.0;
+
+			const number S = Wn*(1.0-UL-UR);
+			const number S_abs = Harten_Hyman(S, wSL, wSR);
+
+			Flux = 0.5*(wFL+wFR)-0.5*S_abs*(UR-UL);
 			
 		}
 		void Roe_jac(number& JacVL,number& JacVR, number& JacWL,number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
-			UG_THROW("Interface Roe flux Jac : Not implemented with W/rho");
-			number S;
-			const number SR =Vn + wSR;
-			const number SL =Vn + wSL;
-			
-			
-			S = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
-			//Entropy fixing Harten-Hyman
-			number S_abs = Harten_Hyman( S, SL, SR);
-			
-			JacWL = 0.5*(wSL) + 0.5*S_abs;
-			JacWR = 0.5*(wSR) - 0.5*S_abs;
-			
-			
-			//JacVL = (Vn > 0)?  Vn : 0.0;
-			//JacVR = (Vn > 0)? 0.0 : Vn;
-			JacVL =  0.5 * Vn;
-			JacVR =  0.5 * Vn;
-			
-			JacVn = 0.5 * (UL + UR);
+			if(Vn != 0.0) UG_THROW("Roe Jacobian: this implementation handles slip only.");
+
+			JacVL = JacVR = JacWL = JacWR = JacVn = 0.0;
+
+			const number Wn = 0.5*WL+0.5*WR;
+			const number S = Wn*(1.0-UL-UR);
+			const number delta = std::fmax(0.0, Wn*(UL-UR));
+
+			number S_abs = std::fabs(S);
+			number dS_abs_dUL, dS_abs_dUR;
+
+			if(delta > 0.0 && std::fabs(S) < delta)
+			{
+				const number ratio = S/delta;
+				const number dA_dDelta = 0.5*(1.0-ratio*ratio);
+
+				S_abs = 0.5*(S*ratio+delta);
+				dS_abs_dUL = -Wn*ratio+Wn*dA_dDelta;
+				dS_abs_dUR = -Wn*ratio-Wn*dA_dDelta;
+			}
+			else
+			{
+				const number signS = S > 0.0 ? 1.0 : (S < 0.0 ? -1.0 : 0.0);
+
+				dS_abs_dUL = dS_abs_dUR = -Wn*signS;
+			}
+
+			const number jump = UR-UL;
+
+			JacWL = 0.5*wSL+0.5*S_abs-0.5*jump*dS_abs_dUL;
+			JacWR = 0.5*wSR-0.5*S_abs-0.5*jump*dS_abs_dUR;
 			
 			
 		}
 		//Entropy fixing Harten-Hyman
 		number Harten_Hyman(const number S, const number SL, const number SR)
 		{
-			// 1. Global Background Diffusion (The "Epsilon")
-			// This ensures the matrix is never singular.
-			//const number S_max = SmoothMax(fabs(SL), fabs(SR),1e-06);
-			//const number epsilon = m_delta * S_max + 1e-12; // Small floor to avoid div by zero
-	
+			const number delta = std::fmax(0.0, std::fmax(S-SL, SR-S));
 
-			// 3. Rarefaction (Entropy) Fix
-			/*if(SL < 0.0 && SR > 0.0)
-			{
-				// Use the physical speeds to determine the fan width
-				number delta = SmoothMax(SmoothMax(0.0, S - SL,1e-06), SR - S, 1e-06);
-				
-				// Ensure delta is at least as large as our global epsilon
-				delta = SmoothMax(delta, epsilon, 1e-06);
+			if(delta > 0.0 && std::fabs(S) < delta) return 0.5*(S*(S/delta)+delta);
 
-				if (fabs(S) < delta) {
-					S_abs = (S*S + delta*delta) / (2.0 * delta);
-				}
-			}*/
-			
-			// Use the physical speeds to determine the fan width
-			number epsilon = SmoothMax(SmoothMax(0.0, S - SL,1e-06), SR - S, 1e-06);
-			
-			// Ensure delta is at least as large as our global epsilon
-			//delta = SmoothMax(delta, epsilon, 1e-06);
-			
-			// 2. Initial smoothed absolute value
-			number S_abs = (fabs(S) <= epsilon) ? (S*S + epsilon*epsilon)/(2.0*epsilon) : fabs(S);
-			
-			return S_abs;
+			return std::fabs(S);
 		}
 	
 		//Entropy fixing Harten-Hyman
@@ -1060,73 +997,50 @@ class Interface
 			return S_abs;
 		}*/
 
-		inline number FluxPlus (const number U);
-		inline number FluxMinus(const number U);
-
-		void EO_flux(number& Flux, number& DiffFlux,
-					 const number UL,
-					 const number UR,
-					 const number wSL,
-					 const number wSR,
-					 const number wFL,
-					 const number wFR,
-					 const number Vn, const number Wn)
+		// Regularized Engquist-Osher flux for g(c) = Wn*c*(1-c).
+		// JacL and JacR hold Wn fixed. JacWn differentiates the shared face coefficient.
+		void EO_flux_jac(number& Flux, number& JacL, number& JacR, number& JacWn, const number UL, const number UR, const number Wn)
 		{
+			// Velocity units: adjust this fixed reference value if your units differ.
+			const number epsW = 1e-8;
 
-			Flux = (Vn > 0.0) ? UL*Vn : UR*Vn;
+			if(!std::isfinite(UL) || !std::isfinite(UR) || !std::isfinite(Wn))
+			{
+				UG_THROW("EO flux: non-finite concentration or slip velocity.");
+			}
 
-			Flux += FluxPlus(UL);
-			Flux += FluxMinus(UR);
+			const number hL = UL*(1.0-UL);
+			const number hR = UR*(1.0-UR);
+			const number tL = 1.0-2.0*UL;
+			const number tR = 1.0-2.0*UR;
+			const number absW = std::hypot(Wn, epsW);
 
-		}
-		void EO_jac(number& JacVL,
-					number& JacVR,
-					number& JacWL,
-					number& JacWR,
-					const number UL,
-					const number UR,
-					const number wSL,
-					const number wSR,
-					const number wFL,
-					const number wFR,
-					const number Vn)
-		{
+			// Oriented integral from UL to UR of |1-2*s|.
+			// This avoids subtracting nearly equal primitive values in smooth regions.
+			number Integral;
 
-			JacWL = (wSL > 0.0) ? wSL : 0.0;
-			JacWR = (wSR < 0.0) ? wSR : 0.0;
+			if((tL >= 0.0 && tR >= 0.0) || (tL <= 0.0 && tR <= 0.0))
+			{
+				Integral = (UR-UL)*std::fabs(1.0-UL-UR);
+			}
+			else
+			{
+				Integral = 0.25*(tL*std::fabs(tL)-tR*std::fabs(tR));
+			}
 
-			JacVL = (Vn > 0.0) ? Vn : 0.0;
-			JacVR = (Vn > 0.0) ? 0.0 : Vn;
+			Flux = 0.5*Wn*(hL+hR)-0.5*absW*Integral;
 
-		}
-		void Engquist_Osher_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn, const number Wn)
-		{
-			// 1. Passive advection splitting (Vn)
-			number Flux_Vn = (Vn > 0.0) ? UL * Vn : UR * Vn;
+			// Exact concentration derivatives of the flux above.
+			JacL = 0.5*(Wn*tL+absW*std::fabs(tL));
+			JacR = 0.5*(Wn*tR-absW*std::fabs(tR));
 
-			// 2. Physical flux splitting based on sign of local characteristic wave speeds
-			// f+(u) uses the left state (UL) and captures positive wave speeds
-			// f-(u) uses the right state (UR) and captures negative wave speeds
-			number wFL_plus  = SmoothMax(wFL, 0.0, 1e-06);
-			number wFR_minus = SmoothMin(wFR, 0.0, 1e-06);
+			// Exact derivative with respect to the shared normal slip velocity.
+			JacWn = 0.5*(hL+hR)-0.5*(Wn/absW)*Integral;
 
-			// Total Engquist-Osher Numerical Flux
-			Flux = Flux_Vn + wFL_plus + wFR_minus;
-		}
-
-		void Engquist_Osher_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number Vn)
-		{
-			// 1. Derivatives of the passive advection velocity (Vn)
-			JacVL = (Vn > 0.0) ? Vn : 0.0;
-			JacVR = (Vn > 0.0) ? 0.0 : Vn;
-
-			// 2. Derivatives of the numerical flux with respect to characteristic speeds
-			// JacWL is d(Flux)/d(UL), which depends on whether the left wave speed is positive
-			// JacWR is d(Flux)/d(UR), which depends on whether the right wave speed is negative
-			
-			// Smooth derivative approximations corresponding to max(wSL, 0) and min(wSR, 0)
-			JacWL = SmoothMax(wSL, 0.0, 1e-06);
-			JacWR = SmoothMin(wSR, 0.0, 1e-06);
+			if(!std::isfinite(Flux) || !std::isfinite(JacL) || !std::isfinite(JacR) || !std::isfinite(JacWn))
+			{
+				UG_THROW("EO flux: non-finite flux or derivative.");
+			}
 		}
 	 
 
