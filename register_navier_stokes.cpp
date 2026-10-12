@@ -348,6 +348,7 @@ static void Dimension(Registry& reg, string grp)
 			.add_method("set_threshold_friction_velocity", &T::set_threshold_friction_velocity)
 			.add_method("set_normal_epsilon", &T::set_normal_epsilon)
 			.add_method("set_delta_epsilon", &T::set_delta_epsilon)
+			.add_method("set_velocity_epsilon", &T::set_velocity_epsilon)
 			.add_method("set_direction_mode", &T::set_direction_mode)
 			.add_constructor()
 			.set_construct_as_smart_pointer(true);
