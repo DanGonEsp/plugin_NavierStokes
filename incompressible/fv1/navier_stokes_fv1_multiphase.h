@@ -288,6 +288,14 @@ class NavierStokesFV1M
 		{
 			m_mass_mean = user;
 		}
+		void set_viscosity_averaging(const std::string& method)
+		{
+			if(method == "arithmetic") m_viscosity_averaging = 0;
+			else if(method == "harmonic") m_viscosity_averaging = 1;
+			else if(method == "blended") m_viscosity_averaging = 2;
+			else if(method == "interpolated") m_viscosity_averaging = 3;
+			else UG_THROW("Unknown viscosity averaging method: " << method);
+		}
 	
     
     ///    returns the export of the VolumeFractions
@@ -843,6 +851,7 @@ class NavierStokesFV1M
 		bool m_mass_mean = false;
 		int m_upwind_vol_method = 0;
 		bool m_saltation_transport = false;
+		int m_viscosity_averaging = 2;
 
 		virtual void init();
 

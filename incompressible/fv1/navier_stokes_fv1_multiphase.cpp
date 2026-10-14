@@ -4877,9 +4877,6 @@ ex_nodal_mix_viscosity(number vValue[],
 	static const int refDim = ref_elem_type::dim;
 	static const size_t numSH = ref_elem_type::numCorners;
 
-	const bool BlendedMs = m_saltation_transport;
-	const bool constantMs = !BlendedMs;
-
 	const number cInterface = Inter->interface_value();
 	const number cWidth = 0.10;
 
@@ -4947,10 +4944,18 @@ ex_nodal_mix_viscosity(number vValue[],
 	const number ViscosityH = 1.0 / ViscosityInvH;
 
 	// Quintic C2-smooth blending parameter.
-	number beta = 1.0;
+	number beta = 0.0;
 	number Dbeta = 0.0;
 
-	if(BlendedMs)
+	if(m_viscosity_averaging == 0)
+	{
+		beta = 0.0;
+	}
+	else if(m_viscosity_averaging == 1)
+	{
+		beta = 1.0;
+	}
+	else if(m_viscosity_averaging == 2)
 	{
 		if(cAverage >= cInterface + cWidth)
 		{
@@ -4966,10 +4971,6 @@ ex_nodal_mix_viscosity(number vValue[],
 			Dbeta = -30.0*t2*(1.0-t)*(1.0-t)/cWidth;
 		}
 	}
-	else
-	{
-		beta = 0.0;
-	}
 
 	const number ViscosityBlend = (1.0-beta)*ViscosityA + beta*ViscosityH;
 
@@ -4978,45 +4979,35 @@ ex_nodal_mix_viscosity(number vValue[],
 	{
 		for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 		{
-			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+			if(m_viscosity_averaging == 3)
+			{
+				const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
 
-			if(BlendedMs)
-			{
-				vValue[ip] = ViscosityBlend;
-			}
-			else if(constantMs)
-			{
-				vValue[ip] = ViscosityA;
+				vValue[ip] = 0.0;
+				for(size_t sh = 0; sh < numSH; ++sh)
+					vValue[ip] += Ms[sh]*scvf.shape(sh);
 			}
 			else
 			{
-				vValue[ip] = 0.0;
-
-				for(size_t sh = 0; sh < numSH; ++sh)
-					vValue[ip] += Ms[sh]*scvf.shape(sh);
+				vValue[ip] = ViscosityBlend;
 			}
 
 			if(bDeriv)
 			{
 				for(size_t sh = 0; sh < numSH; ++sh)
 				{
-					const number weight = geo.scv(sh).volume() / Volume;
-
-					if(BlendedMs)
+					if(m_viscosity_averaging == 3)
 					{
+						vvvDeriv[ip][_C_][sh] = DMs[sh]*geo.scvf(ip).shape(sh);
+					}
+					else
+					{
+						const number weight = geo.scv(sh).volume() / Volume;
 						const number DA = weight*DMs[sh];
 						const number DH = weight*DMs[sh]*(ViscosityH/Ms[sh])*(ViscosityH/Ms[sh]);
 						const number DB = Dbeta*weight*(ViscosityH-ViscosityA);
 
 						vvvDeriv[ip][_C_][sh] = (1.0-beta)*DA + beta*DH + DB;
-					}
-					else if(constantMs)
-					{
-						vvvDeriv[ip][_C_][sh] = weight*DMs[sh];
-					}
-					else
-					{
-						vvvDeriv[ip][_C_][sh] = DMs[sh]*scvf.shape(sh);
 					}
 				}
 			}
@@ -5047,45 +5038,35 @@ ex_nodal_mix_viscosity(number vValue[],
 
 		for(size_t ip = 0; ip < nip; ++ip)
 		{
-			rTrialSpace.shapes(vShape, vLocIP[ip]);
+			if(m_viscosity_averaging == 3)
+			{
+				rTrialSpace.shapes(vShape, vLocIP[ip]);
 
-			if(BlendedMs)
-			{
-				vValue[ip] = ViscosityBlend;
-			}
-			else if(constantMs)
-			{
-				vValue[ip] = ViscosityA;
+				vValue[ip] = 0.0;
+				for(size_t sh = 0; sh < numSH; ++sh)
+					vValue[ip] += Ms[sh]*vShape[sh];
 			}
 			else
 			{
-				vValue[ip] = 0.0;
-
-				for(size_t sh = 0; sh < numSH; ++sh)
-					vValue[ip] += Ms[sh]*vShape[sh];
+				vValue[ip] = ViscosityBlend;
 			}
 
 			if(bDeriv)
 			{
 				for(size_t sh = 0; sh < numSH; ++sh)
 				{
-					const number weight = geo.scv(sh).volume() / Volume;
-
-					if(BlendedMs)
+					if(m_viscosity_averaging == 3)
 					{
+						vvvDeriv[ip][_C_][sh] = DMs[sh]*vShape[sh];
+					}
+					else
+					{
+						const number weight = geo.scv(sh).volume() / Volume;
 						const number DA = weight*DMs[sh];
 						const number DH = weight*DMs[sh]*(ViscosityH/Ms[sh])*(ViscosityH/Ms[sh]);
 						const number DB = Dbeta*weight*(ViscosityH-ViscosityA);
 
 						vvvDeriv[ip][_C_][sh] = (1.0-beta)*DA + beta*DH + DB;
-					}
-					else if(constantMs)
-					{
-						vvvDeriv[ip][_C_][sh] = weight*DMs[sh];
-					}
-					else
-					{
-						vvvDeriv[ip][_C_][sh] = DMs[sh]*vShape[sh];
 					}
 				}
 			}
