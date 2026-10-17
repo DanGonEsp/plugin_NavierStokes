@@ -1531,8 +1531,8 @@ public:
 		}
 
 		// Transfer the final normals after averaging and normalization.
-		//transferToLowerLevels(m_new_normal);
-		//transferToLowerLevels(m_old_normal);
+		transferToLowerLevels(m_new_normal);
+		transferToLowerLevels(m_old_normal);
 	}
 
 private:

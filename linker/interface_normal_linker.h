@@ -59,7 +59,7 @@ class InterfaceNormalLinker
 
         {
         //    this linker needs exactly five input
-            this->set_num_input(2);
+            this->set_num_input(1);
         }
 
 

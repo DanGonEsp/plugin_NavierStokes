@@ -137,21 +137,21 @@ class Interface
 				const number p0 = Fr *pow(  Co-alpha_min,3) /pow(alpha_max-Co,5);
 				const number dp0 = Fr * pow( Co-alpha_min,2) * (2.0*Co+3.0*alpha_max-5.0*alpha_min)/pow(alpha_max-Co,6.0);
 				pff = dp0*(phi-Co)+p0;
-				pa = 0.0;//*mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
+				pa = mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
 				if(DERIVATIVE)
 				{
 					dpff = dp0;
-					//dpa = 2*mu_a*(1.0+St)*pow(B_phi,2.0)*phi*alpha_max*gamma/(pow(alpha_max-phi,3));
+					dpa = 2*mu_a*(1.0+St)*pow(B_phi,2.0)*phi*alpha_max*gamma/(pow(alpha_max-phi,3));
 				}
 			}
 			else if(phi >= alpha_min)
 			{
 				pff = Fr *pow(  phi-alpha_min,3) /pow(alpha_max-phi,5);
-				pa = 0.0;//*mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
+				pa = mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
 				if (DERIVATIVE)
 				{
 					dpff =  Fr * pow( phi-alpha_min,2) * (2.0*phi+3.0*alpha_max-5.0*alpha_min)/pow(alpha_max-phi,6.0);
-					//dpa = 2*mu_a*(1.0+St)*pow(B_phi,2.0)*phi*alpha_max*gamma/(pow(alpha_max-phi,3));
+					dpa = 2*mu_a*(1.0+St)*pow(B_phi,2.0)*phi*alpha_max*gamma/(pow(alpha_max-phi,3));
 				}
 			}
 			

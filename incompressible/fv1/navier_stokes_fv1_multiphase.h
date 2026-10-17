@@ -296,6 +296,13 @@ class NavierStokesFV1M
 			else if(method == "interpolated") m_viscosity_averaging = 3;
 			else UG_THROW("Unknown viscosity averaging method: " << method);
 		}
+		/// Selects the density model: linear or harmonic.
+		void set_density_export_model(const std::string& model)
+		{
+			if(model == "linear") m_density_export_model = 0;
+			else if(model == "harmonic") m_density_export_model = 1;
+			else UG_THROW("Unknown density export model: " << model << ". Use linear or harmonic.");
+		}
 	
     
     ///    returns the export of the VolumeFractions
@@ -306,9 +313,11 @@ class NavierStokesFV1M
         SmartPtr<CplUserData<number, dim> > einstein_viscosity() {return m_exEinsteinViscosity;}
 	///    returns the export of the Mix Viscosity
 		SmartPtr<CplUserData<number, dim> > mix_viscosity() {return m_exMixViscosity;}
-    ///    returns the export of the PariclePressure
+	/// Returns the exported mixture density.
+		SmartPtr<CplUserData<number, dim> > mix_density() {return m_exMixDensity;}
+    /// Returns the export of the PariclePressure
         SmartPtr<CplUserData<number, dim> > particle_pressure() {return m_exPsPressure;}
-    ///    returns the export of the ParticlePressure gradient
+    /// returns the export of the ParticlePressure gradient
         SmartPtr<CplUserData<MathVector<dim>, dim> > particle_pressure_grad() {return m_exPsPressureGrad;}
     
 			
@@ -332,6 +341,8 @@ class NavierStokesFV1M
     SmartPtr<DataExport<number,dim> > m_exEinsteinViscosity;
 	///    Export for the Mix Viscosity
 	SmartPtr<DataExport<number,dim> > m_exMixViscosity;
+	///    Export for the Mix Density
+	SmartPtr<DataExport<number,dim> > m_exMixDensity;
     
 
 
@@ -749,6 +760,18 @@ class NavierStokesFV1M
 							  const size_t nip,
 							  bool bDeriv,
 							  std::vector<std::vector<number > > vvvDeriv[]);
+	///    export mixture density computed at nodes and interpolated at requested integration points.
+	template <typename TElem, typename TFVGeom>
+	void ex_nodal_mix_density(number vValue[],
+							  const MathVector<dim> vGlobIP[],
+							  number time, int si,
+							  const LocalVector& u,
+							  GridObject* elem,
+							  const MathVector<dim> vCornerCoords[],
+							  const MathVector<TFVGeom::dim> vLocIP[],
+							  const size_t nip,
+							  bool bDeriv,
+							  std::vector<std::vector<number> > vvvDeriv[]);
     ///    export value of the partilce pressure
         template <typename TElem, typename TFVGeom>
         void ex_nodal_particle_pressure(number vValue[],
@@ -852,6 +875,7 @@ class NavierStokesFV1M
 		int m_upwind_vol_method = 0;
 		bool m_saltation_transport = false;
 		int m_viscosity_averaging = 2;
+		int m_density_export_model = 0;
 
 		virtual void init();
 

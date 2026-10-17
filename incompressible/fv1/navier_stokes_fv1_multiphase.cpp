@@ -53,6 +53,7 @@ NavierStokesFV1M<TDomain>::NavierStokesFV1M(const char* functions,
     m_exVolumeFractionGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions));
     m_exEinsteinViscosity = make_sp(new DataExport<number, dim>(functions));
 	m_exMixViscosity = make_sp(new DataExport<number, dim>(functions));
+	m_exMixDensity = make_sp(new DataExport<number, dim>(functions));
     m_exPsPressure = make_sp(new DataExport<number, dim>(functions));
     m_exPsPressureGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions));
     init();
@@ -73,6 +74,7 @@ NavierStokesFV1M<TDomain>::NavierStokesFV1M(const std::vector<std::string>& vFct
     m_exVolumeFractionGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions.c_str()));
     m_exEinsteinViscosity = make_sp(new DataExport<number, dim>(functions.c_str()));
 	m_exMixViscosity = make_sp(new DataExport<number, dim>(functions.c_str()));
+	m_exMixDensity = make_sp(new DataExport<number, dim>(functions.c_str()));
     m_exPsPressure = make_sp(new DataExport<number, dim>(functions.c_str()));
     m_exPsPressureGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions.c_str()));
     init();
@@ -351,12 +353,11 @@ prep_elem_loop(const ReferenceObjectID roid, const int si)
 	}
 		
     
-	if(!m_saltation_transport)
-	{
-		if(m_spConvUpwind_vol.invalid())
-			UG_THROW("Upwinding for c*u transport has not been set.");
-		m_spConvUpwind_vol->template set_geometry_type<TFVGeom>();
-	}
+	if(m_spConvUpwind_vol.invalid())
+		UG_THROW("Upwinding for volume fraction transport has not been set.");
+
+	m_spConvUpwind_vol->template set_geometry_type<TFVGeom>();
+	
 	if(Inter == NULL)
 		UG_THROW("NavierStokes Multiphase: Interface parameters have not been set");
     
@@ -564,6 +565,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	const number alpha_max = Inter->Alpha_max();
 	
 	
+	
 	int JumpShape[numSh];
 	bool Phase2[numSCVF];
 	bool GFM[numSCVF] = {false};
@@ -645,6 +647,10 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 			else
 				TransportingVel_ip[ip] = StdVel_ip[ip];
 		}
+		else
+		{
+			TransportingVel_ip[ip] = m_imSaltationFlux[ip];
+		}
 	}
 	
 	//if(m_imRelativeVelocitySCV.data_given() || m_imSlipVelocitySCVF.data_given())
@@ -674,11 +680,9 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 	}
 	
 
-	if(!m_saltation_transport)
-	{
-		if(m_spConvUpwind_vol.valid())
-			m_spConvUpwind_vol->update(&geo, TransportingVel_ip);
-	}
+	if(m_spConvUpwind_vol.valid())
+		m_spConvUpwind_vol->update(&geo, TransportingVel_ip);
+
 
 	//    compute upwind shapes
 	//if(m_spConvUpwind_rel.valid() && m_imRelativeVelocitySCVF.data_given())
@@ -1267,7 +1271,7 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
             ////////////////////////////////////////////////////
             
 
-			if(!m_saltation_transport)
+			if(!m_saltation_transport || m_saltation_transport)
 			{
 				const number cu_flux_sh = upwind_vol.upwind_shape_sh(ip, sh)*VecProd(TransportingVel_ip[ip], scvf.normal());
 
@@ -1736,6 +1740,10 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 			else
 				TransportingVel_ip[ip] = StdVel_ip[ip];
 		}
+		else
+		{
+			TransportingVel_ip[ip] = m_imSaltationFlux[ip];
+		}
 	}
 
 		
@@ -1765,13 +1773,10 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 
     }
 	
-	if(!m_saltation_transport)
-	{
-		if(m_spConvUpwind_vol.invalid())
-			UG_THROW("Upwinding for c*u transport has not been set.");
+	if(m_spConvUpwind_vol.invalid())
+		UG_THROW("Upwinding for volume fraction transport has not been set.");
 
-		m_spConvUpwind_vol->update(&geo, TransportingVel_ip);
-	}
+	m_spConvUpwind_vol->update(&geo, TransportingVel_ip);
     
 
 
@@ -2085,8 +2090,8 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
 		}
 		else
 		{
-			const number rho_bed = Inter->Density_s()*Inter->packing_factor();
-			const number salt_flux = VecProd(m_imSaltationFlux[ip], scvf.normal())/rho_bed;
+			const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
+			const number salt_flux = C_up_vol*VecProd(TransportingVel_ip[ip], scvf.normal());
 
 			d(_C_, scvf.from()) += salt_flux;
 			d(_C_, scvf.to()) -= salt_flux;
@@ -3620,14 +3625,28 @@ lin_def_saltation_flux(const LocalVector& u,
 		for(size_t fct = 0; fct < vvvLinDef[ip].size(); ++fct)
 			for(size_t sh = 0; sh < vvvLinDef[ip][fct].size(); ++sh)
 				VecSet(vvvLinDef[ip][fct][sh], 0.0);
+	
+	static const size_t numSCVF = TFVGeom::numSCVF;
+	MathVector<dim> TransportingVel_ip[numSCVF] = {0};
 
-	const number rho_bed = Inter->Density_s()*Inter->packing_factor();
+	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
+		TransportingVel_ip[ip] = m_imSaltationFlux[ip];
+
+	if(m_spConvUpwind_vol.invalid())
+		UG_THROW("Upwinding for volume fraction transport has not been set.");
+
+	m_spConvUpwind_vol->update(&geo, TransportingVel_ip);
+
+	const INavierStokesUpwind<dim>& upwind_vol = *m_spConvUpwind_vol;
+
 	for(size_t ip = 0; ip < geo.num_scvf(); ++ip)
 	{
 		const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
-		MathVector<dim> normal;
+		const number C_up_vol = upwind_vol.upwind_value(ip, u, _C_);
 
-		VecScale(normal, scvf.normal(), 1.0/rho_bed);
+		MathVector<dim> normal;
+		VecScale(normal, scvf.normal(), C_up_vol);
+
 
 		vvvLinDef[ip][_C_][scvf.from()] += normal;
 		vvvLinDef[ip][_C_][scvf.to()] -= normal;
@@ -5077,6 +5096,176 @@ ex_nodal_mix_viscosity(number vValue[],
 template<typename TDomain>
 template <typename TElem, typename TFVGeom>
 void NavierStokesFV1M<TDomain>::
+ex_nodal_mix_density(number vValue[],
+					 const MathVector<dim> vGlobIP[],
+					 number time, int si,
+					 const LocalVector& u,
+					 GridObject* elem,
+					 const MathVector<dim> vCornerCoords[],
+					 const MathVector<TFVGeom::dim> vLocIP[],
+					 const size_t nip,
+					 bool bDeriv,
+					 std::vector<std::vector<number> > vvvDeriv[])
+{
+	// Initialize all derivatives to zero.
+	if(bDeriv)
+	{
+		for(size_t ip = 0; ip < nip; ++ip)
+			for(size_t fct = 0; fct < vvvDeriv[ip].size(); ++fct)
+				for(size_t sh = 0; sh < vvvDeriv[ip][fct].size(); ++sh)
+					vvvDeriv[ip][fct][sh] = 0.0;
+	}
+
+	if(!Inter)
+		UG_THROW("NavierStokesFV1M: Phase parameters have not been set for density export.");
+
+	// Phase densities and maximum packing fraction.
+	const number rho_a = Inter->Density_a();
+	const number rho_max = Inter->Density_max();
+
+	if(!std::isfinite(rho_a) || !std::isfinite(rho_max) || rho_a <= 0.0 || rho_max <= 0.0)
+		UG_THROW("NavierStokesFV1M: Invalid mixture density parameters.");
+
+	typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
+	static const size_t numSH = ref_elem_type::numCorners;
+
+	number Rho[numSH];
+	number DRho[numSH];
+
+	const number Drho = rho_max-rho_a;
+	const number DinvRho = 1.0/rho_max-1.0/rho_a;
+	const number eps = 1e-09;
+
+	for(size_t sh = 0; sh < numSH; ++sh)
+	{
+		const number c = u(_C_, sh);
+
+		if(!std::isfinite(c))
+			UG_THROW("NavierStokesFV1M: Invalid concentration at node " << sh);
+
+		// Smooth positive-part regularization.
+		const number cReg = 0.5*(c + std::sqrt(c*c + eps*eps));
+		const number DcReg = 0.5*(1.0 + c/std::sqrt(c*c + eps*eps));
+
+		switch(m_density_export_model)
+		{
+			case 0:
+			{
+				Rho[sh] = rho_a + cReg*Drho;
+
+				if(bDeriv)
+					DRho[sh] = Drho*DcReg;
+
+				break;
+			}
+
+			case 1:
+			{
+				const number invRho = 1.0/rho_a + cReg*DinvRho;
+
+				if(!std::isfinite(invRho) || invRho <= 0.0)
+					UG_THROW("NavierStokesFV1M: Invalid harmonic density denominator at node " << sh);
+
+				Rho[sh] = 1.0/invRho;
+
+				if(bDeriv)
+					DRho[sh] = -Rho[sh]*Rho[sh]*DinvRho*DcReg;
+
+				break;
+			}
+
+			default:
+				UG_THROW("NavierStokesFV1M: Unknown density export model.");
+		}
+
+		if(!std::isfinite(Rho[sh]) || Rho[sh] <= 0.0)
+			UG_THROW("NavierStokesFV1M: Invalid nodal density at node " << sh);
+
+		if(bDeriv && !std::isfinite(DRho[sh]))
+			UG_THROW("NavierStokesFV1M: Invalid nodal density derivative at node " << sh);
+	}
+
+
+	// Obtain and update the finite volume geometry.
+	TFVGeom& geo = GeomProvider<TFVGeom>::get();
+
+	try
+	{
+		geo.update(elem, vCornerCoords, &(this->subset_handler()));
+	}
+	UG_CATCH_THROW("NavierStokesFV1M Density Export: Cannot update finite volume geometry.");
+
+	// ------------------------------------------------------------
+	// SCV integration points: return the associated nodal values.
+	// ------------------------------------------------------------
+	if(vLocIP == geo.scv_local_ips() && nip == geo.num_scv())
+	{
+		for(size_t ip = 0; ip < nip; ++ip)
+		{
+			const typename TFVGeom::SCV& scv = geo.scv(ip);
+			const size_t co = scv.node_id();
+
+			vValue[ip] = Rho[co];
+
+			if(bDeriv)
+				vvvDeriv[ip][_C_][co] = DRho[co];
+		}
+	}
+
+	// ------------------------------------------------------------
+	// SCVF integration points: interpolate nodal densities
+	// using the existing FV1 shape functions.
+	// ------------------------------------------------------------
+	else if(vLocIP == geo.scvf_local_ips() && nip == geo.num_scvf())
+	{
+		for(size_t ip = 0; ip < nip; ++ip)
+		{
+			const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+
+			vValue[ip] = 0.0;
+
+			for(size_t sh = 0; sh < numSH; ++sh)
+			{
+				const number weight = scvf.shape(sh);
+
+				vValue[ip] += weight*Rho[sh];
+
+				if(bDeriv)
+					vvvDeriv[ip][_C_][sh] = weight*DRho[sh];
+			}
+		}
+	}
+
+	// ------------------------------------------------------------
+	// Arbitrary integration points: interpolate nodal densities
+	// using the Lagrange P1 shape functions.
+	// ------------------------------------------------------------
+	else
+	{
+		LagrangeP1<ref_elem_type>& rTrialSpace = Provider<LagrangeP1<ref_elem_type> >::get();
+		number vShape[numSH];
+
+		for(size_t ip = 0; ip < nip; ++ip)
+		{
+			rTrialSpace.shapes(vShape, vLocIP[ip]);
+
+			vValue[ip] = 0.0;
+
+			for(size_t sh = 0; sh < numSH; ++sh)
+			{
+				vValue[ip] += Rho[sh]*vShape[sh];
+
+				if(bDeriv)
+					vvvDeriv[ip][_C_][sh] = DRho[sh]*vShape[sh];
+			}
+		}
+	}
+}
+
+
+template<typename TDomain>
+template <typename TElem, typename TFVGeom>
+void NavierStokesFV1M<TDomain>::
 ex_nodal_particle_pressure(number vValue[],
          const MathVector<dim> vGlobIP[],
          number time, int si,
@@ -5549,6 +5738,7 @@ register_func()
     m_exVolumeFractionGrad->template set_fct<T,refDim>(id, this, &T::template ex_volume_fraction_grad<TElem, TFVGeom>);
     m_exEinsteinViscosity->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_einstein_viscosity<TElem, TFVGeom>);
 	m_exMixViscosity->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_mix_viscosity<TElem, TFVGeom>);
+	m_exMixDensity->      template set_fct<T,refDim>(id, this, &T::template ex_nodal_mix_density<TElem, TFVGeom>);
     m_exPsPressure->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_particle_pressure<TElem, TFVGeom>);
     m_exPsPressureGrad->template set_fct<T,refDim>(id, this, &T::template ex_particle_pressure_grad<TElem, TFVGeom>);
 }
