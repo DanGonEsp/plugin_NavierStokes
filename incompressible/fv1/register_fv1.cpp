@@ -411,6 +411,7 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_mass_term", &T::set_mass_term)
 			.add_method("set_mass_mean", &T::set_mass_mean)
 			.add_method("set_viscosity_averaging", &T::set_viscosity_averaging)
+			.add_method("set_saltation_riemann", &T::set_saltation_riemann)
             .set_construct_as_smart_pointer(true);
         reg.add_class_to_group(name, "NavierStokesFV1M", tag);
     }

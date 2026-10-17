@@ -303,6 +303,7 @@ class NavierStokesFV1M
 			else if(model == "harmonic") m_density_export_model = 1;
 			else UG_THROW("Unknown density export model: " << model << ". Use linear or harmonic.");
 		}
+		void set_saltation_riemann(bool enable) {m_saltation_riemann = enable;}
 	
     
     ///    returns the export of the VolumeFractions
@@ -876,6 +877,7 @@ class NavierStokesFV1M
 		bool m_saltation_transport = false;
 		int m_viscosity_averaging = 2;
 		int m_density_export_model = 0;
+		bool m_saltation_riemann = true;
 
 		virtual void init();
 

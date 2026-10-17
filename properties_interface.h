@@ -381,15 +381,13 @@ class Interface
 					break;
 				case 3:
 				{
-
 					number JacL = 0.0;
 					number JacR = 0.0;
+					number JacVn = 0.0;
 					number JacWn = 0.0;
 
-					// Wn already uses the average of the left and right slip velocities.
-					EO_flux_jac(Flux, JacL, JacR, JacWn, UL, UR, Wn);
+					EO_flux_jac(Flux, JacL, JacR, JacVn, JacWn, UL, UR, Vn, Wn);
 
-					// This auxiliary quantity is unused in the supported volume-mean branch.
 					DiffFlux = 0.0;
 
 					break;
@@ -405,10 +403,6 @@ class Interface
 				
 			}
 			if(!(area > 0.0) || !std::isfinite(area)) UG_THROW("Transport flux: invalid face normal.");
-			if(Vn != 0.0)
-			{
-				UG_THROW("EO option 3 handles slip only; mixture advection must be assembled separately.");
-			}
 			
 			
 			
@@ -458,20 +452,15 @@ class Interface
 					break;
 				case 3:
 				{
-					
-
 					number FluxEO = 0.0;
 					number JacWn = 0.0;
 
-					// Use the SAME shared coefficient as Flux_ip().
 					const number Wn = 0.5*(WL+WR);
 
-					EO_flux_jac(FluxEO, JacWL, JacWR, JacWn, UL, UR, Wn);
+					EO_flux_jac(FluxEO, JacWL, JacWR, JacVn, JacWn, UL, UR, Vn, Wn);
 
-					// The slip interface receives zero mixture-advection velocity.
 					JacVL = 0.0;
 					JacVR = 0.0;
-					JacVn = 0.0;
 
 					break;
 				}
@@ -569,37 +558,35 @@ class Interface
 		void Godunov_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn, const number Wn)
 		{
 			
-			number fL = Vn*UL + wFL;
-			number fR = Vn*UR + wFR;
-			
-			number w_star = 0.5 * (WL + WR);
-			number u_star = 0.5*(1.0 + Vn/w_star);
-			number F_star = u_star * Vn + u_star * (1.0 - u_star) * w_star;
-			
-			const number SL = Vn + wSL;
-			const number SR = Vn + wSR;
-			const number Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
-			const number S_abs = m_delta * fmax(fabs(SL), fabs(SR));
 
-			if (UL <= UR) {
-				// Rarefaction/Increasing case: Look for a Minimum
-				if (UL <= u_star && u_star <= UR) {
-					// Sonic point is inside the range
-					Flux =  fmin(fmin(fL, fR),F_star);
-					Flux += -0.5*S_abs*(UR-UL);
-				}else{
-					Flux = (Sw > 0)? fL:fR;
-				}
-			} else {
-				// Shock/Decreasing case: Look for a Maximum
-				if (UR <= u_star && u_star <= UL) {
-					// Sonic point is inside the range
-					Flux =  fmax(fmax(fL, fR),F_star);
-					Flux += -0.5*S_abs*(UR-UL);
-				} else {
-					Flux = (Sw > 0)? fL:fR;
+			(void)wSL;
+			(void)wSR;
+			(void)WL;
+			(void)WR;
+
+			const number FL = Vn*UL+wFL;
+			const number FR = Vn*UR+wFR;
+
+			const bool minimum = UL <= UR;
+
+			Flux = minimum ? std::fmin(FL,FR) : std::fmax(FL,FR);
+
+			const number epsW = 1e-12;
+
+			if(std::fabs(Wn) > epsW)
+			{
+				const number uStar = 0.5*(1.0+Vn/Wn);
+
+				if(uStar >= std::fmin(UL,UR) && uStar <= std::fmax(UL,UR))
+				{
+					const number FStar = Vn*uStar+Wn*uStar*(1.0-uStar);
+
+					Flux = minimum ? std::fmin(Flux,FStar) : std::fmax(Flux,FStar);
 				}
 			}
+
+			DiffFlux = 0.0;
+			
 			/*
 			number Sw = 0.0;
 			number SR = Vn + wSR;
@@ -660,239 +647,89 @@ class Interface
 		}
 		void Godunov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
-			
-			const number SL = Vn + wSL;
-			const number SR = Vn + wSR;
-			number Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
-			const number S_abs = m_delta * fmax(fabs(SL), fabs(SR));
-			
-			int ShockCase; bool shock_elem; bool rarefaction_elem = false;
-			const number Smax = fmax(fabs(SR), fabs(SL));
-			const number Smin = fmin(fabs(SR), fabs(SL));
-			JacVL = 0.0;
-			JacVR = 0.0;
-			JacWL = 0.0;
-			JacWR = 0.0;
-			JacVn = 0.0;
-			
-			number eps_diss = 1e-02;
-			
-			
-			
-			
-			
-			number fL = Vn*UL + wFL;
-			number fR = Vn*UR + wFR;
-			
-			number w_star = 0.5 * (WL + WR);
-			number u_star = 0.5*(1.0 + Vn/w_star);
-			number F_star = u_star * Vn + u_star * (1.0 - u_star) * w_star;
+			JacVL = JacVR = JacWL = JacWR = JacVn = 0.0;
 
-			if (UL <= UR) {
-				// Rarefaction/Increasing case: Look for a Minimum
-				if (UL <= u_star && u_star <= UR) {
-					// Sonic point is inside the range
-					if(fmin(fL, fR) <= F_star)
-					{
-						JacWL = (Sw > 0)?  wSL: 0.0;
-						JacWR = (Sw > 0)? 0.0 : wSR;
-						
-						JacVL = (Sw > 0)?  Vn : 0.0;
-						JacVR = (Sw > 0)? 0.0 : Vn;
-						
-	
-					}
-					
-					
-					JacWL +=   0.5*S_abs;
-					JacWR += - 0.5*S_abs;
-					
-				}
-				else{
-					JacWL = (Sw > 0)?  wSL: 0.0;
-					JacWR = (Sw > 0)? 0.0 : wSR;
-					
-					JacVL = (Sw > 0)?  Vn : 0.0;
-					JacVR = (Sw > 0)? 0.0 : Vn;
-					
-	
-				}
-			} else {
-				// Shock/Decreasing case: Look for a Maximum
-				if (UR <= u_star && u_star <= UL)
+			const number Wn = 0.5*(WL+WR);
+
+			const number FL = Vn*UL+wFL;
+			const number FR = Vn*UR+wFR;
+
+			const bool minimum = UL <= UR;
+
+			bool takeL = minimum ? FL <= FR : FL >= FR;
+			bool takeR = !takeL;
+			bool takeStar = false;
+
+			number Flux = takeL ? FL : FR;
+			number uStar = 0.0;
+
+			const number epsW = 1e-12;
+
+			if(std::fabs(Wn) > epsW)
+			{
+				uStar = 0.5*(1.0+Vn/Wn);
+
+				if(uStar >= std::fmin(UL,UR) && uStar <= std::fmax(UL,UR))
 				{
-					// Sonic point is inside the range
-					if(fmax(fL, fR) >= F_star)
+					const number FStar = Vn*uStar+Wn*uStar*(1.0-uStar);
+
+					if((minimum && FStar < Flux) || (!minimum && FStar > Flux))
 					{
-						JacWL = (Sw > 0)?  wSL: 0.0;
-						JacWR = (Sw > 0)? 0.0 : wSR;
-						
-						JacVL = (Sw > 0)?  Vn : 0.0;
-						JacVR = (Sw > 0)? 0.0 : Vn;
-						
-				
-						
-						
+						takeL = false;
+						takeR = false;
+						takeStar = true;
 					}
-					
-					JacWL +=   0.5*S_abs;
-					JacWR += - 0.5*S_abs;
-						
-				}
-				else {
-					
-					JacWL = (Sw > 0)?  wSL: 0.0;
-					JacWR = (Sw > 0)? 0.0 : wSR;
-					
-					JacVL = (Sw > 0)?  Vn : 0.0;
-					JacVR = (Sw > 0)? 0.0 : Vn;
-					
-
-					
 				}
 			}
-			
-			/*if(fabs(UL-UR)< epsilon)
-			{
-				
-			}
-			
-			if(Smin < epsilon || fabs(uR-uL)< epsilon || fabs(FR-FL)< epsilon)
-			 {
-			 //VecScale( StdCharacteristicVel[ip],scvf.normal(), Smax/ face_norm);
-			 //ShockCase[ip] = 3;
-			 //chararcter[ip] = false;
-			 //continue;
-			 number Vel_n = VecProd(Vel_ip[ip],scvf.normal())/ face_norm;
-			 number Ws_n = 0.0;
-			 
-			 number WL = 0.0;
-			 number WR = 0.0;
-			 
-			 if(RelVelSCV.data_given())
-			 {
-			 Ws_n += 0.5 * (VecProd(RelVelSCV[shR],scvf.normal()) + VecProd(RelVelSCV[shL],scvf.normal()))/ face_norm;
-			 WL +=  VecProd(RelVelSCV[shL],scvf.normal()) / face_norm;
-			 WR +=  VecProd(RelVelSCV[shR],scvf.normal()) / face_norm;
-			 }
-			 if(SlipVelSCV.data_given())
-			 {
-			 Ws_n += 0.5 * (VecProd(SlipVelSCV[shR],scvf.normal()) + VecProd(SlipVelSCV[shL],scvf.normal()))/ face_norm;
-			 WL +=  VecProd(SlipVelSCV[shL],scvf.normal()) / face_norm;
-			 WR +=  VecProd(SlipVelSCV[shR],scvf.normal()) / face_norm;
-			 
-			 }
-			 
-			 UG_LOG("Ip = "<<ip<<" FL = "<< FL<<" FR = "<<FR<<" SL = "<< SL<<" SR = "<<SR<<" uL = "<<uL<< " uR =  "<<uR<<" WL = "<<WL<< " WR =  "<<WR<< " Vel = "<< Vel_n<< " Ws = "<<Ws_n << " \n");
-			 
-			 }*/
-			
-			/*if(fabs(uR-uL)< eps )
-			 {
-			 VecScaleAdd(StdCharacteristicVel[ip],  0.5, LocalCharact_total_L, 0.5,  LocalCharact_total_R );
-			 ShockCase[ip] = 0;
-			 chararcter[ip] = false;
-			 }*/
-			
-			
-			/*if ((SR * SL > 0.0) )
-			{
-				
 
-				ShockCase = 0;
-				
-				Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
-				
-				JacWL = (Sw > 0)?  wSL: 0.0;
-				JacWR = (Sw > 0)? 0.0 : wSR;
-				
-				JacVL = (Sw > 0)?  Vn : 0.0;
-				JacVR = (Sw > 0)? 0.0 : Vn;
-				
-				
-			}
-			else if ( (SL >0.0 && SR<0.0 ) )
+			if(takeL)
 			{
-				
-				shock_elem = true;
-				ShockCase= 1;
-				
-				Sw = RankineHugoniotCharac( UL, UR,  Vn,  0.5 *(WL + WR));
-				
-				JacWL = (Sw > 0)?  wSL: 0.0;
-				JacWR = (Sw > 0)? 0.0 : wSR;
-				
-				JacVL = (Sw > 0)?  Vn : 0.0;
-				JacVR = (Sw > 0)? 0.0 : Vn;
-				
-				//Roe_jac(JacVL,JacVR,JacWL,JacWR, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
-				
-				
+				JacVL = Vn;
+				JacWL = wSL;
+				JacVn = UL;
 			}
-			else if((SL <=0.0 && SR>=0.0 ) )
+			else if(takeR)
 			{
-				
-				//number F_star_jacL = 0.0;
-				//number F_star_jacR = 0.0;
-				//Compute_F_star_jac( F_star_jacL, F_star_jacR,  wFL,  wFR, SL, SR, UL,  UR, WL,  WR,  Vn);
-
-				ShockCase= 2;
-				rarefaction_elem = true;
-				
-				//if(!entropy)
-				//UG_LOG("Rarefaction error \n");
-				
-				number w_star = 0.5*(WL + WR);
-				number u_star = 0.5*(UL + UR);
-				
-				number wS_star =  (1- 2.0*u_star)*w_star;
-				
-				JacWL = 0.0;//0.5*wS_star;
-				JacWR = 0.0;//0.5*wS_star;
-				JacVL = 0.0;// 0.5 * Vn;
-				JacVR = 0.0;//0.5 * Vn;
-				
-				//Roe_jac(JacVL,JacVR,JacWL,JacWR, UL, UR,  wSL,  wSR,  wFL,  wFR, WL, WR,  Vn);
-				
+				JacVR = Vn;
+				JacWR = wSR;
+				JacVn = UR;
 			}
-			else
+			else if(takeStar)
 			{
-				UG_THROW("Non valid state in Godunov Jac .\n");
-			}*/
-
-			//JacVL +=  +0.5 * eps_diss * Smax;
-			//JacVR +=  -0.5 * eps_diss * Smax;
-		
-			
-			
+				JacVn = uStar;
+			}
 		}
 	
 		void Rusanov_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR,  const number Vn, const number Wn )
 		{
-
-			//const number S=SmoothMax(fabs(Vn + wSL),fabs(Vn + wSR), 1e-06);
 			const number epsAbs = 1e-8;
 			const number epsMax = 1e-8;
-			const number absSL = SmoothAbs(wSL, epsAbs);
-			const number absSR = SmoothAbs(wSR, epsAbs);
+
+			const number SL = Vn + wSL;
+			const number SR = Vn + wSR;
+
+			const number absSL = SmoothAbs(SL, epsAbs);
+			const number absSR = SmoothAbs(SR, epsAbs);
+
 			const number S = SmoothMax(absSL, absSR, epsMax);
-			
-			//Flux = 0.5*(UL+UR)*Vn;
-			Flux = (Vn > 0)? UL*Vn:UR*Vn;
-			
-			Flux +=  0.5 * (wFL + wFR) - 0.5*S*(UR-UL); //Flux in transport equation
-			
-			DiffFlux = (Wn>0)? wFR- wFL : wFL- wFR;
-			
-			
+
+			const number FL = Vn*UL + wFL;
+			const number FR = Vn*UR + wFR;
+
+			Flux = 0.5*(FL + FR) - 0.5*S*(UR-UL);
+
+			DiffFlux = (Wn > 0.0) ? wFR-wFL : wFL-wFR;
 		}
 		void Rusanov_jac(number& JacVL, number& JacVR, number& JacWL, number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
 			const number epsAbs = 1e-8;
 			const number epsMax = 1e-8;
 
-			const number absSL = SmoothAbs(wSL, epsAbs);
-			const number absSR = SmoothAbs(wSR, epsAbs);
+			const number SL = Vn + wSL;
+			const number SR = Vn + wSR;
+
+			const number absSL = SmoothAbs(SL, epsAbs);
+			const number absSR = SmoothAbs(SR, epsAbs);
 
 			const number diff = absSL - absSR;
 			const number root = sqrt(diff*diff + epsMax*epsMax);
@@ -901,49 +738,60 @@ class Interface
 			const number dS_dAbsSL = 0.5*(1.0 + diff/root);
 			const number dS_dAbsSR = 0.5*(1.0 - diff/root);
 
-			const number dAbsSL_dWSL = wSL/absSL;
-			const number dAbsSR_dWSR = wSR/absSR;
+			const number dAbsSL_dSL = SL/absSL;
+			const number dAbsSR_dSR = SR/absSR;
 
-			const number dWSL_dUL = -2.0*WL;
-			const number dWSR_dUR = -2.0*WR;
+			const number dSL_dUL = -2.0*WL;
+			const number dSR_dUR = -2.0*WR;
 
-			const number dS_dUL = dS_dAbsSL*dAbsSL_dWSL*dWSL_dUL;
-			const number dS_dUR = dS_dAbsSR*dAbsSR_dWSR*dWSR_dUR;
+			const number dS_dUL = dS_dAbsSL*dAbsSL_dSL*dSL_dUL;
+			const number dS_dUR = dS_dAbsSR*dAbsSR_dSR*dSR_dUR;
+			const number dS_dVn = dS_dAbsSL*dAbsSL_dSL + dS_dAbsSR*dAbsSR_dSR;
 
-			const number jump = UR - UL;
+			const number jump = UR-UL;
+
+			JacVL = 0.5*Vn;
+			JacVR = 0.5*Vn;
 
 			JacWL = 0.5*wSL + 0.5*S - 0.5*jump*dS_dUL;
 			JacWR = 0.5*wSR - 0.5*S - 0.5*jump*dS_dUR;
 
-			JacVL = (Vn > 0.0) ? Vn : 0.0;
-			JacVR = (Vn > 0.0) ? 0.0 : Vn;
-
-			JacVn = 0.0;
+			JacVn = 0.5*(UL+UR) - 0.5*jump*dS_dVn;
 		}
 		void Roe_flux(number& Flux, number& DiffFlux, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn, const number Wn)
 		{
-			if(Vn != 0.0) UG_THROW("Roe: this implementation handles slip only.");
+			(void)WL;
+			(void)WR;
+
+			const number FL = Vn*UL+wFL;
+			const number FR = Vn*UR+wFR;
+
+			const number SL = Vn+wSL;
+			const number SR = Vn+wSR;
+
+			const number S = Vn+Wn*(1.0-UL-UR);
+			const number S_abs = Harten_Hyman(S,SL,SR);
+
+			Flux = 0.5*(FL+FR)-0.5*S_abs*(UR-UL);
 
 			DiffFlux = 0.0;
-
-			const number S = Wn*(1.0-UL-UR);
-			const number S_abs = Harten_Hyman(S, wSL, wSR);
-
-			Flux = 0.5*(wFL+wFR)-0.5*S_abs*(UR-UL);
-			
 		}
 		void Roe_jac(number& JacVL,number& JacVR, number& JacWL,number& JacWR, number& JacVn, const number UL, const number UR, const number wSL, const number wSR, const number wFL, const number wFR, const number WL, const number WR, const number Vn)
 		{
-			if(Vn != 0.0) UG_THROW("Roe Jacobian: this implementation handles slip only.");
+			(void)wFL;
+			(void)wFR;
 
 			JacVL = JacVR = JacWL = JacWR = JacVn = 0.0;
 
-			const number Wn = 0.5*WL+0.5*WR;
-			const number S = Wn*(1.0-UL-UR);
-			const number delta = std::fmax(0.0, Wn*(UL-UR));
+			const number Wn = 0.5*(WL+WR);
+			const number S = Vn+Wn*(1.0-UL-UR);
+
+			const number delta = std::fmax(0.0,Wn*(UL-UR));
 
 			number S_abs = std::fabs(S);
-			number dS_abs_dUL, dS_abs_dUR;
+			number dS_abs_dUL;
+			number dS_abs_dUR;
+			number dS_abs_dVn;
 
 			if(delta > 0.0 && std::fabs(S) < delta)
 			{
@@ -951,22 +799,29 @@ class Interface
 				const number dA_dDelta = 0.5*(1.0-ratio*ratio);
 
 				S_abs = 0.5*(S*ratio+delta);
+
 				dS_abs_dUL = -Wn*ratio+Wn*dA_dDelta;
 				dS_abs_dUR = -Wn*ratio-Wn*dA_dDelta;
+				dS_abs_dVn = ratio;
 			}
 			else
 			{
 				const number signS = S > 0.0 ? 1.0 : (S < 0.0 ? -1.0 : 0.0);
 
-				dS_abs_dUL = dS_abs_dUR = -Wn*signS;
+				dS_abs_dUL = -Wn*signS;
+				dS_abs_dUR = -Wn*signS;
+				dS_abs_dVn = signS;
 			}
 
 			const number jump = UR-UL;
 
+			JacVL = 0.5*Vn;
+			JacVR = 0.5*Vn;
+
 			JacWL = 0.5*wSL+0.5*S_abs-0.5*jump*dS_abs_dUL;
 			JacWR = 0.5*wSR-0.5*S_abs-0.5*jump*dS_abs_dUR;
-			
-			
+
+			JacVn = 0.5*(UL+UR)-0.5*jump*dS_abs_dVn;
 		}
 		//Entropy fixing Harten-Hyman
 		number Harten_Hyman(const number S, const number SL, const number SR)
@@ -997,50 +852,63 @@ class Interface
 			return S_abs;
 		}*/
 
-		// Regularized Engquist-Osher flux for g(c) = Wn*c*(1-c).
+		// Regularized Engquist-Osher flux for g(c) =cV + Wn*c*(1-c).
 		// JacL and JacR hold Wn fixed. JacWn differentiates the shared face coefficient.
-		void EO_flux_jac(number& Flux, number& JacL, number& JacR, number& JacWn, const number UL, const number UR, const number Wn)
+		void EO_flux_jac(number& Flux, number& JacL, number& JacR, number& JacVn, number& JacWn, const number UL, const number UR, const number Vn, const number Wn)
 		{
-			// Velocity units: adjust this fixed reference value if your units differ.
-			const number epsW = 1e-8;
-
-			if(!std::isfinite(UL) || !std::isfinite(UR) || !std::isfinite(Wn))
-			{
-				UG_THROW("EO flux: non-finite concentration or slip velocity.");
-			}
+			const number epsAbs = 1e-8;
+			const number epsW = 1e-12;
 
 			const number hL = UL*(1.0-UL);
 			const number hR = UR*(1.0-UR);
+
 			const number tL = 1.0-2.0*UL;
 			const number tR = 1.0-2.0*UR;
-			const number absW = std::hypot(Wn, epsW);
 
-			// Oriented integral from UL to UR of |1-2*s|.
-			// This avoids subtracting nearly equal primitive values in smooth regions.
+			const number qL = Vn+Wn*tL;
+			const number qR = Vn+Wn*tR;
+
+			const number absL = std::sqrt(qL*qL+epsAbs*epsAbs);
+			const number absR = std::sqrt(qR*qR+epsAbs*epsAbs);
+
 			number Integral;
+			number dIntegral_dVn;
+			number dIntegral_dWn;
 
-			if((tL >= 0.0 && tR >= 0.0) || (tL <= 0.0 && tR <= 0.0))
+			if(std::fabs(Wn) > epsW)
 			{
-				Integral = (UR-UL)*std::fabs(1.0-UL-UR);
+				const number PhiL = 0.5*(qL*absL+epsAbs*epsAbs*std::asinh(qL/epsAbs));
+				const number PhiR = 0.5*(qR*absR+epsAbs*epsAbs*std::asinh(qR/epsAbs));
+
+				Integral = (PhiL-PhiR)/(2.0*Wn);
+
+				dIntegral_dVn = (absL-absR)/(2.0*Wn);
+
+				const number dN_dWn = absL*tL-absR*tR;
+
+				dIntegral_dWn = dN_dWn/(2.0*Wn)-Integral/Wn;
 			}
 			else
 			{
-				Integral = 0.25*(tL*std::fabs(tL)-tR*std::fabs(tR));
+				const number absV = std::sqrt(Vn*Vn+epsAbs*epsAbs);
+				const number jump = UR-UL;
+				const number intT = (UR-UR*UR)-(UL-UL*UL);
+
+				Integral = absV*jump;
+				dIntegral_dVn = (Vn/absV)*jump;
+				dIntegral_dWn = (Vn/absV)*intT;
 			}
 
-			Flux = 0.5*Wn*(hL+hR)-0.5*absW*Integral;
+			Flux = 0.5*(Vn*(UL+UR)+Wn*(hL+hR))-0.5*Integral;
 
-			// Exact concentration derivatives of the flux above.
-			JacL = 0.5*(Wn*tL+absW*std::fabs(tL));
-			JacR = 0.5*(Wn*tR-absW*std::fabs(tR));
+			JacL = 0.5*(qL+absL);
+			JacR = 0.5*(qR-absR);
 
-			// Exact derivative with respect to the shared normal slip velocity.
-			JacWn = 0.5*(hL+hR)-0.5*(Wn/absW)*Integral;
+			JacVn = 0.5*(UL+UR)-0.5*dIntegral_dVn;
+			JacWn = 0.5*(hL+hR)-0.5*dIntegral_dWn;
 
-			if(!std::isfinite(Flux) || !std::isfinite(JacL) || !std::isfinite(JacR) || !std::isfinite(JacWn))
-			{
+			if(!std::isfinite(Flux) || !std::isfinite(JacL) || !std::isfinite(JacR) || !std::isfinite(JacVn) || !std::isfinite(JacWn))
 				UG_THROW("EO flux: non-finite flux or derivative.");
-			}
 		}
 	 
 
