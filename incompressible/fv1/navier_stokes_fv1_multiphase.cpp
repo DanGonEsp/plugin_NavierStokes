@@ -101,7 +101,7 @@ void NavierStokesFV1M<TDomain>::init()
     m_imSourceSCVF.set_comp_lin_defect(false);
     m_imSourceSCV.set_comp_lin_defect(false);
     
-    m_imKinViscosity.set_comp_lin_defect(false);
+    m_imKinViscosity.set_comp_lin_defect(true);
 	m_imKinViscositySCV.set_comp_lin_defect(false);
     m_imKinViscosity_old.set_comp_lin_defect(false);
     
@@ -972,103 +972,38 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
 				//	Add full jacobian (remaining part)
 				/////////////////////////////////////////
 				//	Add remaining term for exact jacobian
-				if(false)//m_boolFullNewton)
+				// Full Newton: derivative of the advecting velocity
+				if(m_boolFullNewton)
 				{
-					UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented");
-					//	Add derivative of stabilized flux w.r.t velocity comp to local matrix
-					if(stab.vel_comp_connected())
-					{
-						for(int d1 = 0; d1 < dim; ++d1)
-						{
-							number contFlux_vel = 0.0;
-							for(int d2 = 0; d2 < dim; ++d2)
-								contFlux_vel += stab.stab_shape_vel(ip, d2, d1, sh) * scvf.normal()[d2]; //* m_imDensitySCVF[ip];
-							contFlux_vel *=m_bFullNewtonFactor;
-							for(int d = 0; d < dim; ++d)
-							{
-								J(d, scvf.from(), d1, sh) += contFlux_vel*UpwindMomentum[d];
-								J(d, scvf.to()  , d1, sh) -= contFlux_vel*UpwindMomentum[d];
-							}
-						}
-					}
-					else
-					{
-						for(int d1 = 0; d1 < dim; ++d1)
-						{
-							number contFlux_vel = stab.stab_shape_vel(ip, d1, d1, sh) * scvf.normal()[d1]; //* m_imDensitySCVF[ip];
-							contFlux_vel *=m_bFullNewtonFactor;
-							for(int d = 0; d < dim; ++d)
-							{
-								J(d, scvf.from(), d1, sh) += contFlux_vel*UpwindMomentum[d];
-								J(d, scvf.to()  , d1, sh) -= contFlux_vel*UpwindMomentum[d];
-							}
-						}
-					}
-					
-				
-					//	Add derivative of stabilized flux w.r.t pressure to local matrix
-					/*number contFlux_p = 0.0;
+					const size_t from = scvf.from();
+					const size_t to = scvf.to();
+
+					const number rhoFrom = m_imDensitySCV_A[from];
+					const number rhoTo = m_imDensitySCV_A[to];
+					const number rhoSum = rhoFrom + rhoTo;
+
+					const number dRho = std::fabs(rhoTo - rhoFrom);
+					const number theta = dRho / (1.0 + dRho);
+
 					for(int d1 = 0; d1 < dim; ++d1)
-						contFlux_p += stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1]; // m_imDensitySCVF[ip];
-					
-					contFlux_p *=m_bFullNewtonFactor;
-					
-					for(int d = 0; d < dim; ++d)
 					{
-						J(d, scvf.from(), _P_, sh) += contFlux_p*UpwindMomentum[d];
-						J(d, scvf.to()  , _P_, sh) -= contFlux_p*UpwindMomentum[d];
-					}*/
-					/*
-					//	Add derivative of stabilized flux w.r.t pressure to local matrix
-					number contFlux_c = 0.0;
-					for(int d1 = 0; d1 < dim; ++d1)
-						contFlux_c += stab.stab_shape_c(ip, d1, sh) * scvf.normal()[d1];
-					contFlux_c *=m_bFullNewtonFactor;
-					for(int d = 0; d < dim; ++d)
-					{
-						J(d, scvf.from(), _C_, sh) += contFlux_c*UpwindMomentum[d];
-						J(d, scvf.to()  , _C_, sh) -= contFlux_c*UpwindMomentum[d];
-					}
-					 */
-					
-					/*if(Inter->ParticleGradientForce())
-					{
-						number contFlux_c2 = 0.0;
-						for(int d1 = 0; d1 < dim; ++d1)
-							contFlux_c2 += DPs[sh] * stab.stab_shape_p(ip, d1, sh) * scvf.normal()[d1]; // m_imDensitySCVF[ip];
-						contFlux_c2 *=m_bFullNewtonFactor;
+						number a = (1.0 - theta) * scvf.shape(sh);
+
+						if(sh == from) a += theta * rhoFrom / rhoSum;
+						if(sh == to)   a += theta * rhoTo / rhoSum;
+
+						const number dProd = m_bFullNewtonFactor * a * scvf.normal()[d1];
+
 						for(int d = 0; d < dim; ++d)
 						{
-							J(d, scvf.from(), _C_, sh) += contFlux_c2*UpwindMomentum[d];
-							J(d, scvf.to()  , _C_, sh) -= contFlux_c2*UpwindMomentum[d];
+							const number flux = dProd * UpwindMomentum[d];
+
+							J(d, from, d1, sh) += flux;
+							J(d, to,   d1, sh) -= flux;
 						}
-					}*/
+					}
 				} // end exact jacobian part
 								
-				//	Add remaining term for exact jacobian
-				if(false)//m_boolFullNewton)
-				{
-					UG_THROW("NavierStokes Multiphase: Momentum formulation not implemented  ");
-					if(true)
-					{
-						// Jacobian for std Vel as convecting velocity
-						for(int d = 0; d < dim; ++d)
-						{
-							for(int d1 = 0; d1 < dim; ++d1)
-							{
-								
-								number contFlux_vel =  m_bFullNewtonFactor * scvf.shape(sh) * scvf.normal()[d1];
-								J(d, scvf.from(), d1, sh) += contFlux_vel * UpwindMomentum[d];
-								J(d, scvf.to()  , d1, sh) -= contFlux_vel * UpwindMomentum[d];
-								
-							}
-							
-							
-						}
-					}
-					
-				}// end exact jacobian part
-				 
 				
 				/*if(m_imRelativeVelocitySCVF.data_given())
 				{
@@ -3339,7 +3274,6 @@ lin_def_viscosity(const LocalVector& u,
         for(size_t c = 0; c < vvvLinDef[ip].size(); ++c)
             for(size_t sh = 0; sh < vvvLinDef[ip][c].size(); ++sh)
                 vvvLinDef[ip][c][sh] = 0.0;
-    UG_LOG("Anfang add_def_A_elem");
     
 
 	//	check for solutions to pass to stabilization in time-dependent case
