@@ -3377,7 +3377,9 @@ public:
 				gamma_average = m_shear_rate[vrt];
 
 
-				Inter->MU_I_Viscosity( mu_s, Dmu_s,gamma_average, C_value, false);
+				//Inter->MU_I_Viscosity( mu_s, Dmu_s,gamma_average, C_value, false);
+				number DmuGamma = 0.0;
+				Inter->MU_I_Viscosity(mu_s, Dmu_s, DmuGamma,gamma_average, C_value, false, false);
 				//Inter->Einstein_viscosity( mu_eins, Dmu_eins, C_value, false);
 				
 				if (m_counter<0)

@@ -119,72 +119,123 @@ class Interface
 			}
 
 		}
-		void Ps(number& ParticlePressure, number& DCParticlePressure, const number gamma, const number vol, const bool DERIVATIVE)
+		void Ps(number& ParticlePressure, number& DCParticlePressure,
+				const number gamma, const number vol, const bool DERIVATIVE,
+				number* DPsGamma = NULL)
 		{
 			const number delta = 1e-02;
-			const number Co=alpha_max-delta;
-			const number phi = m_packing_factor * vol;
-			//Stokes number
-			const number St=gamma*rho_s*pow(dp,2)/mu_a;
-			
-			//Permanent contact pressure
-			number pff= 0.0;
+			const number Co = alpha_max-delta;
+			const number phi = m_packing_factor*vol;
+			const number St = gamma*rho_s*pow(dp,2)/mu_a;
+
+			number pff = 0.0;
 			number dpff = 0.0;
-			number dpa = 0.0;
 			number pa = 0.0;
+			number dpa = 0.0;
+			number dpaGamma = 0.0;
+
 			if(phi >= Co)
 			{
-				const number p0 = Fr *pow(  Co-alpha_min,3) /pow(alpha_max-Co,5);
-				const number dp0 = Fr * pow( Co-alpha_min,2) * (2.0*Co+3.0*alpha_max-5.0*alpha_min)/pow(alpha_max-Co,6.0);
-				pff = dp0*(phi-Co)+p0;
-				pa = mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
+				const number B0 = B_phi*Co/(alpha_max-Co);
+				const number DB0 = 2.0*B_phi*B_phi*Co*alpha_max/pow(alpha_max-Co,3);
+
+				const number B = B0*B0 + DB0*(phi-Co);
+
+				const number p0 = Fr*pow(Co-alpha_min,3)/pow(alpha_max-Co,5);
+				const number dp0 = Fr*pow(Co-alpha_min,2)*(2.0*Co+3.0*alpha_max-5.0*alpha_min)/pow(alpha_max-Co,6);
+
+				pff = p0 + dp0*(phi-Co);
+				pa = mu_a*(1.0+St)*gamma*B;
+
 				if(DERIVATIVE)
 				{
 					dpff = dp0;
-					dpa = 2*mu_a*(1.0+St)*pow(B_phi,2.0)*phi*alpha_max*gamma/(pow(alpha_max-phi,3));
-				}
-			}
-			else if(phi >= alpha_min)
-			{
-				pff = Fr *pow(  phi-alpha_min,3) /pow(alpha_max-phi,5);
-				pa = mu_a*(1.0+St)*pow(B_phi*phi/(alpha_max-phi),2)*gamma;
-				if (DERIVATIVE)
-				{
-					dpff =  Fr * pow( phi-alpha_min,2) * (2.0*phi+3.0*alpha_max-5.0*alpha_min)/pow(alpha_max-phi,6.0);
-					dpa = 2*mu_a*(1.0+St)*pow(B_phi,2.0)*phi*alpha_max*gamma/(pow(alpha_max-phi,3));
-				}
-			}
-			
-			//Dynamic pressure
-			ParticlePressure = pff+pa;
-			if(DERIVATIVE)
-				DCParticlePressure = (dpff + dpa)*m_packing_factor;
+					dpa = mu_a*(1.0+St)*gamma*DB0;
 
-			if(std::isnan(pff) || std::isnan(pa) || pff < 0.0 || pa<0.0 ) UG_THROW("Error in PropertiesInterface: Export particlePressure: Ps = " << ParticlePressure << "   phi = "<< phi<< "   Pa = "<< pa<< "   Pf = "<< pff);
+					if(DPsGamma != NULL)
+						dpaGamma = mu_a*(1.0+2.0*St)*B;
+				}
+			}
+			else
+			{
+				const number B = B_phi*phi/(alpha_max-phi);
+
+				pa = mu_a*(1.0+St)*gamma*B*B;
+
+				if(DERIVATIVE)
+				{
+					dpa = 2.0*mu_a*(1.0+St)*B_phi*B_phi*phi*alpha_max*gamma/pow(alpha_max-phi,3);
+
+					if(DPsGamma != NULL)
+						dpaGamma = mu_a*(1.0+2.0*St)*B*B;
+				}
+
+				if(phi >= alpha_min)
+				{
+					pff = Fr*pow(phi-alpha_min,3)/pow(alpha_max-phi,5);
+
+					if(DERIVATIVE)
+						dpff = Fr*pow(phi-alpha_min,2)*(2.0*phi+3.0*alpha_max-5.0*alpha_min)/pow(alpha_max-phi,6);
+				}
+			}
+
+			ParticlePressure = pff + pa;
+
+			if(DERIVATIVE)
+			{
+				DCParticlePressure = (dpff+dpa)*m_packing_factor;
+
+				if(DPsGamma != NULL)
+					*DPsGamma = dpaGamma;
+			}
+
+			if(!std::isfinite(ParticlePressure) || pff < 0.0 || pa < 0.0)
+				UG_THROW("Error in PropertiesInterface: Export particlePressure: Ps = "
+						 << ParticlePressure << " phi = " << phi
+						 << " Pa = " << pa << " Pf = " << pff);
 		}
 	
-		void MU_I_Viscosity(number& mu_s, number& Dmu_s, const number  gamma_nr, const number vol, const bool deriv)
+		void MU_I_Viscosity(number& mu_s, number& Dmu_s, number& DmuGamma,
+							const number gamma_nr, const number vol,
+							const bool deriv, const bool derivGamma)
 		{
-			
-			const number gamma = sqrt(pow(deltaGamma,2) + pow(gamma_nr,2.0));
+			const number gamma = sqrt(pow(deltaGamma,2) + pow(gamma_nr,2));
 			const number phi = m_packing_factor * vol;
-			number Ps_val, DPs, s, mu_friction;
-			Ps( Ps_val,  DPs, gamma, vol, deriv);
-			
-			number St=gamma*rho_s*pow(dp,2)/mu_a;
-			number I=mu_a*(1+St)*gamma/(Ps_val+deltaPs)+deltaI;//grad_vel_mag*Viscosity_fluid/((Pressure_s+0.001)*ParticleDensity);
-			//DI=-I/(Ps+deltaPs);
-			
-			//number I=gamma*dp/pow((Ps_val+deltaPs)/rho_s,0.5)+deltaI;
-			//DI=-0.5*I/(Ps+deltaPs);
-			
-			mu_friction=FricMu_1+(FricMu_2-FricMu_1)/(1.0+I_0/I);
-			
-			mu_s=mu_friction*Ps_val/gamma;
-			Dmu_s = mu_friction*DPs/gamma;
-			
-			if(std::isnan(mu_s) || mu_s<0.0 ) UG_THROW("Error in MU(I) Viscosity: Value = NaN" <<"  Volume Fraction = "<<phi<<".");
-			//if(phi > alpha_max) UG_LOG("Phi > phi_max in Einstein Viscosity\n");
+
+			number Ps_val, DPs = 0.0, DPsGamma = 0.0;
+			Ps(Ps_val, DPs, gamma, vol, deriv,
+			   (deriv && derivGamma) ? &DPsGamma : NULL);
+
+			const number St = gamma*rho_s*pow(dp,2)/mu_a;
+			const number I = mu_a*(1.0+St)*gamma/(Ps_val+deltaPs)+deltaI;
+
+			const number mu_friction = FricMu_1+(FricMu_2-FricMu_1)/(1.0+I_0/I);
+
+			mu_s = mu_friction*Ps_val/gamma;
+
+			Dmu_s = 0.0;
+			DmuGamma = 0.0;
+
+			if(deriv)
+			{
+				Dmu_s = mu_friction*DPs/gamma;
+
+				if(derivGamma)
+				{
+					const number DI = mu_a*(1.0+2.0*St)/(Ps_val+deltaPs)
+									- (I-deltaI)*DPsGamma/(Ps_val+deltaPs);
+
+					const number DFric = (FricMu_2-FricMu_1)*I_0*DI
+									   / pow(I_0+I,2);
+
+					// Combined viscosity-gradient coefficient
+					DmuGamma = (DFric*Ps_val + mu_friction*DPsGamma - mu_s)/(gamma*gamma);
+				}
+			}
+
+			if(!std::isfinite(mu_s) || mu_s < 0.0)
+				UG_THROW("Error in MU(I) Viscosity: Value = NaN"
+						 << " Volume Fraction = " << phi << ".");
 		}
 		void Einstein_viscosity(number& ss, number& Dss,const number vol, const bool deriv)
 		{

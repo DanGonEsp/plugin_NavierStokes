@@ -3024,7 +3024,7 @@ vel_grad( const LocalVector& u, const TFVGeom& geo, number* Gamma)
 			}
 		}
 		
-		Gamma[ip] =sqrt((0.5*gamma));
+		Gamma[scv.node_id()] = sqrt(0.5*gamma);
 		
 
     }
@@ -4879,10 +4879,15 @@ ex_nodal_mix_viscosity(number vValue[],
 	const number cInterface = Inter->interface_value();
 	const number cWidth = 0.10;
 
+	const bool linearizeGamma = true;
+	const bool derivGamma = bDeriv && linearizeGamma
+						 && !m_imAverageGammaSCV.data_given();
+
 	number Volume = 0.0;
 	number Gamma[numSH];
 	number Ms[numSH];
 	number DMs[numSH];
+	number DMsGamma[numSH] = {};
 
 	LocalVector* u_aux = const_cast<LocalVector*>(&u);
 
@@ -4916,7 +4921,7 @@ ex_nodal_mix_viscosity(number vValue[],
 		number mu_eins = 0.0;
 		number Dmu_eins = 0.0;
 
-		Inter->MU_I_Viscosity(mu_s, Dmu_s, Gamma[sh], u(_C_,sh), bDeriv);
+		Inter->MU_I_Viscosity(mu_s, Dmu_s, DMsGamma[sh], Gamma[sh], u(_C_,sh), bDeriv, derivGamma);
 		Inter->Einstein_viscosity(mu_eins, Dmu_eins, u(_C_,sh), bDeriv);
 
 		Ms[sh] = mu_s + mu_eins;
@@ -4924,6 +4929,33 @@ ex_nodal_mix_viscosity(number vValue[],
 
 		if(Ms[sh] <= 0.0 || !std::isfinite(Ms[sh]))
 			UG_THROW("NavierStokesFV1M: Invalid nodal viscosity.");
+	}
+	number DGamma[numSH][dim][numSH] = {};
+
+	if(derivGamma)
+	{
+		for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+		{
+			const typename TFVGeom::SCV& scv = geo.scv(ip);
+			const size_t co = scv.node_id();
+
+			MathMatrix<dim,dim> gradU;
+
+			for(int i = 0; i < dim; ++i)
+				for(int j = 0; j < dim; ++j)
+				{
+					gradU(i,j) = 0.0;
+
+					for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+						gradU(i,j) += u(i,sh)*scv.global_grad(sh)[j];
+				}
+
+			for(int c = 0; c < dim; ++c)
+				for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+					for(int j = 0; j < dim; ++j)
+						DGamma[co][c][sh] +=
+							(gradU(c,j)+gradU(j,c))*scv.global_grad(sh)[j];
+		}
 	}
 
 	// Compute elementwise arithmetic and harmonic viscosity.
@@ -5071,6 +5103,49 @@ ex_nodal_mix_viscosity(number vValue[],
 			}
 		}
 	}
+	
+	if(derivGamma)
+	{
+		LagrangeP1<ref_elem_type>& trialSpace =
+			Provider<LagrangeP1<ref_elem_type> >::get();
+
+		for(size_t ip = 0; ip < nip; ++ip)
+		{
+			number weights[numSH] = {};
+
+			if(vLocIP == geo.scv_local_ips())
+			{
+				weights[geo.scv(ip).node_id()] = 1.0;
+			}
+			else if(m_viscosity_averaging == 3)
+			{
+				if(vLocIP == geo.scvf_local_ips())
+				{
+					for(size_t sh = 0; sh < numSH; ++sh)
+						weights[sh] = geo.scvf(ip).shape(sh);
+				}
+				else
+				{
+					trialSpace.shapes(weights, vLocIP[ip]);
+				}
+			}
+			else
+			{
+				for(size_t sh = 0; sh < numSH; ++sh)
+				{
+					const number w = geo.scv(sh).volume()/Volume;
+
+					weights[sh] = (1.0-beta)*w + beta*w*(ViscosityH/Ms[sh])*(ViscosityH/Ms[sh]);
+				}
+			}
+
+			for(int c = 0; c < dim; ++c)
+				for(size_t sh = 0; sh < numSH; ++sh)
+					for(size_t co = 0; co < numSH; ++co)
+						vvvDeriv[ip][c][sh] += weights[co]*DMsGamma[co]*DGamma[co][c][sh];
+		}
+	}
+
 };
 
 template<typename TDomain>
