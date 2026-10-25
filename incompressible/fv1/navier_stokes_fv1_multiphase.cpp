@@ -526,15 +526,15 @@ add_jac_A_elem(LocalMatrix& J, const LocalVector& u, GridObject* elem, const Mat
     
     //	interpolate velocity at ip with standard lagrange interpolation
 
-	MathVector<dim> StdVel[numSCVF];
-	MathVector<dim> StdVel_ip[numSCVF];
-	MathVector<dim> StdMomentum[numSCVF];
-	MathVector<dim> StdCharacteristicVel[numSCVF];
-	MathVector<dim> Flux[numSCVF];
-	MathVector<dim> Vel_ip[numSCVF];
+	MathVector<dim> StdVel[numSCVF] = {0.0};
+	MathVector<dim> StdVel_ip[numSCVF] = {0.0};
+	MathVector<dim> StdMomentum[numSCVF] = {0.0};
+	MathVector<dim> StdCharacteristicVel[numSCVF] = {0.0};
+	MathVector<dim> Flux[numSCVF] = {0.0};
+	MathVector<dim> Vel_ip[numSCVF] = {0.0};
 	MathVector<dim> TransportingVel_ip[numSCVF] = {0};
-	MathVector<dim> conv_flux_grad[numSCVF];
-	MathVector<dim> conv_flux_mom[numSCVF];
+	MathVector<dim> conv_flux_grad[numSCVF] = {0.0};
+	MathVector<dim> conv_flux_mom[numSCVF] = {0.0};
 
 	
 	number Gamma[numSh] = {0};
@@ -1539,15 +1539,15 @@ add_def_A_elem(LocalVector& d, const LocalVector& u, GridObject* elem, const Mat
     //	interpolate velocity at ip with standard lagrange interpolation
     
     
-	MathVector<dim> StdVel[numSCVF];
-	MathVector<dim> StdVel_ip[numSCVF];
-	MathVector<dim> StdMomentum[numSCVF];
-	MathVector<dim> StdCharacteristicVel[numSCVF];
-	MathVector<dim> Flux[numSCVF];
-	MathVector<dim> Vel_ip[numSCVF];
+	MathVector<dim> StdVel[numSCVF] = {0.0};
+	MathVector<dim> StdVel_ip[numSCVF] = {0.0};
+	MathVector<dim> StdMomentum[numSCVF] = {0.0};
+	MathVector<dim> StdCharacteristicVel[numSCVF] = {0.0};
+	MathVector<dim> Flux[numSCVF] = {0.0};
+	MathVector<dim> Vel_ip[numSCVF] = {0.0};
 	MathVector<dim> TransportingVel_ip[numSCVF] = {0.0};
-	MathVector<dim> conv_flux_grad[numSCVF];
-	MathVector<dim> conv_flux_mom[numSCVF];
+	MathVector<dim> conv_flux_grad[numSCVF] = {0.0};
+	MathVector<dim> conv_flux_mom[numSCVF] = {0.0};
 	number Gamma[numSh] = {0};
 	number Rho_up[numSCVF] = {0};
 	number Rho_do[numSCVF] = {0};
@@ -2753,6 +2753,7 @@ std_vel( const LocalVector& u, const TFVGeom& geo, MathVector<dim>* StdVel, Math
         const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
         
         VecSet(StdVel_ip[ip], 0.0);
+		VecSet(StdVel[ip], 0.0);
         for(size_t sh = 0; sh < scvf.num_sh(); ++sh)
         {
             for(int d1 = 0; d1 < dim; ++d1)
