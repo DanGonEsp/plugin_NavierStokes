@@ -218,7 +218,9 @@ class Interface
 
 			if(deriv)
 			{
-				Dmu_s = mu_friction*DPs/gamma;
+				const number DIc = -(I-deltaI)*DPs/(Ps_val+deltaPs);
+				const number DFricc = (FricMu_2-FricMu_1)*I_0*DIc/pow(I_0+I,2);
+				Dmu_s = (mu_friction*DPs + Ps_val*DFricc)/gamma;
 
 				if(derivGamma)
 				{
@@ -239,7 +241,7 @@ class Interface
 		}
 		void Einstein_viscosity(number& ss, number& Dss,const number vol, const bool deriv)
 		{
-			
+			Dss = 0.0;
 			const number phi = m_packing_factor * vol;
 			number C_r = alpha_max - 1e-03;
 			number power = 2.5;
@@ -258,7 +260,8 @@ class Interface
 				if(deriv)
 					Dss =  slope ;
 			}
-			Dss *= m_packing_factor;  // derivative of M respec phi , multipled by derivative of phi respect c
+			if(deriv)
+				Dss *= m_packing_factor;  // derivative of M respec phi , multipled by derivative of phi respect c
 			if(std::isnan(ss) || ss<0.0 ) UG_THROW("Error in Einstein ViscosityLinker: Value = NaN" <<"  Volume Fraction = "<<phi<<"  m_packing_factor =  " << m_packing_factor << ".");
 			//if(phi > alpha_max) UG_LOG("Phi > phi_max in Einstein Viscosity\n");
 		}

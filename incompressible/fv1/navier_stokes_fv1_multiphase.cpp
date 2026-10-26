@@ -4988,17 +4988,17 @@ ex_nodal_mix_viscosity(number vValue[],
 	}
 	else if(m_viscosity_averaging == 2)
 	{
-		if(cAverage >= cInterface + cWidth)
+		if(cAverage <= cInterface)
 		{
-			beta = 0.0;
+			beta = 1.0;
 		}
-		else if(cAverage > cInterface)
+		else if(cAverage < cInterface + cWidth)
 		{
-			const number t = (cAverage - cInterface) / cWidth;
+			const number t = (cAverage-cInterface)/cWidth;
 			const number t2 = t*t;
 			const number t3 = t2*t;
 
-			beta = 1.0 - (6.0*t2*t3 - 15.0*t2*t2 + 10.0*t3);
+			beta = 1.0-(6.0*t2*t3-15.0*t2*t2+10.0*t3);
 			Dbeta = -30.0*t2*(1.0-t)*(1.0-t)/cWidth;
 		}
 	}
