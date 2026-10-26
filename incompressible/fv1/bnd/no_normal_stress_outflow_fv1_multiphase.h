@@ -222,14 +222,13 @@ class NavierStokesNoNormalStressOutflowFV1M
 			const LocalVector& u
 		);
 	/// adds the convective part of the local defect of the momentum equation
-		template <typename BF>
+		template<typename BF>
 		inline void diffusive_flux_lin_defect
 		(
-			const size_t ip,
-			const BF& bf,
-		 std::vector<std::vector<number> > vvvLinDef[],
-			const LocalVector& u
-		);
+			const size_t ip, const BF& bf, std::vector<std::vector<number> > vvvLinDef[],
+			const LocalVector& u,
+			const number factor
+		 );
 
 	protected:
 	/// abbreviation for pressure

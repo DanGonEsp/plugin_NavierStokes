@@ -48,7 +48,7 @@ NavierStokesNoNormalStressOutflowFV1M<TDomain>::
 NavierStokesNoNormalStressOutflowFV1M(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaster)
 : NavierStokesNoNormalStressOutflowBase<TDomain>(spMaster)
 {
-    m_imKinViscosity.set_comp_lin_defect(false);
+    m_imKinViscosity.set_comp_lin_defect(true);
     m_imDensity.set_comp_lin_defect(false);
     m_imDensity_old.set_comp_lin_defect(false);
     m_imDensityCoor.set_comp_lin_defect(false);
@@ -227,6 +227,7 @@ diffusive_flux_Jac
 {
 	MathMatrix<dim,dim> diffFlux, tang_diffFlux;
 	MathVector<dim> normalStress;
+	const number normalSq = VecDot(bf.normal(), bf.normal());
 
 	//UG_LOG("ip: " << ip << "\n");
 
@@ -249,7 +250,7 @@ diffusive_flux_Jac
 		TransposedMatVecMult(normalStress, diffFlux, bf.normal ());
 		for (size_t d2 = 0; d2 < (size_t)dim; ++d2)
 			for (size_t d1 = 0; d1 < (size_t)dim; ++d1)
-				tang_diffFlux(d1,d2) -= bf.normal()[d1] * normalStress[d2];
+				tang_diffFlux(d1,d2) -= bf.normal()[d1]*normalStress[d2]/normalSq;
 	
 	//	3. Scale by viscosity
 		tang_diffFlux *= - m_imKinViscosity[ip] * m_imDensity [ip];
@@ -296,7 +297,8 @@ diffusive_flux_defect
 		TransposedMatVecMultAdd(diffFlux, gradVel, bf.normal());
 
 //	3. Subtract the normal part:
-	VecScaleAppend (diffFlux, - VecDot (diffFlux, bf.normal()), bf.normal());
+	const number normalSq = VecDot(bf.normal(), bf.normal());
+	VecScaleAppend(diffFlux, -VecDot(diffFlux, bf.normal())/normalSq, bf.normal());
 
 //	A4. Scale by viscosity
 	diffFlux *= - m_imKinViscosity[ip] * m_imDensity [ip];
@@ -757,49 +759,33 @@ add_rhs_elem(LocalVector& d, GridObject* elem, const MathVector<dim> vCornerCoor
     
 }
 
-/// Assembling of the diffusive flux (due to the viscosity) in the defect of the momentum eq.
 template<typename TDomain>
 template<typename BF>
-void NavierStokesNoNormalStressOutflowFV1M<TDomain>::
-diffusive_flux_lin_defect
- (
-     const size_t ip, // index of the integration point (for the density)
-     const BF& bf, // boundary face to assemble
-  std::vector<std::vector<number> > vvvLinDef[], // local defect to update
-     const LocalVector& u // local solution
- )
+void NavierStokesNoNormalStressOutflowFV1M<TDomain>::diffusive_flux_lin_defect(const size_t ip, const BF& bf, std::vector<std::vector<number> > vvvLinDef[], const LocalVector& u, const number factor)
 {
-    MathMatrix<dim, dim> gradVel;
-    MathVector<dim> diffFlux;
+	MathMatrix<dim,dim> gradVel;
+	MathVector<dim> diffFlux;
 
-//     1. Get the gradient of the velocity at ip
-    for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
-        for(size_t d2 = 0; d2 < (size_t)dim; ++d2)
-        {
-        //    sum up contributions of each shape
-            gradVel(d1, d2) = 0.0;
-            for(size_t sh = 0; sh < bf.num_sh(); ++sh)
-                gradVel(d1, d2) += bf.global_grad(sh)[d2] * u(d1, sh);
-        }
+	for(int i = 0; i < dim; ++i)
+		for(int j = 0; j < dim; ++j)
+		{
+			gradVel(i,j) = 0.0;
+			for(size_t sh = 0; sh < bf.num_sh(); ++sh)
+				gradVel(i,j) += u(i,sh)*bf.global_grad(sh)[j];
+		}
 
-//    2. Compute the total flux
+	MatVecMult(diffFlux, gradVel, bf.normal());
 
-//    - add (\nabla u) \cdot \vec{n}
-    MatVecMult(diffFlux, gradVel, bf.normal());
+	if(!m_spMaster->laplace())
+		TransposedMatVecMultAdd(diffFlux, gradVel, bf.normal());
 
-//    - add (\nabla u)^T \cdot \vec{n}
-    if(!m_spMaster->laplace())
-        TransposedMatVecMultAdd(diffFlux, gradVel, bf.normal());
+	const number normalSq = VecDot(bf.normal(), bf.normal());
+	VecScaleAppend(diffFlux, -VecDot(diffFlux, bf.normal())/normalSq, bf.normal());
 
-//    3. Subtract the normal part:
-    VecScaleAppend (diffFlux, - VecDot (diffFlux, bf.normal()), bf.normal());
+	diffFlux *= factor;
 
-//    A4. Scale by viscosity
-    //diffFlux *= - m_imKinViscosity[ip];
-
-//    5. Add flux to local defect
-    for(size_t d1 = 0; d1 < (size_t)dim; ++d1)
-        vvvLinDef[ip][d1][bf.node_id()]+= diffFlux[d1];
+	for(int i = 0; i < dim; ++i)
+		vvvLinDef[ip][i][bf.node_id()] += diffFlux[i];
 }
 /// Assembling of the convective flux (due to the quadratic inertial term) in the defect of the momentum eq.
 template<typename TDomain>
@@ -868,8 +854,10 @@ lin_def_density(const LocalVector& u, std::vector<std::vector<number> > vvvLinDe
         typename std::vector<BF>::const_iterator bf;
         for(bf = vBF.begin(); bf != vBF.end(); ++bf)
         {
-            if (!m_spMaster->stokes ())
-                convective_flux_lin_defect<BF> (ip, *bf, vvvLinDef, u);
+			diffusive_flux_lin_defect<BF>(ip, *bf, vvvLinDef, u, -m_imKinViscosity[ip]);
+
+			if(!m_spMaster->stokes())
+				convective_flux_lin_defect<BF>(ip, *bf, vvvLinDef, u);
                 
         // Next IP:
             ip++;
@@ -913,8 +901,8 @@ lin_def_viscosity(const LocalVector& u, std::vector<std::vector<number> > vvvLin
         typename std::vector<BF>::const_iterator bf;
         for(bf = vBF.begin(); bf != vBF.end(); ++bf)
         {
-            if (!m_spMaster->stokes ())
-                diffusive_flux_lin_defect<BF> (ip, *bf, vvvLinDef, u);
+
+			diffusive_flux_lin_defect<BF>(ip, *bf, vvvLinDef, u, -m_imDensity[ip]);
                 
         // Next IP:
             ip++;
@@ -998,6 +986,9 @@ register_func()
 	this->set_add_def_A_elem_fct(	id, &T::template add_def_A_elem<TElem, TFVGeom>);
 	this->set_add_def_M_elem_fct(	id, &T::template add_def_M_elem<TElem, TFVGeom>);
 	this->set_add_rhs_elem_fct(	    id, &T::template add_rhs_elem<TElem, TFVGeom>);
+	
+	m_imKinViscosity.set_fct(id, this, &T::template lin_def_viscosity<TElem, TFVGeom>);
+	m_imDensity.set_fct(id, this, &T::template lin_def_density<TElem, TFVGeom>);
 }
 
 
