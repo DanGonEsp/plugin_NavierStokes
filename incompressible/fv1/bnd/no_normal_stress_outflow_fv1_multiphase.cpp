@@ -48,7 +48,7 @@ NavierStokesNoNormalStressOutflowFV1M<TDomain>::
 NavierStokesNoNormalStressOutflowFV1M(SmartPtr< IncompressibleNavierStokesBase<TDomain> > spMaster)
 : NavierStokesNoNormalStressOutflowBase<TDomain>(spMaster)
 {
-    m_imKinViscosity.set_comp_lin_defect(true);
+    m_imKinViscosity.set_comp_lin_defect(false);
     m_imDensity.set_comp_lin_defect(false);
     m_imDensity_old.set_comp_lin_defect(false);
     m_imDensityCoor.set_comp_lin_defect(false);

@@ -101,7 +101,7 @@ void NavierStokesFV1M<TDomain>::init()
     m_imSourceSCVF.set_comp_lin_defect(false);
     m_imSourceSCV.set_comp_lin_defect(false);
     
-    m_imKinViscosity.set_comp_lin_defect(true);
+    m_imKinViscosity.set_comp_lin_defect(false);
 	m_imKinViscositySCV.set_comp_lin_defect(false);
     m_imKinViscosity_old.set_comp_lin_defect(false);
     
