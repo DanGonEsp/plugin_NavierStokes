@@ -114,7 +114,7 @@ void NavierStokesFV1M<TDomain>::init()
 	m_imRelativeVelocitySCVF.set_comp_lin_defect(false);
 	m_imSlipVelocitySCVF.set_comp_lin_defect(false);
     m_imDiffusion.set_comp_lin_defect(false);
-	//m_imSaltationFlux.set_comp_lin_defect(false);
+	m_imSaltationFlux.set_comp_lin_defect(false);
 	
 	m_imAverageGammaSCV.set_comp_lin_defect(false);
     

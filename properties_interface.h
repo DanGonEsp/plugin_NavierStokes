@@ -1124,6 +1124,21 @@ class Interface
 			boolInside = (inside==numSH)? true:false;
 			cut_elem=cut;
 		}
+		bool cut_element(const number* c, const size_t numSh) const
+		{
+			bool inside = false;
+			bool outside = false;
+
+			for(size_t sh = 0; sh < numSh; ++sh)
+			{
+				if(c[sh] > m_interface_value)
+					inside = true;
+				else
+					outside = true;
+			}
+
+			return inside && outside;
+		}
 	
 		void cut_element(number &value ,bool &cut_elem, bool &phase2, LocalVector* u, const number interface)
 		{

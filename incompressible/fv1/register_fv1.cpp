@@ -44,6 +44,7 @@
 #include "stabilization_multiphase.h"
 #include "nodal_pressure_grad.h"
 #include "shear_stress.h"
+#include "wall_interface_distance.h"
 #include "pressure_jump.h"
 #include "turbulent_viscosity_fv1.h"
 #include "rans_turbulence_fv1.h"
@@ -187,6 +188,21 @@ static void DomainAlgebra(Registry& reg, string grp)
         .set_construct_as_smart_pointer(true);
         reg.add_class_to_group(name, "ShearStressFV1", tag);
     }
+	// WallInterfaceDistanceFV1
+	{
+		string name = string("WallInterfaceDistanceFV1").append(suffix);
+		typedef WallInterfaceDistanceFV1<TFct> T;
+		typedef CplUserData<number, dim> TBase;
+		typedef INewtonUpdate TBase2;
+
+		reg.add_class_<T, TBase, TBase2>(name, grp)
+			.template add_constructor<void (*)(SmartPtr<ApproximationSpace<TDomain> >, SmartPtr<TFct>)>("Approximation space, grid function")
+			.add_method("set_phase_parameters", &T::set_phase_parameters)
+			.add_method("update", &T::update)
+			.set_construct_as_smart_pointer(true);
+
+		reg.add_class_to_group(name, "WallInterfaceDistanceFV1", tag);
+	}
 	// ParticlePressureFV1
 	{
 		string name = string("ParticlePressureFV1").append(suffix);
