@@ -478,7 +478,7 @@ public:
 		// Derivatives with respect to grad(c)
 		////////////////////////////////////////////////////////////////////////////
 
-		if(m_spDVolumeGrad.valid() && !m_spDVolumeGrad->zero_derivative())
+		/*if(m_spDVolumeGrad.valid() && !m_spDVolumeGrad->zero_derivative())
 		{
 			MathMatrix<dim,dim> zeroGradU;
 			MathVector<dim> zeroVelocity;
@@ -503,7 +503,7 @@ public:
 					}
 				}
 			}
-		}
+		}*/
 
 		////////////////////////////////////////////////////////////////////////////
 		// Derivatives with respect to grad(u)
@@ -569,7 +569,7 @@ public:
 		// Derivatives with respect to velocity
 		////////////////////////////////////////////////////////////////////////////
 
-		if(m_directionMode == VELOCITY_DIRECTION && m_spDVelocity.valid() && !m_spDVelocity->zero_derivative())
+		/*if(m_directionMode == VELOCITY_DIRECTION && m_spDVelocity.valid() && !m_spDVelocity->zero_derivative())
 		{
 			MathVector<dim> zeroGradC;
 			MathMatrix<dim,dim> zeroGradU;
@@ -596,7 +596,7 @@ public:
 					}
 				}
 			}
-		}
+		}*/
 	}
 
 
