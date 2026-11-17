@@ -457,6 +457,7 @@ static void Domain(Registry& reg, string grp)
 			#endif
 			.add_method("set_upwind",static_cast<void (T::*)(const std::string&)>(&T::set_upwind),"", "Upwind")
 			.add_method("set_linearize_turbulent_viscosity", &T::set_linearize_turbulent_viscosity)
+			.add_method("set_f1_regularization_length", &T::set_f1_regularization_length)
 			.add_method("set_linearize_f2", &T::set_linearize_f2)
 			.add_method("set_linearize_exported_viscosity", &T::set_linearize_exported_viscosity)
 			.add_method("set_linearize_destruction_coupling", &T::set_linearize_destruction_coupling)

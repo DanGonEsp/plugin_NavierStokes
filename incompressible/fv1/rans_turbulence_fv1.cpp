@@ -904,7 +904,8 @@ template <typename TDomain>
 number RANSTurbulenceFV1<TDomain>::
 blending_function_F1(number k, number omega, number nu, number wallDistance, number CDkw) const
 {
-	if(!std::isfinite(k) || !std::isfinite(omega) || !std::isfinite(nu) || !std::isfinite(wallDistance) || nu < 0.0 || wallDistance < 0.0) UG_THROW("RANSTurbulenceFV1: Non-finite SST input or negative molecular viscosity/wall distance.");
+	if(!std::isfinite(k) || !std::isfinite(omega) || !std::isfinite(nu) || !std::isfinite(wallDistance) || nu < 0.0 || wallDistance < 0.0)
+		UG_THROW("RANSTurbulenceFV1: Non-finite SST input or negative molecular viscosity/wall distance.");
 
 	const number kEff = std::max(k, 0.0);
 	const number omegaEff = std::max(omega, 1.0e-12);
@@ -919,7 +920,15 @@ blending_function_F1(number k, number omega, number nu, number wallDistance, num
 	const number arg1 = std::min(std::min(std::max(arg1_1, arg1_2), arg1_3), 10.0);
 	const number arg1Squared = arg1 * arg1;
 
-	return std::tanh(arg1Squared * arg1Squared);
+	const number F1 = std::tanh(arg1Squared * arg1Squared);
+
+	// Smooth regularization near walls and interfaces
+	if(m_f1RegularizationLength <= 0.0)
+		return F1;
+
+	const number ratio = wallDistance / std::hypot(wallDistance, m_f1RegularizationLength);
+
+	return 1.0 - (1.0 - F1) * ratio * ratio;
 }
 
 template <typename TDomain>

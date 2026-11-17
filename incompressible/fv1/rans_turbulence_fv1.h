@@ -86,6 +86,13 @@ public:
 	void set_linearize_destruction_coupling(bool enabled) {m_linearizeDestructionCoupling = enabled;}
 	void set_cross_diffusion_linearization(int mode) {if(mode < 0 || mode > 2) UG_THROW("RANSTurbulenceFV1: Cross-diffusion mode must be 0, 1, or 2."); m_crossDiffusionLinearization = mode;}
 	void set_linearize_exported_viscosity(bool enabled) {m_linearizeExportedViscosity = enabled;}
+	void set_f1_regularization_length(number length)
+	{
+		if (!std::isfinite(length) || length < 0.0)
+			UG_THROW("RANSTurbulenceFV1: Invalid F1 regularization length.");
+
+		m_f1RegularizationLength = length;
+	}
 	
 
 	/// Return selected turbulence model
@@ -253,6 +260,9 @@ protected:
 	number m_gamma1 = 5.0 / 9.0;
 	number m_gamma2 = 0.44;
 	number m_productionLimiter = 10.0;
+	
+	// F1 near-wall/interface regularization. Zero disables the regularization.
+	number m_f1RegularizationLength = 0.0;
 	
 	bool m_linearizeTurbulentViscosity = true;
 	bool m_linearizeDestructionCoupling = true;
