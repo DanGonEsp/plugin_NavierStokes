@@ -312,6 +312,8 @@ class NavierStokesFV1M
         SmartPtr<CplUserData<MathVector<dim>, dim> > volume_fraction_grad() {return m_exVolumeFractionGrad;}
     ///    returns the export of the Einstein Viscosity
         SmartPtr<CplUserData<number, dim> > einstein_viscosity() {return m_exEinsteinViscosity;}
+	
+		SmartPtr<CplUserData<number, dim> > mu_i_viscosity() {return m_exMuIViscosity;}
 	///    returns the export of the Mix Viscosity
 		SmartPtr<CplUserData<number, dim> > mix_viscosity() {return m_exMixViscosity;}
 	/// Returns the exported mixture density.
@@ -340,6 +342,8 @@ class NavierStokesFV1M
     SmartPtr<DataExport<MathVector<dim>,dim> > m_exVolumeFractionGrad;
     ///    Export for the Einstein Viscosity
     SmartPtr<DataExport<number,dim> > m_exEinsteinViscosity;
+	
+	SmartPtr<DataExport<number,dim> > m_exMuIViscosity;
 	///    Export for the Mix Viscosity
 	SmartPtr<DataExport<number,dim> > m_exMixViscosity;
 	///    Export for the Mix Density
@@ -749,6 +753,18 @@ class NavierStokesFV1M
                               const size_t nip,
                               bool bDeriv,
                               std::vector<std::vector<number > > vvvDeriv[]);
+	///    export value of the mix viscosity
+		template <typename TElem, typename TFVGeom>
+		void ex_nodal_mu_i_viscosity(number vValue[],
+							  const MathVector<dim> vGlobIP[],
+							  number time, int si,
+							  const LocalVector& u,
+							  GridObject* elem,
+							  const MathVector<dim> vCornerCoords[],
+							  const MathVector<TFVGeom::dim> vLocIP[],
+							  const size_t nip,
+							  bool bDeriv,
+							  std::vector<std::vector<number > > vvvDeriv[]);
 	///    export value of the mix viscosity
 		template <typename TElem, typename TFVGeom>
 		void ex_nodal_mix_viscosity(number vValue[],

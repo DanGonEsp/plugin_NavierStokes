@@ -52,6 +52,7 @@ NavierStokesFV1M<TDomain>::NavierStokesFV1M(const char* functions,
     m_exVolumeFraction = make_sp(new DataExport<number, dim>(functions));
     m_exVolumeFractionGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions));
     m_exEinsteinViscosity = make_sp(new DataExport<number, dim>(functions));
+	m_exMuIViscosity = make_sp(new DataExport<number, dim>(functions));
 	m_exMixViscosity = make_sp(new DataExport<number, dim>(functions));
 	m_exMixDensity = make_sp(new DataExport<number, dim>(functions));
     m_exPsPressure = make_sp(new DataExport<number, dim>(functions));
@@ -73,6 +74,7 @@ NavierStokesFV1M<TDomain>::NavierStokesFV1M(const std::vector<std::string>& vFct
     m_exVolumeFraction = make_sp(new DataExport<number, dim>(functions.c_str()));
     m_exVolumeFractionGrad = make_sp(new DataExport<MathVector<dim>, dim>(functions.c_str()));
     m_exEinsteinViscosity = make_sp(new DataExport<number, dim>(functions.c_str()));
+	m_exMuIViscosity = make_sp(new DataExport<number, dim>(functions.c_str()));
 	m_exMixViscosity = make_sp(new DataExport<number, dim>(functions.c_str()));
 	m_exMixDensity = make_sp(new DataExport<number, dim>(functions.c_str()));
     m_exPsPressure = make_sp(new DataExport<number, dim>(functions.c_str()));
@@ -4875,6 +4877,267 @@ ex_nodal_mix_viscosity(number vValue[],
 	typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
 	static const int refDim = ref_elem_type::dim;
 	static const size_t numSH = ref_elem_type::numCorners;
+	const number cInterface = Inter->interface_value();
+	const number cWidth = 1.0 - cInterface;
+
+	const bool linearizeGamma = true;
+	const bool derivGamma = bDeriv && linearizeGamma
+						 && !m_imAverageGammaSCV.data_given();
+
+	number Volume = 0.0;
+	number Gamma[numSH];
+	number Ms[numSH];
+	number DMs[numSH];
+	number DMsGamma[numSH] = {};
+
+	LocalVector* u_aux = const_cast<LocalVector*>(&u);
+
+	// Compute shear rate at SCV integration points.
+	if(m_imAverageGammaSCV.data_given())
+	{
+		std::vector<number> GammaAve_aux(numSH);
+
+		(*(m_imAverageGammaSCV.user_data()))(&GammaAve_aux[0], geo.scv_global_ips(), time, si, elem, vCornerCoords, geo.scv_local_ips(), numSH, u_aux, NULL);
+
+		for(size_t sh = 0; sh < numSH; ++sh)
+			Gamma[sh] = GammaAve_aux[sh];
+	}
+	else
+	{
+		vel_grad(u, geo, Gamma);
+	}
+
+	// Compute total element volume.
+	for(size_t sh = 0; sh < numSH; ++sh)
+		Volume += geo.scv(sh).volume();
+
+	if(Volume <= 0.0 || !std::isfinite(Volume))
+		UG_THROW("NavierStokesFV1M: Invalid element volume.");
+
+	// Evaluate nodal viscosity and its concentration derivative.
+	// Evaluate nodal viscosity with Einstein-granular blending.
+	for(size_t sh = 0; sh < numSH; ++sh)
+	{
+		const number c = u(_C_,sh);
+		number alpha = 0.0, Dalpha = 0.0;
+		number mu_s = 0.0, Dmu_s = 0.0;
+		number mu_eins = 0.0, Dmu_eins = 0.0;
+
+		if(c >= cInterface + cWidth)
+			alpha = 1.0;
+		else if(c > cInterface)
+		{
+			const number t = (c-cInterface)/cWidth;
+			const number t2 = t*t;
+			const number t3 = t2*t;
+
+			alpha = 6.0*t2*t3-15.0*t2*t2+10.0*t3;
+			Dalpha = 30.0*t2*(1.0-t)*(1.0-t)/cWidth;
+		}
+
+		Inter->Einstein_viscosity(mu_eins, Dmu_eins, c, bDeriv);
+
+		if(alpha > 0.0)
+			Inter->MU_I_Viscosity(mu_s, Dmu_s, DMsGamma[sh], Gamma[sh], c, bDeriv, derivGamma);
+
+		Ms[sh] = (1.0-alpha)*mu_eins + alpha*mu_s;
+
+		DMs[sh] = (1.0-alpha)*Dmu_eins + alpha*Dmu_s
+				+ Dalpha*(mu_s-mu_eins);
+
+		DMsGamma[sh] *= alpha;
+
+		if(Ms[sh] <= 0.0 || !std::isfinite(Ms[sh]))
+			UG_THROW("NavierStokesFV1M: Invalid nodal viscosity.");
+	}
+	number DGamma[numSH][dim][numSH] = {};
+
+	if(derivGamma)
+	{
+		for(size_t ip = 0; ip < geo.num_scv(); ++ip)
+		{
+			const typename TFVGeom::SCV& scv = geo.scv(ip);
+			const size_t co = scv.node_id();
+
+			MathMatrix<dim,dim> gradU;
+
+			for(int i = 0; i < dim; ++i)
+				for(int j = 0; j < dim; ++j)
+				{
+					gradU(i,j) = 0.0;
+
+					for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+						gradU(i,j) += u(i,sh)*scv.global_grad(sh)[j];
+				}
+
+			for(int c = 0; c < dim; ++c)
+				for(size_t sh = 0; sh < scv.num_sh(); ++sh)
+					for(int j = 0; j < dim; ++j)
+						DGamma[co][c][sh] +=
+							(gradU(c,j)+gradU(j,c))*scv.global_grad(sh)[j];
+		}
+	}
+
+	// Compute elementwise arithmetic and harmonic viscosity.
+	number ViscosityA = 0.0;
+	number ViscosityInvH = 0.0;
+
+	for(size_t sh = 0; sh < numSH; ++sh)
+	{
+		const number weight = geo.scv(sh).volume() / Volume;
+
+		ViscosityA += weight * Ms[sh];
+		ViscosityInvH += weight / Ms[sh];
+	}
+
+	const number ViscosityH = 1.0 / ViscosityInvH;
+
+	// Quintic C2-smooth blending parameter.
+	number beta = 0.0;
+
+	if(m_viscosity_averaging == 0)
+	{
+		beta = 0.0;
+	}
+	else if(m_viscosity_averaging == 1)
+	{
+		beta = 1.0;
+	}
+	else if(m_viscosity_averaging == 2)
+	{
+		beta = 1.0;
+	}
+
+	const number ViscosityBlend = (1.0-beta)*ViscosityA + beta*ViscosityH;
+
+	// Evaluate viscosity and derivatives at integration points.
+	 const bool atSCVF = (vLocIP == geo.scvf_local_ips());
+	 const bool atSCV = (vLocIP == geo.scv_local_ips());
+
+	 LagrangeP1<ref_elem_type>& trialSpace =
+		 Provider<LagrangeP1<ref_elem_type> >::get();
+
+	 for(size_t ip = 0; ip < nip; ++ip)
+	 {
+		 number sensitivity[numSH] = {};
+
+		 // SCV: nodal viscosity for every averaging mode.
+		 if(atSCV)
+		 {
+			 const size_t co = geo.scv(ip).node_id();
+			 vValue[ip] = Ms[co];
+			 sensitivity[co] = 1.0;
+		 }
+
+		 // Mode 2: harmonic average between the two SCVF nodes.
+		 else if(atSCVF && m_viscosity_averaging == 2)
+		 {
+			 const typename TFVGeom::SCVF& scvf = geo.scvf(ip);
+			 const size_t from = scvf.from();
+			 const size_t to = scvf.to();
+
+			 const number denom = Ms[from] + Ms[to];
+			 const number rFrom = Ms[from]/denom;
+			 const number rTo = Ms[to]/denom;
+
+			 vValue[ip] = 2.0*Ms[from]*Ms[to]/denom;
+
+			 sensitivity[from] = 2.0*rTo*rTo;
+			 sensitivity[to] = 2.0*rFrom*rFrom;
+		 }
+
+		 // Mode 3: interpolation of all nodal viscosities.
+		 else if(m_viscosity_averaging == 3)
+		 {
+			 number vShape[numSH];
+
+			 if(atSCVF)
+			 {
+				 for(size_t sh = 0; sh < numSH; ++sh)
+					 vShape[sh] = geo.scvf(ip).shape(sh);
+			 }
+			 else
+			 {
+				 trialSpace.shapes(vShape, vLocIP[ip]);
+			 }
+
+			 vValue[ip] = 0.0;
+
+			 for(size_t sh = 0; sh < numSH; ++sh)
+			 {
+				 vValue[ip] += Ms[sh]*vShape[sh];
+				 sensitivity[sh] = vShape[sh];
+			 }
+		 }
+
+		 // Modes 0, 1 and 2: elementwise average.
+		 else
+		 {
+			 vValue[ip] = ViscosityBlend;
+
+			 for(size_t sh = 0; sh < numSH; ++sh)
+			 {
+				 const number w = geo.scv(sh).volume()/Volume;
+				 const number r = ViscosityH/Ms[sh];
+
+				 sensitivity[sh] = (1.0-beta)*w + beta*w*r*r;
+			 }
+		 }
+
+		 if(!bDeriv)
+			 continue;
+
+		 // Concentration derivatives.
+		 for(size_t sh = 0; sh < numSH; ++sh)
+			 vvvDeriv[ip][_C_][sh] = sensitivity[sh]*DMs[sh];
+
+		 // Velocity derivatives through shear rate.
+		 if(derivGamma)
+		 {
+			 for(int c = 0; c < dim; ++c)
+				 for(size_t sh = 0; sh < numSH; ++sh)
+					 for(size_t co = 0; co < numSH; ++co)
+						 vvvDeriv[ip][c][sh] +=
+							 sensitivity[co]*DMsGamma[co]*DGamma[co][c][sh];
+		 }
+	 }
+
+	
+
+};
+template<typename TDomain>
+template <typename TElem, typename TFVGeom>
+void NavierStokesFV1M<TDomain>::
+ex_nodal_mu_i_viscosity(number vValue[],
+		 const MathVector<dim> vGlobIP[],
+		 number time, int si,
+		 const LocalVector& u,
+		 GridObject* elem,
+		 const MathVector<dim> vCornerCoords[],
+		 const MathVector<TFVGeom::dim> vLocIP[],
+		 const size_t nip,
+		 bool bDeriv,
+		 std::vector<std::vector<number> > vvvDeriv[])
+{
+	if(bDeriv)
+	{
+		for(size_t ip = 0; ip < nip; ++ip)
+			for(size_t c = 0; c < vvvDeriv[ip].size(); ++c)
+				for(size_t sh = 0; sh < vvvDeriv[ip][c].size(); ++sh)
+					vvvDeriv[ip][c][sh] = 0.0;
+	}
+
+	TFVGeom& geo = GeomProvider<TFVGeom>::get();
+
+	try
+	{
+		geo.update(elem, vCornerCoords, &(this->subset_handler()));
+	}
+	UG_CATCH_THROW("NavierStokes::ExportParameter MixViscosity: Cannot update Finite Volume Geometry.");
+
+	typedef typename reference_element_traits<TElem>::reference_element_type ref_elem_type;
+	static const int refDim = ref_elem_type::dim;
+	static const size_t numSH = ref_elem_type::numCorners;
 
 	const number cInterface = Inter->interface_value();
 	const number cWidth = 0.10;
@@ -4918,14 +5181,11 @@ ex_nodal_mix_viscosity(number vValue[],
 	{
 		number mu_s = 0.0;
 		number Dmu_s = 0.0;
-		number mu_eins = 0.0;
-		number Dmu_eins = 0.0;
 
 		Inter->MU_I_Viscosity(mu_s, Dmu_s, DMsGamma[sh], Gamma[sh], u(_C_,sh), bDeriv, derivGamma);
-		Inter->Einstein_viscosity(mu_eins, Dmu_eins, u(_C_,sh), bDeriv);
 
-		Ms[sh] = mu_s + mu_eins;
-		DMs[sh] = Dmu_s + Dmu_eins;
+		Ms[sh] = mu_s + 1e-08;
+		DMs[sh] = Dmu_s;
 
 		if(Ms[sh] <= 0.0 || !std::isfinite(Ms[sh]))
 			UG_THROW("NavierStokesFV1M: Invalid nodal viscosity.");
@@ -4962,17 +5222,37 @@ ex_nodal_mix_viscosity(number vValue[],
 	number ViscosityA = 0.0;
 	number ViscosityInvH = 0.0;
 	number cAverage = 0.0;
+	size_t zeroCount = 0;
+	size_t zeroNode = numSH;
+	number harmonicSensitivity[numSH] = {};
 
 	for(size_t sh = 0; sh < numSH; ++sh)
 	{
 		const number weight = geo.scv(sh).volume() / Volume;
 
 		ViscosityA += weight * Ms[sh];
-		ViscosityInvH += weight / Ms[sh];
 		cAverage += weight * u(_C_,sh);
+
+		if(Ms[sh] == 0.0)
+		{
+			++zeroCount;
+			zeroNode = sh;
+		}
+		else
+			ViscosityInvH += weight / Ms[sh];
 	}
 
-	const number ViscosityH = 1.0 / ViscosityInvH;
+	const number ViscosityH = zeroCount ? 0.0 : 1.0 / ViscosityInvH;
+
+	for(size_t sh = 0; sh < numSH; ++sh)
+	{
+		const number weight = geo.scv(sh).volume() / Volume;
+
+		if(zeroCount == 0)
+			harmonicSensitivity[sh] = weight * (ViscosityH / Ms[sh]) * (ViscosityH / Ms[sh]);
+		else if(zeroCount == 1 && sh == zeroNode)
+			harmonicSensitivity[sh] = 1.0 / weight;
+	}
 
 	// Quintic C2-smooth blending parameter.
 	number beta = 0.0;
@@ -5035,7 +5315,7 @@ ex_nodal_mix_viscosity(number vValue[],
 					{
 						const number weight = geo.scv(sh).volume() / Volume;
 						const number DA = weight*DMs[sh];
-						const number DH = weight*DMs[sh]*(ViscosityH/Ms[sh])*(ViscosityH/Ms[sh]);
+						const number DH = harmonicSensitivity[sh]*DMs[sh];
 						const number DB = Dbeta*weight*(ViscosityH-ViscosityA);
 
 						vvvDeriv[ip][_C_][sh] = (1.0-beta)*DA + beta*DH + DB;
@@ -5094,7 +5374,7 @@ ex_nodal_mix_viscosity(number vValue[],
 					{
 						const number weight = geo.scv(sh).volume() / Volume;
 						const number DA = weight*DMs[sh];
-						const number DH = weight*DMs[sh]*(ViscosityH/Ms[sh])*(ViscosityH/Ms[sh]);
+						const number DH = harmonicSensitivity[sh]*DMs[sh];
 						const number DB = Dbeta*weight*(ViscosityH-ViscosityA);
 
 						vvvDeriv[ip][_C_][sh] = (1.0-beta)*DA + beta*DH + DB;
@@ -5135,7 +5415,7 @@ ex_nodal_mix_viscosity(number vValue[],
 				{
 					const number w = geo.scv(sh).volume()/Volume;
 
-					weights[sh] = (1.0-beta)*w + beta*w*(ViscosityH/Ms[sh])*(ViscosityH/Ms[sh]);
+					weights[sh] = (1.0-beta)*w + beta*harmonicSensitivity[sh];
 				}
 			}
 
@@ -5147,7 +5427,6 @@ ex_nodal_mix_viscosity(number vValue[],
 	}
 
 };
-
 template<typename TDomain>
 template <typename TElem, typename TFVGeom>
 void NavierStokesFV1M<TDomain>::
@@ -5792,6 +6071,7 @@ register_func()
     m_exVolumeFraction->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_volfraction<TElem, TFVGeom>);
     m_exVolumeFractionGrad->template set_fct<T,refDim>(id, this, &T::template ex_volume_fraction_grad<TElem, TFVGeom>);
     m_exEinsteinViscosity->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_einstein_viscosity<TElem, TFVGeom>);
+	m_exMuIViscosity->template set_fct<T,refDim>(id, this, &T::template ex_nodal_mu_i_viscosity<TElem, TFVGeom>);
 	m_exMixViscosity->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_mix_viscosity<TElem, TFVGeom>);
 	m_exMixDensity->      template set_fct<T,refDim>(id, this, &T::template ex_nodal_mix_density<TElem, TFVGeom>);
     m_exPsPressure->    template set_fct<T,refDim>(id, this, &T::template ex_nodal_particle_pressure<TElem, TFVGeom>);
