@@ -12,6 +12,10 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <chrono>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
 #include "common/common.h"
 #include "common/math/ugmath.h"
 #include "lib_disc/common/function_group.h"
@@ -71,6 +75,9 @@ private:
 	// Nodal distance cache (populated by update()).
 	ANumber m_aDistance;
 	aVertexNumber m_distance;
+	// Cache the concentration at vertices for pointwise sand-side masking.
+	ANumber m_aConcentration;
+	aVertexNumber m_concentration;
 
 	// Mixture grid function and mesh.
 	SmartPtr<TGridFunction> m_u;
@@ -193,6 +200,60 @@ private:
 	}
 
 	
+	// Reconstruct a Q1 hexahedron with a conforming piecewise-linear subdivision.
+	// Each of the six quadrilateral faces is split using its lexicographically
+	// smallest physical vertex and the opposite vertex as a diagonal. This
+	// makes the shared-face split independent of neighboring cell numbering.
+	// Twelve tetrahedra join the six split faces to the cell center.
+	// The resulting isosurface approximates the trilinear Q1 isosurface.
+	static bool position_less(const MathVector<dim>& a, const MathVector<dim>& b)
+	{
+		for(int d = 0; d < dim; ++d)
+		{
+			if(a[d] < b[d]) return true;
+			if(a[d] > b[d]) return false;
+		}
+		return false;
+	}
+
+	void reconstruct_hexa(const MathVector<dim> x[8], const number c[8], number iso)
+	{
+		// UG4 ReferenceHexahedron face-vertex ordering.
+		static const int faces[6][4] = {
+			{0,3,2,1}, {0,1,5,4}, {1,2,6,5},
+			{2,3,7,6}, {3,0,4,7}, {4,5,6,7}
+		};
+
+		MathVector<dim> center;
+		for(int d = 0; d < dim; ++d) center[d] = 0.0;
+		number centerC = 0.0;
+		for(int i = 0; i < 8; ++i)
+		{
+			for(int d = 0; d < dim; ++d) center[d] += x[i][d] / 8.0;
+			centerC += c[i] / 8.0;
+		}
+
+		for(int f = 0; f < 6; ++f)
+		{
+			int first = 0;
+			for(int j = 1; j < 4; ++j)
+				if(position_less(x[faces[f][j]], x[faces[f][first]])) first = j;
+
+			const int a = faces[f][first];
+			const int b = faces[f][(first+1)%4];
+			const int o = faces[f][(first+2)%4];
+			const int d = faces[f][(first+3)%4];
+
+			MathVector<dim> xt[4] = {center, x[a], x[b], x[o]};
+			number ct[4] = {centerC, c[a], c[b], c[o]};
+			reconstruct_tetra(xt, ct, iso);
+
+			xt[2] = x[o]; xt[3] = x[d];
+			ct[2] = c[o]; ct[3] = c[d];
+			reconstruct_tetra(xt, ct, iso);
+		}
+	}
+
 	// Acceleration only: the MPI geometry allgather above remains unchanged.
 	// Leaf ranges refer to the corresponding segment/triangle vector.
 	struct BVHNode
@@ -299,17 +360,25 @@ private:
 		build_bvh_node(0, n); // Root is node 0.
 	}
 
-	number box_distance_squared(const MathVector<dim>& x, const BVHNode& node) const
+	// Conservative distance lower bound to an axis-aligned primitive/rank box.
+	static number box_distance_squared(const MathVector<dim>& x,
+									   const MathVector<dim>& lo,
+									   const MathVector<dim>& hi)
 	{
 		number dist2 = 0.0;
 		for(int d = 0; d < dim; ++d)
 		{
 			number delta = 0.0;
-			if(x[d] < node.lo[d]) delta = node.lo[d] - x[d];
-			else if(x[d] > node.hi[d]) delta = x[d] - node.hi[d];
+			if(x[d] < lo[d]) delta = lo[d] - x[d];
+			else if(x[d] > hi[d]) delta = x[d] - hi[d];
 			dist2 += delta * delta;
 		}
 		return dist2;
+	}
+
+	number box_distance_squared(const MathVector<dim>& x, const BVHNode& node) const
+	{
+		return box_distance_squared(x, node.lo, node.hi);
 	}
 
 	number nearest_bvh_node(const MathVector<dim>& x, int nodeId, number best) const
@@ -425,6 +494,9 @@ public:
 		grid.template attach_to<Vertex>(m_aDistance);
 		m_distance.access(grid, m_aDistance);
 		SetAttachmentValues(m_distance, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0.0);
+		grid.template attach_to<Vertex>(m_aConcentration);
+		m_concentration.access(grid, m_aConcentration);
+		SetAttachmentValues(m_concentration, m_u->template begin<Vertex>(), m_u->template end<Vertex>(), 0.0);
 	}
 
 	virtual ~WallInterfaceDistanceFV1() {}
@@ -442,6 +514,13 @@ public:
 	/// Update interface geometry, wall distances, and the nodal cache.
 	void update()
 	{
+		typedef std::chrono::steady_clock PerfClock;
+		const PerfClock::time_point perfStart = PerfClock::now();
+		double perfPack = 0.0, perfExchange = 0.0, perfUnpack = 0.0;
+		int perfRank = 0;
+#ifdef UG_PARALLEL
+		perfRank = pcl::ProcRank();
+#endif
 		UG_LOG("Updating Wall Interface Distance...\n");
 		
 		if(!Inter) UG_THROW("WallInterfaceDistanceFV1: Interface parameters have not been set.");
@@ -470,21 +549,29 @@ public:
 
 				if(dim == 3)
 				{
-					// This first stage deliberately supports only P1 tetrahedra.
-					// Never silently approximate hexahedra, prisms or pyramids.
-					if(elem->reference_object_id() != ROID_TETRAHEDRON)
-						UG_THROW("WallInterfaceDistanceFV1: 3D currently requires tetrahedra.");
-					MathVector<dim> coords3[4];
-					number c3[4];
-					for(size_t i=0; i<4; ++i)
+					const ReferenceObjectID roid = elem->reference_object_id();
+					if(roid != ROID_TETRAHEDRON && roid != ROID_HEXAHEDRON)
+						UG_THROW("WallInterfaceDistanceFV1: 3D supports tetrahedra and hexahedra only.");
+
+					MathVector<dim> coords3[8];
+					number c3[8];
+					for(size_t i = 0; i < numVertices; ++i)
 					{
-						Vertex* vrt=elem->vertex(i);
-						coords3[i]=posAcc[vrt];
-						m_u->dof_indices(vrt,_C_,multInd);
-						if(multInd.size()!=1) UG_THROW("Expected one concentration DoF per vertex.");
-						c3[i]=DoFRef(*m_u,multInd[0]);
+						Vertex* vrt = elem->vertex(i);
+						coords3[i] = posAcc[vrt];
+						m_u->dof_indices(vrt, _C_, multInd);
+						if(multInd.size() != 1)
+							UG_THROW("WallInterfaceDistanceFV1: Expected one concentration DoF per vertex.");
+						c3[i] = DoFRef(*m_u, multInd[0]);
 					}
-					reconstruct_tetra(coords3,c3,interfaceValue);
+
+					if(roid == ROID_TETRAHEDRON)
+					{
+						MathVector<dim> xt[4] = {coords3[0],coords3[1],coords3[2],coords3[3]};
+						number ct[4] = {c3[0],c3[1],c3[2],c3[3]};
+						reconstruct_tetra(xt, ct, interfaceValue);
+					}
+					else reconstruct_hexa(coords3, c3, interfaceValue);
 					continue;
 				}
 
@@ -695,13 +782,86 @@ public:
 			}
 		}
 
+		const PerfClock::time_point perfReconstructed = PerfClock::now();
+		const size_t perfLocalPrimitives = num_primitives();
 		UG_LOG("WallInterfaceDistanceFV1: Reconstructed " << m_interfaceSegments.size() << " segments and " << m_interfaceTriangles.size() << " triangles (local).\n");
+
+#if 0 // Rank-box diagnostic stage disabled: no extra MPI exchange or local BVH
+		// Stage 1 of distributed search: exchange only the local interface bounds.
+		// A rank without interface primitives advertises an invalid (+inf,-inf) box.
+		// The complete geometry exchange farther below is kept as a trusted reference.
+		std::vector<number> localRankBox(2 * dim), allRankBoxes;
+		for(int d = 0; d < dim; ++d)
+		{
+			localRankBox[d] = std::numeric_limits<number>::infinity();
+			localRankBox[dim + d] = -std::numeric_limits<number>::infinity();
+		}
+		if(perfLocalPrimitives > 0)
+		{
+			MathVector<dim> lo, hi, pLo, pHi;
+			primitive_bounds(0, lo, hi);
+			for(size_t i = 1; i < perfLocalPrimitives; ++i)
+			{
+				primitive_bounds(i, pLo, pHi);
+				for(int d = 0; d < dim; ++d)
+				{
+					lo[d] = std::min(lo[d], pLo[d]);
+					hi[d] = std::max(hi[d], pHi[d]);
+				}
+			}
+			for(int d = 0; d < dim; ++d)
+			{
+				localRankBox[d] = lo[d];
+				localRankBox[dim + d] = hi[d];
+			}
+		}
+
+		const PerfClock::time_point perfBoxStart = PerfClock::now();
+		allRankBoxes = localRankBox;
+#ifdef UG_PARALLEL
+		if(pcl::NumProcs() > 1)
+		{
+			pcl::ProcessCommunicator boxCommunicator;
+			boxCommunicator.allgatherv(allRankBoxes, localRankBox);
+		}
+#endif
+		const double perfBoxExchange = std::chrono::duration<double>(PerfClock::now() - perfBoxStart).count();
+		if(allRankBoxes.size() % (2 * dim) != 0)
+			UG_THROW("WallInterfaceDistanceFV1: Invalid rank bounding-box exchange.");
+		const size_t numRanks = allRankBoxes.size() / (2 * dim);
+#ifdef UG_PARALLEL
+		if(numRanks != static_cast<size_t>(pcl::NumProcs()))
+			UG_THROW("WallInterfaceDistanceFV1: Wrong number of rank bounding boxes.");
+#endif
+
+		// Obtain a rigorous local upper bound for each vertex. A rank without an
+		// interface obtains the analytic bottom-wall distance as its upper bound.
+		const PerfClock::time_point perfLocalTreeStart = PerfClock::now();
+		build_bvh();
+		const PerfClock::time_point perfLocalTreeEnd = PerfClock::now();
+		std::vector<number> localUpperBounds;
+		VertexIterator localIter = m_u->template begin<Vertex>();
+		VertexIterator localEnd = m_u->template end<Vertex>();
+		for(; localIter != localEnd; ++localIter)
+		{
+			const MathVector<dim>& x = posAcc[*localIter];
+			const number wallDistance = std::max((number)0.0, x[dim-1]);
+			localUpperBounds.push_back(nearest_interface_bvh(x, wallDistance));
+		}
+		const PerfClock::time_point perfLocalQueryEnd = PerfClock::now();
+
+#endif // Rank-box diagnostic stage
+
+		// Receive-array metadata is used only to validate the proposed rank pruning
+		// against the unchanged global-interface BVH. The index is communicator rank.
+		std::vector<int> recvCoordCounts, recvCoordOffsets;
 
 #ifdef UG_PARALLEL
 		// Correctness-first MPI reference: exchange all reconstructed interface primitives.
 		// All ranks must call update() together, even ranks without a cut element.
 		if(pcl::NumProcs() > 1)
 		{
+			const PerfClock::time_point perfPackStart = PerfClock::now();
 			const int verticesPerPrimitive = (dim == 2 ? 2 : 3);
 			const int stride = verticesPerPrimitive * dim;
 			std::vector<number> localCoords, globalCoords;
@@ -725,10 +885,17 @@ public:
 				}
 			}
 
+			perfPack = std::chrono::duration<double>(PerfClock::now() - perfPackStart).count();
 			pcl::ProcessCommunicator communicator;
-			communicator.allgatherv(globalCoords, localCoords);
+			const PerfClock::time_point perfExchangeStart = PerfClock::now();
+			communicator.allgatherv(globalCoords, localCoords, &recvCoordCounts, &recvCoordOffsets);
+			perfExchange = std::chrono::duration<double>(PerfClock::now() - perfExchangeStart).count();
+			const PerfClock::time_point perfUnpackStart = PerfClock::now();
 			if(globalCoords.size() % stride != 0)
 				UG_THROW("WallInterfaceDistanceFV1: Invalid gathered interface coordinates.");
+			if(!globalCoords.empty() && (recvCoordCounts.size() != static_cast<size_t>(pcl::NumProcs()) ||
+										 recvCoordOffsets.size() != static_cast<size_t>(pcl::NumProcs())))
+				UG_THROW("WallInterfaceDistanceFV1: Invalid per-rank primitive metadata.");
 
 			if(dim == 2)
 			{
@@ -759,34 +926,48 @@ public:
 					m_interfaceTriangles.push_back(tri);
 				}
 			}
+			perfUnpack = std::chrono::duration<double>(PerfClock::now() - perfUnpackStart).count();
 			UG_LOG("WallInterfaceDistanceFV1: Gathered " << globalCoords.size()/stride
 				   << " interface primitives on this rank.\n");
 		}
 #endif
 
+		const PerfClock::time_point perfGeometryReady = PerfClock::now();
 		// Build one BVH over the gathered interface geometry on each MPI rank.
 		// For the first comparison on a small mesh, change this flag to true.
 		const bool verifyBVH = false;
 		build_bvh();
+		const PerfClock::time_point perfTreeBuilt = PerfClock::now();
 		UG_LOG("WallInterfaceDistanceFV1: BVH nodes = " << m_bvhNodes.size()
 			   << ", primitives = " << num_primitives() << ".\n");
 
 		VertexIterator iter = m_u->template begin<Vertex>();
 		VertexIterator iterEnd = m_u->template end<Vertex>();
 		number maxVerificationError = 0.0;
+		size_t perfVertexCount = 0;
 		for(; iter != iterEnd; ++iter)
 		{
+			++perfVertexCount;
 			Vertex* vrt = *iter;
 			const MathVector<dim>& x = posAcc[vrt];
 			const number wallDistance = std::max((number)0.0, x[dim-1]);
-			// The analytical bottom-wall distance is a rigorous upper bound
-			// for the combined wall/interface distance.
-			const number dist = nearest_interface_bvh(x, wallDistance);
+			// c >= interfaceValue is the sand side: distance is identically zero.
+			// Reuse the concentration DoF already present in the grid function.
+			m_u->dof_indices(vrt, _C_, multInd);
+			if(multInd.size() != 1)
+				UG_THROW("WallInterfaceDistanceFV1: Expected one concentration DoF per vertex.");
+			const number concentration = DoFRef(*m_u, multInd[0]);
+			m_concentration[vrt] = concentration;
+			const bool inSand = (concentration >= interfaceValue);
+
+			// The analytical bottom-wall distance is the initial upper bound
+			// for the combined wall/interface distance in the air region.
+			const number dist = inSand ? (number)0.0 : nearest_interface_bvh(x, wallDistance);
 			m_distance[vrt] = dist;
 
 			if(verifyBVH)
 			{
-				const number reference = nearest_interface_brute_force(x, wallDistance);
+				const number reference = inSand ? (number)0.0 : nearest_interface_brute_force(x, wallDistance);
 				const number err = std::fabs(reference - dist);
 				maxVerificationError = std::max(maxVerificationError, err);
 				const number tol = 1.e-10 * std::max((number)1.0, wallDistance);
@@ -794,13 +975,113 @@ public:
 					UG_THROW("WallInterfaceDistanceFV1: BVH / brute-force mismatch.");
 			}
 		}
+		const PerfClock::time_point perfSearchDone = PerfClock::now();
 		if(verifyBVH)
 			UG_LOG("WallInterfaceDistanceFV1: BVH verification max abs error = "
 				   << maxVerificationError << ".\n");
 
+#if 0 // Rank-box candidate checks disabled: production global BVH path
+		// Validate conservative rank-box pruning against the GLOBAL BVH result.
+		// For this first test, globally gathered geometry supplies exact answers
+		// to simulated remote queries; actual selective MPI queries come next.
+		const bool verifyRankPruning = true;
+		const int stride = dim * (dim == 2 ? 2 : 3);
+		size_t numNonemptyRanks = 0, remoteCandidatePairs = 0, remotePrunedPairs = 0;
+		number maxRankPruningError = 0.0;
+		for(size_t r = 0; r < numRanks; ++r)
+			if(allRankBoxes[r * 2 * dim] <= allRankBoxes[r * 2 * dim + dim])
+				++numNonemptyRanks;
+
+		VertexIterator checkIter = m_u->template begin<Vertex>();
+		VertexIterator checkEnd = m_u->template end<Vertex>();
+		size_t checkIndex = 0;
+		for(; checkIter != checkEnd; ++checkIter, ++checkIndex)
+		{
+			Vertex* vrt = *checkIter;
+			const MathVector<dim>& x = posAcc[vrt];
+			number candidateBest = localUpperBounds[checkIndex];
+			for(size_t r = 0; r < numRanks; ++r)
+			{
+				if(static_cast<int>(r) == perfRank) continue;
+				const size_t b = r * 2 * dim;
+				if(allRankBoxes[b] > allRankBoxes[b + dim]) continue;
+				MathVector<dim> lo, hi;
+				for(int d = 0; d < dim; ++d)
+				{
+					lo[d] = allRankBoxes[b + d];
+					hi[d] = allRankBoxes[b + dim + d];
+				}
+				// Strictly larger boxes can never improve the current upper bound.
+				if(box_distance_squared(x, lo, hi) >= candidateBest * candidateBest)
+				{
+					++remotePrunedPairs;
+					continue;
+				}
+				++remoteCandidatePairs;
+				if(verifyRankPruning)
+				{
+					// Exact simulated remote response, using the gathered reference.
+					// Counts/offsets are in scalar coordinates, not primitives.
+					if(recvCoordCounts.empty())
+						UG_THROW("WallInterfaceDistanceFV1: Missing rank geometry metadata.");
+					const size_t begin = static_cast<size_t>(recvCoordOffsets[r]) / stride;
+					const size_t end = begin + static_cast<size_t>(recvCoordCounts[r]) / stride;
+					for(size_t k = begin; k < end; ++k)
+					{
+						const number d = (dim == 2)
+							? point_segment_distance(x, m_interfaceSegments[k])
+							: point_triangle_distance(x, m_interfaceTriangles[k]);
+						candidateBest = std::min(candidateBest, d);
+					}
+				}
+			}
+			if(verifyRankPruning)
+			{
+				const number err = std::fabs(candidateBest - m_distance[vrt]);
+				maxRankPruningError = std::max(maxRankPruningError, err);
+				const number tol = 1.e-10 * std::max((number)1.0, x[dim-1]);
+				if(err > tol)
+					UG_THROW("WallInterfaceDistanceFV1: Rank-box pruning mismatch with global BVH.");
+			}
+		}
+		const PerfClock::time_point perfRankCheckEnd = PerfClock::now();
+		std::ostringstream rankMessage;
+		rankMessage << std::fixed << std::setprecision(9)
+					<< "WID_BOX rank=" << perfRank
+					<< " nonempty_ranks=" << numNonemptyRanks
+					<< " local_primitives=" << perfLocalPrimitives
+					<< " local_vertices=" << localUpperBounds.size()
+					<< " remote_candidates=" << remoteCandidatePairs
+					<< " remote_pruned=" << remotePrunedPairs
+					<< " verification=" << (verifyRankPruning ? "on" : "off")
+					<< " max_abs_error=" << maxRankPruningError
+					<< " bbox_exchange_s=" << perfBoxExchange
+					<< " local_build_s=" << std::chrono::duration<double>(perfLocalTreeEnd-perfLocalTreeStart).count()
+					<< " local_query_s=" << std::chrono::duration<double>(perfLocalQueryEnd-perfLocalTreeEnd).count()
+					<< " rank_check_s=" << std::chrono::duration<double>(perfRankCheckEnd-perfSearchDone).count();
+		std::cerr << rankMessage.str() << std::endl;
+
+#endif // Rank-box candidate checks
+
 		UG_LOG("WallInterfaceDistanceFV1: Interface distance field updated.\n");
 
 		m_distanceReady = true;
+		const PerfClock::time_point perfEnd = PerfClock::now();
+		std::ostringstream perfMessage;
+		perfMessage << std::fixed << std::setprecision(6)
+					<< "WID_PERF rank=" << perfRank
+					<< " local_primitives=" << perfLocalPrimitives
+					<< " gathered_primitives=" << num_primitives()
+					<< " bvh_nodes=" << m_bvhNodes.size()
+					<< " local_vertices=" << perfVertexCount
+					<< " reconstruct_s=" << std::chrono::duration<double>(perfReconstructed-perfStart).count()
+					<< " pack_s=" << perfPack
+					<< " exchange_s=" << perfExchange
+					<< " unpack_s=" << perfUnpack
+					<< " build_s=" << std::chrono::duration<double>(perfTreeBuilt-perfGeometryReady).count()
+					<< " query_s=" << std::chrono::duration<double>(perfSearchDone-perfTreeBuilt).count()
+					<< " total_s=" << std::chrono::duration<double>(perfEnd-perfStart).count();
+		std::cerr << perfMessage.str() << std::endl;
 	}
 
 	template <int refDim>
@@ -814,13 +1095,19 @@ public:
 
 		const LocalShapeFunctionSet<refDim>& rTrialSpace = LocalFiniteElementProvider::get<refDim>(roid, LFEID(LFEID::LAGRANGE, refDim, 1));
 		std::vector<number> shapes;
+		const number interfaceValue = Inter->interface_value();
 		for(size_t ip = 0; ip < nip; ++ip)
 		{
 			rTrialSpace.shapes(shapes, vLocIP[ip]);
-			number value = 0.0;
+			number value = 0.0, concentration = 0.0;
 			for(size_t sh = 0; sh < numVertices; ++sh)
-				value += m_distance[element->vertex(sh)] * shapes[sh];
-			vValue[ip] = value;
+			{
+				Vertex* vrt = element->vertex(sh);
+				value += m_distance[vrt] * shapes[sh];
+				concentration += m_concentration[vrt] * shapes[sh];
+			}
+			// Enforce zero on the sand side also at FV1 integration points.
+			vValue[ip] = (concentration >= interfaceValue) ? (number)0.0 : value;
 		}
 	}
 
