@@ -351,6 +351,7 @@ static void Dimension(Registry& reg, string grp)
 			.add_method("set_delta_epsilon", &T::set_delta_epsilon)
 			.add_method("set_velocity_epsilon", &T::set_velocity_epsilon)
 			.add_method("set_direction_mode", &T::set_direction_mode)
+			.add_method("set_use_wall_stress", &T::set_use_wall_stress)
 			.add_constructor()
 			.set_construct_as_smart_pointer(true);
 

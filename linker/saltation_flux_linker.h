@@ -68,7 +68,7 @@ class SaltationFluxLinker : public StdDataLinker<SaltationFluxLinker<dim>, MathV
 
 public:
 
-	SaltationFluxLinker() : m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL), m_spVelocityGrad(NULL), m_spDVelocityGrad(NULL), m_spTurbulentKinViscosity(NULL), m_spDTurbulentKinViscosity(NULL), m_spVelocity(NULL), m_spDVelocity(NULL), m_spNormal(NULL), m_spDNormal(NULL), Inter(NULL), m_C(5.5), m_uStarThreshold(0.22), m_epsNormal(1e-8), m_epsDelta(1e-8), m_epsVelocity(1e-4), m_directionMode(VELOCITY_DIRECTION)
+	SaltationFluxLinker() : m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL), m_spVelocityGrad(NULL), m_spDVelocityGrad(NULL), m_spTurbulentKinViscosity(NULL), m_spDTurbulentKinViscosity(NULL), m_spVelocity(NULL), m_spDVelocity(NULL), m_spNormal(NULL), m_spDNormal(NULL), Inter(NULL), m_C(5.5), m_uStarThreshold(0.22), m_epsNormal(1e-8), m_epsDelta(1e-8), m_epsVelocity(1e-4), m_directionMode(VELOCITY_DIRECTION), m_useWallStress(false)
 	{
 		this->set_num_input(5);
 	}
@@ -252,7 +252,22 @@ private:
 		if(shearRate > 0.0)
 			dShearRate = 2.0*DDotDD/shearRate;
 
-		const number dTauMag = dMuEff*shearRate + mu_eff*dShearRate;
+		number dTauMag = 0.0;
+
+		if(m_useWallStress)
+		{
+			if(data.tauMag > 0.0)
+			{
+				for(size_t d = 0; d < dim; ++d)
+					dTauMag += data.tau[d]*dTau[d];
+
+				dTauMag /= data.tauMag;
+			}
+		}
+		else
+		{
+			dTauMag = dMuEff*shearRate + mu_eff*dShearRate;
+		}
 		
 		
 		const number dUStar = dTauMag/(2.0*rho_a*data.uStar);
@@ -382,7 +397,19 @@ private:
 			for(size_t j = 0; j < dim; ++j)
 				D2 += data.D(i,j)*data.D(i,j);
 
-		data.tauMag = mu_eff*std::sqrt(2.0*D2);
+		if(m_useWallStress)
+		{
+			number tau2 = 0.0;
+
+			for(size_t d = 0; d < dim; ++d)
+				tau2 += data.tau[d]*data.tau[d];
+
+			data.tauMag = std::sqrt(tau2);
+		}
+		else
+		{
+			data.tauMag = mu_eff*std::sqrt(2.0*D2);
+		}
 
 		if(data.tauMag > 0.0)
 			data.uStar = std::sqrt(data.tauMag/rho_a);
@@ -685,6 +712,7 @@ public:
 
 		m_directionMode = mode;
 	}
+	void set_use_wall_stress(bool enable) {m_useWallStress = enable;}
 
 
 protected:
@@ -754,6 +782,7 @@ protected:
 	number m_epsDelta;
 	number m_epsVelocity;
 	int m_directionMode;
+	bool m_useWallStress;
 };
 
 
