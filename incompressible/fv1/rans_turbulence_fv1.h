@@ -5,6 +5,8 @@
 #ifndef __H__UG__PLUGINS__NAVIER_STOKES__INCOMPRESSIBLE__FV1__RANS_TURBULENCE_FV1__
 #define __H__UG__PLUGINS__NAVIER_STOKES__INCOMPRESSIBLE__FV1__RANS_TURBULENCE_FV1__
 
+
+#include <cmath>
 // ug4
 #include "common/common.h"
 #include "lib_grid/lg_base.h"
@@ -66,6 +68,9 @@ public:
 	void set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > data);
 	void set_kinematic_viscosity(number viscosity);
 	
+	/// Set volume fraction for damping k and omega
+	void set_volume_fraction(SmartPtr<CplUserData<number, dim> > data);
+	
 	/// Set upwind method for turbulent transport
 	void set_upwind(SmartPtr<INavierStokesUpwind<dim> > spUpwind)
 	{
@@ -84,7 +89,13 @@ public:
 	void set_linearize_turbulent_viscosity(bool enabled) {m_linearizeTurbulentViscosity = enabled;}
 	void set_linearize_f2(bool enabled) {m_linearizeF2InTurbulentViscosity = enabled;}
 	void set_linearize_destruction_coupling(bool enabled) {m_linearizeDestructionCoupling = enabled;}
-	void set_cross_diffusion_linearization(int mode) {if(mode < 0 || mode > 2) UG_THROW("RANSTurbulenceFV1: Cross-diffusion mode must be 0, 1, or 2."); m_crossDiffusionLinearization = mode;}
+	void set_linearize_k_production_coupling(bool enabled) {m_linearizeKProductionCoupling = enabled;}
+	void set_linearize_velocity_gradient_scv(bool enabled){m_imVelocityGradientSCV.set_comp_lin_defect(enabled);}
+	void set_linearize_velocity_gradient_scvf(bool enabled){m_imVelocityGradientSCVF.set_comp_lin_defect(enabled);}
+	void set_cross_diffusion_linearization(int mode)
+	{
+		if(mode < 0 || mode > 2) UG_THROW("RANSTurbulenceFV1: Cross-diffusion mode must be 0, 1, or 2.");m_crossDiffusionLinearization = mode;
+	}
 	void set_linearize_exported_viscosity(bool enabled) {m_linearizeExportedViscosity = enabled;}
 	void set_f1_regularization_length(number length)
 	{
@@ -92,6 +103,21 @@ public:
 			UG_THROW("RANSTurbulenceFV1: Invalid F1 regularization length.");
 
 		m_f1RegularizationLength = length;
+	}
+	void set_full_stress_production(bool enable)
+	{
+		m_fullStressProduction = enable;
+	}
+	void set_turbulence_penalty(number interfaceValue, number lambdaK, number lambdaOmega, number kTarget, number omegaTarget)
+	{
+		if(!std::isfinite(interfaceValue) || !std::isfinite(lambdaK) || !std::isfinite(lambdaOmega) || !std::isfinite(kTarget) || !std::isfinite(omegaTarget) || interfaceValue < 0.0 || interfaceValue >= 1.0 || lambdaK < 0.0 || lambdaOmega < 0.0 || kTarget < 0.0 || omegaTarget <= 0.0)
+			UG_THROW("RANSTurbulenceFV1: Invalid turbulence penalty parameters.");
+
+		m_interfaceValue = interfaceValue;
+		m_lambdaK = lambdaK;
+		m_lambdaOmega = lambdaOmega;
+		m_kTarget = kTarget;
+		m_omegaTarget = omegaTarget;
 	}
 	
 
@@ -185,6 +211,8 @@ protected:
 	template <typename TElem, typename TFVGeom>
 	void register_func();
 
+	number solid_indicator(number volumeFraction) const;
+	
 	number strain_rate_magnitude( const MathMatrix<dim, dim>& gradU) const;
 
 	number vorticity_magnitude( const MathMatrix<dim, dim>& gradU) const;
@@ -201,17 +229,17 @@ protected:
 	
 	number cross_diffusion_omega(number F1, number omega, const MathVector<dim>& gradK, const MathVector<dim>& gradOmega) const;
 	
-	void turbulent_viscosity_derivatives( number& dNuT_dK,number& dNuT_dOmega,number k,number omega,number strainMag,number F2,
-		number nu,number wallDist) const;
+	void turbulent_viscosity_derivatives( number& dNuT_dK,number& dNuT_dOmega,number k,number omega,number strainMag,number F2, number nu,number wallDist) const;
 	
 	
 	template <typename TElem, typename TFVGeom>
 	void lin_def_velocity_convection(const LocalVector& u, std::vector<std::vector<MathVector<dim> > > vvvLinDef[], const size_t nip);
 	
 	template <typename TElem, typename TFVGeom>
-	void lin_def_velocity_gradient_scv(const LocalVector& u,
-									   std::vector<std::vector<MathMatrix<dim, dim> > > vvvLinDef[],
-									   const size_t nip);
+	void lin_def_velocity_gradient_scv(const LocalVector& u, std::vector<std::vector<MathMatrix<dim, dim> > > vvvLinDef[], const size_t nip);
+	
+	template <typename TElem, typename TFVGeom>
+	void lin_def_velocity_gradient_scvf( const LocalVector& u, std::vector<std::vector<MathMatrix<dim, dim> > > vvvLinDef[], const size_t nip);
 	
 
 protected:
@@ -219,29 +247,26 @@ protected:
 	
 	/// Export for turbulent kinematic viscosity
 	SmartPtr<DataExport<number, dim> > m_exTurbulentKinViscosity;
-
 	/// Export of k
 	SmartPtr<DataExport<number, dim> > m_exK;
-
 	/// Export of omega
 	SmartPtr<DataExport<number, dim> > m_exOmega;
 	
 	
+	
 	/// Velocity field u
 	DataImport<MathVector<dim>, dim> m_imVelocity;
-	
 	/// Velocity grad u
 	DataImport<MathMatrix<dim, dim>, dim> m_imVelocityGradientSCVF;
 	DataImport<MathMatrix<dim, dim>, dim> m_imVelocityGradientSCV;
-
 	/// Molecular kinematic viscosity nu
 	DataImport<number, dim> m_imKinViscositySCVF;
 	DataImport<number, dim> m_imKinViscositySCV;
-	
 	/// WallDistance
 	DataImport<number, dim> m_imWallDistanceSCVF;
 	DataImport<number, dim> m_imWallDistanceSCV;
-	
+	/// VolFraction
+	DataImport<number, dim> m_imVolumeFractionSCV;
 	/// Upwind method for convection of k and omega
 	SmartPtr<INavierStokesUpwind<dim> > m_spConvUpwind;
 	
@@ -264,11 +289,19 @@ protected:
 	// F1 near-wall/interface regularization. Zero disables the regularization.
 	number m_f1RegularizationLength = 0.0;
 	
+	number m_interfaceValue = 0.5;
+	number m_lambdaK = 0.0;
+	number m_lambdaOmega = 0.0;
+	number m_kTarget = 0.0;
+	number m_omegaTarget = 1.0;
+	
 	bool m_linearizeTurbulentViscosity = true;
 	bool m_linearizeDestructionCoupling = true;
+	bool m_linearizeKProductionCoupling = true;
 	bool m_linearizeF2InTurbulentViscosity = true;
 	int m_crossDiffusionLinearization = 0; // 0: sink split; 1: positive denominator derivative; 2: frozen-F1 derivative
 	bool m_linearizeExportedViscosity = false;
+	bool m_fullStressProduction = false;
 	
 
 private:
