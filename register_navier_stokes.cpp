@@ -209,6 +209,7 @@ static void Dimension(Registry& reg, string grp)
 		reg.add_class_<T, TBase>(name, grp)
 			.add_method("set_volume_fraction", static_cast<void (T::*)(number)>(&T::set_volume_fraction))
 			.add_method("set_volume_fraction", static_cast<void (T::*)(SmartPtr<CplUserData<number,dim> >)>(&T::set_volume_fraction))
+			.add_method("set_deriv",  &T::set_deriv)
 			.add_method("set_phase_parameters",  &T::set_phase_parameters)
 			.add_method("set_model",  &T::set_model)
 		
@@ -352,6 +353,7 @@ static void Dimension(Registry& reg, string grp)
 			.add_method("set_velocity_epsilon", &T::set_velocity_epsilon)
 			.add_method("set_direction_mode", &T::set_direction_mode)
 			.add_method("set_use_wall_stress", &T::set_use_wall_stress)
+			.add_method("set_use_delta_gamma", &T::set_use_delta_gamma)
 			.add_constructor()
 			.set_construct_as_smart_pointer(true);
 

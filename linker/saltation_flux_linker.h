@@ -68,7 +68,7 @@ class SaltationFluxLinker : public StdDataLinker<SaltationFluxLinker<dim>, MathV
 
 public:
 
-	SaltationFluxLinker() : m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL), m_spVelocityGrad(NULL), m_spDVelocityGrad(NULL), m_spTurbulentKinViscosity(NULL), m_spDTurbulentKinViscosity(NULL), m_spVelocity(NULL), m_spDVelocity(NULL), m_spNormal(NULL), m_spDNormal(NULL), Inter(NULL), m_C(5.5), m_uStarThreshold(0.22), m_epsNormal(1e-8), m_epsDelta(1e-8), m_epsVelocity(1e-4), m_directionMode(VELOCITY_DIRECTION), m_useWallStress(false)
+	SaltationFluxLinker() : m_spVolumeGrad(NULL), m_spDVolumeGrad(NULL), m_spVelocityGrad(NULL), m_spDVelocityGrad(NULL), m_spTurbulentKinViscosity(NULL), m_spDTurbulentKinViscosity(NULL), m_spVelocity(NULL), m_spDVelocity(NULL), m_spNormal(NULL), m_spDNormal(NULL), Inter(NULL), m_C(5.5), m_uStarThreshold(0.22), m_epsNormal(1e-8), m_epsDelta(1e-8), m_epsVelocity(1e-4), m_directionMode(VELOCITY_DIRECTION), m_useWallStress(false), m_useDeltaGamma(true)
 	{
 		this->set_num_input(5);
 	}
@@ -199,7 +199,7 @@ private:
 		number dNormal2 = 0.0;
 
 
-		const number dDeltaGamma = gradCDotDGradC/data.sDelta;
+		const number dDeltaGamma = m_useDeltaGamma ? gradCDotDGradC/data.sDelta : 0.0;
 
 		MathMatrix<dim,dim> dD;
 
@@ -349,7 +349,7 @@ private:
 			gradC2 += gradC[d]*gradC[d];
 
 		data.sDelta = std::sqrt(gradC2 + m_epsDelta*m_epsDelta);
-		data.deltaGamma = data.sDelta - m_epsDelta;
+		data.deltaGamma = m_useDeltaGamma ? data.sDelta - m_epsDelta : 1.0;
 
 		number normal2 = 0.0;
 
@@ -713,6 +713,7 @@ public:
 		m_directionMode = mode;
 	}
 	void set_use_wall_stress(bool enable) {m_useWallStress = enable;}
+	void set_use_delta_gamma(bool enable) {m_useDeltaGamma = enable;}
 
 
 protected:
@@ -783,6 +784,7 @@ protected:
 	number m_epsVelocity;
 	int m_directionMode;
 	bool m_useWallStress;
+	bool m_useDeltaGamma;
 };
 
 
