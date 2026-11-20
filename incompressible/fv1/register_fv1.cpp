@@ -391,7 +391,7 @@ static void Domain(Registry& reg, string grp)
         typedef NavierStokesFV1M<TDomain> T;
         typedef IncompressibleNavierStokesBase<TDomain> TBase;
         string name = string("NavierStokesFV1M").append(suffix);
-        reg.add_class_<T, TBase >(name, grp)
+		reg.add_class_<T, TBase, INewtonUpdate>(name, grp)
             .template add_constructor<void (*)(const char*,const char*)>("Functions#Subset(s)")
             .template add_constructor<void (*)(const std::vector<std::string>&, const std::vector<std::string>&)>("Functions#Subset(s)")
             .add_method("set_stabilization",  static_cast<void (T::*)(SmartPtr<INavierStokesFV1StabilizationM<dim> >)>(&T::set_stabilization))
@@ -408,6 +408,7 @@ static void Domain(Registry& reg, string grp)
             .add_method("set_diffusion", static_cast<void (T::*)(SmartPtr<CplUserData<MathMatrix<dim,dim>, dim> >)>(&T::set_diffusion), "", "Diffusion")
 			.add_method("set_average_gamma", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >)>(&T::set_average_gamma), "", "AverageGamma")
 			.add_method("set_density", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >,bool)>(&T::set_density), "", "Density Linerized Def")
+			.add_method("set_kinematic_viscosity", static_cast<void (T::*)(SmartPtr<CplUserData<number, dim> >,bool)>(&T::set_kinematic_viscosity), "", "KinViscosity Linerized Def")
             .add_method("set_pac_upwind", &T::set_pac_upwind, "", "Set pac upwind")
 			.add_method("set_pressure_jump", static_cast<void (T::*)( const std::string&)>(&T::set_pressure_jump), "", "PressureJump")
             .add_method("set_interface_normal", static_cast<void (T::*)(SmartPtr<CplUserData<MathVector<dim>, dim> >)>(&T::set_interface_normal), "", "SurfaceNormal")
@@ -417,6 +418,7 @@ static void Domain(Registry& reg, string grp)
             .add_method("einstein_viscosity", &T::einstein_viscosity)
 			.add_method("mu_i_viscosity", &T::mu_i_viscosity)
 			.add_method("mix_viscosity", &T::mix_viscosity)
+			.add_method("set_linearize_mix_viscosity",&T::set_linearize_mix_viscosity)
 			.add_method("mix_density", &T::mix_density)
 			.add_method("set_density_export_model", &T::set_density_export_model)
             .add_method("particle_pressure", &T::particle_pressure)
@@ -429,6 +431,8 @@ static void Domain(Registry& reg, string grp)
 			.add_method("set_mass_mean", &T::set_mass_mean)
 			.add_method("set_viscosity_averaging", &T::set_viscosity_averaging)
 			.add_method("set_saltation_riemann", &T::set_saltation_riemann)
+			.add_method("set_viscosity_continuation", &T::set_viscosity_continuation)
+			.add_method("reset_viscosity_continuation",&T::reset_viscosity_continuation)
             .set_construct_as_smart_pointer(true);
         reg.add_class_to_group(name, "NavierStokesFV1M", tag);
     }

@@ -184,6 +184,13 @@ set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > data)
 	m_imKinViscositySCV.set_data(data);
     m_imKinViscosity_old.set_data(data);
 }
+template<typename TDomain>
+void NavierStokesFV1M<TDomain>::
+set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > data, const bool LinDef)
+{
+	set_kinematic_viscosity(data);
+	m_imKinViscosity.set_comp_lin_defect(LinDef);
+}
 
 template<typename TDomain>
 void NavierStokesFV1M<TDomain>::
@@ -4865,6 +4872,10 @@ ex_nodal_mix_viscosity(number vValue[],
 				for(size_t sh = 0; sh < vvvDeriv[ip][c].size(); ++sh)
 					vvvDeriv[ip][c][sh] = 0.0;
 	}
+	
+	// Disable derivatives of the exported mixture viscosity.
+	// The viscosity values remain unchanged.
+	const bool bDeriv_c = bDeriv && m_linearizeMixViscosity;
 
 	TFVGeom& geo = GeomProvider<TFVGeom>::get();
 
@@ -4881,7 +4892,7 @@ ex_nodal_mix_viscosity(number vValue[],
 	const number cWidth = 1.0 - cInterface;
 
 	const bool linearizeGamma = true;
-	const bool derivGamma = bDeriv && linearizeGamma
+	const bool derivGamma = bDeriv_c && linearizeGamma
 						 && !m_imAverageGammaSCV.data_given();
 
 	number Volume = 0.0;
@@ -4935,10 +4946,11 @@ ex_nodal_mix_viscosity(number vValue[],
 			Dalpha = 30.0*t2*(1.0-t)*(1.0-t)/cWidth;
 		}
 
-		Inter->Einstein_viscosity(mu_eins, Dmu_eins, c, bDeriv);
+		mu_eins = Inter->Viscosity_a();
+		//Inter->Einstein_viscosity(mu_eins, Dmu_eins, c, bDeriv_c);
 
 		if(alpha > 0.0)
-			Inter->MU_I_Viscosity(mu_s, Dmu_s, DMsGamma[sh], Gamma[sh], c, bDeriv, derivGamma);
+			Inter->MU_I_Viscosity(mu_s, Dmu_s, DMsGamma[sh], Gamma[sh], c, bDeriv_c, derivGamma);
 
 		Ms[sh] = (1.0-alpha)*mu_eins + alpha*mu_s;
 
@@ -5084,7 +5096,7 @@ ex_nodal_mix_viscosity(number vValue[],
 			 }
 		 }
 
-		 if(!bDeriv)
+		 if(!bDeriv_c)
 			 continue;
 
 		 // Concentration derivatives.
@@ -5101,6 +5113,14 @@ ex_nodal_mix_viscosity(number vValue[],
 							 sensitivity[co]*DMsGamma[co]*DGamma[co][c][sh];
 		 }
 	 }
+	
+	if(m_homotopyViscosity)
+	{
+		for(size_t ip = 0; ip < nip; ++ip)
+		{
+			vValue[ip] += m_viscosityAlpha * m_viscosityC1;
+		}
+	}
 
 	
 

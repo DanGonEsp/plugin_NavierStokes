@@ -41,6 +41,7 @@
 #include "lib_disc/spatial_disc/elem_disc/elem_disc_interface.h"
 #include "lib_disc/spatial_disc/user_data/data_export.h"
 #include "lib_disc/spatial_disc/user_data/data_import.h"
+#include "lib_disc/operator/non_linear_operator/newton_solver/newton_update_interface.h"
 
 #include "../incompressible_navier_stokes_base.h"
 #include "../../upwind_interface.h"
@@ -146,7 +147,8 @@ namespace NavierStokes{
  */
 template<	typename TDomain>
 class NavierStokesFV1M
-	: public IncompressibleNavierStokesBase<TDomain>
+	: public IncompressibleNavierStokesBase<TDomain>,
+	  public INewtonUpdate
 {
 	protected:
 	///	Base class type
@@ -168,6 +170,8 @@ class NavierStokesFV1M
 
 	///	sets the kinematic viscosity
 		void set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > user);
+	///	sets the kinematic viscosity
+		void set_kinematic_viscosity(SmartPtr<CplUserData<number, dim> > user, const bool LinDef);
 
 	///	returns kinematic viscosity
 		SmartPtr<CplUserData<number, dim> > kinematic_viscosity() {return m_imKinViscosity.user_data ();}
@@ -316,6 +320,7 @@ class NavierStokesFV1M
 		SmartPtr<CplUserData<number, dim> > mu_i_viscosity() {return m_exMuIViscosity;}
 	///    returns the export of the Mix Viscosity
 		SmartPtr<CplUserData<number, dim> > mix_viscosity() {return m_exMixViscosity;}
+		void set_linearize_mix_viscosity(bool enable){m_linearizeMixViscosity = enable;}
 	/// Returns the exported mixture density.
 		SmartPtr<CplUserData<number, dim> > mix_density() {return m_exMixDensity;}
     /// Returns the export of the PariclePressure
@@ -778,8 +783,8 @@ class NavierStokesFV1M
 							  bool bDeriv,
 							  std::vector<std::vector<number > > vvvDeriv[]);
 	///    export mixture density computed at nodes and interpolated at requested integration points.
-	template <typename TElem, typename TFVGeom>
-	void ex_nodal_mix_density(number vValue[],
+		template <typename TElem, typename TFVGeom>
+		void ex_nodal_mix_density(number vValue[],
 							  const MathVector<dim> vGlobIP[],
 							  number time, int si,
 							  const LocalVector& u,
@@ -892,8 +897,47 @@ class NavierStokesFV1M
 		int m_upwind_vol_method = 0;
 		bool m_saltation_transport = false;
 		int m_viscosity_averaging = 2;
+		bool m_linearizeMixViscosity = true;
 		int m_density_export_model = 0;
 		bool m_saltation_riemann = true;
+	
+
+		number m_viscosityC1 = 0.0;
+		number m_viscosityAlpha = 0.0;
+		int m_viscositySteps = 1;
+		int m_viscosityIteration = 0;
+		bool m_homotopyViscosity = false;
+	public:
+		void set_viscosity_continuation(number C1, int steps, bool homotopy)
+		{
+			if(C1 < 0.0 || steps < 1)
+				UG_THROW("Invalid viscosity continuation parameters.");
+
+			m_viscosityC1 = C1;
+			m_viscositySteps = steps;
+			m_homotopyViscosity = homotopy;
+			reset_viscosity_continuation();
+		}
+
+		void reset_viscosity_continuation()
+		{
+			m_viscosityIteration = 0;
+			m_viscosityAlpha = (m_viscosityC1 > 0.0) ? 1.0 : 0.0;
+		}
+
+		void update() override
+		{
+			m_viscosityAlpha = std::max(
+				0.0,
+				1.0 - static_cast<number>(m_viscosityIteration)
+					  / m_viscositySteps);
+
+			++m_viscosityIteration;
+
+			UG_LOG("Viscosity continuation: iteration = " << m_viscosityIteration
+				   << ", alpha = " << m_viscosityAlpha
+				   << ", added viscosity = " << m_viscosityAlpha * m_viscosityC1 << "\n");
+		}
 
 		virtual void init();
 
