@@ -68,7 +68,7 @@ class GranularDensityLinker
     //  Constructor
     public:
         GranularDensityLinker() :
-            m_spVolumeFraction(NULL), m_spDVolumeFraction(NULL),
+            m_spVolumeFraction(NULL), m_spDVolumeFraction(NULL), bCalculateDeriv(true),
             m_model(0)
         {
         //    this linker needs exactly four input
@@ -202,7 +202,7 @@ class GranularDensityLinker
             this->set_zero(vvvDeriv, nip);
             
         //  Derivatives of Volume Fraction
-            if(m_spDVolumeFraction.valid() && !m_spDVolumeFraction->zero_derivative() && m_model == 1)
+            if(m_spDVolumeFraction.valid() && !m_spDVolumeFraction->zero_derivative() && m_model == 1 && bCalculateDeriv)
             {
                 for(size_t ip = 0; ip < nip; ++ip)
                 {
@@ -293,9 +293,14 @@ class GranularDensityLinker
 					UG_THROW("Interface parameters has not been initialized");
 				Inter = user;
 			}
+			void set_deriv(bool calculate_deriv)
+			{
+				bCalculateDeriv = calculate_deriv;
+			}
         protected:
             int m_model;
 			float m_eps = 1e-09;
+			bool bCalculateDeriv = true;
     
 };
 
